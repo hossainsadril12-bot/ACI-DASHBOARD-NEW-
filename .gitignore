@@ -17,3 +17,6 @@ demo-files/
 
 # Local screenshots (may show account details)
 aci-media-dashboard/Asset/
+
+# Local manual-test files and guide
+manual-test/
