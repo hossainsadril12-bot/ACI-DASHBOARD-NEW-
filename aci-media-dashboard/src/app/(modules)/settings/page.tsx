@@ -14,8 +14,12 @@ import {
   addRivalAction, createBrandAction, createTvStationAction, createVendorAction, removeRivalAction, setThresholdsAction,
 } from "./actions";
 import { PageSkeleton } from "@/components/data/page-skeleton";
+import { SAMPLE_FILE_NOTES, sampleStatus } from "@/server/samples";
+import { SampleDataCard } from "./sample-data-card";
 
 export const metadata: Metadata = { title: "Settings" };
+// Loading sample data runs many database writes; allow up to a minute on Vercel.
+export const maxDuration = 60;
 
 const selectClass = "h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm";
 
@@ -33,13 +37,14 @@ export default function SettingsPage() {
 async function SettingsContent() {
   await connection();
   const db = getDb();
-  const [businesses, brands, vendors, stations, thresholds] = await Promise.all([
-    listBusinesses(db), listBrandsWithRivals(db), listVendors(db), listTvStations(db), getThresholds(db),
+  const [businesses, brands, vendors, stations, thresholds, samples] = await Promise.all([
+    listBusinesses(db), listBrandsWithRivals(db), listVendors(db), listTvStations(db), getThresholds(db), sampleStatus(db),
   ]);
 
   return (
     <>
       <div className="grid gap-6 xl:grid-cols-2">
+        <SampleDataCard loaded={samples.loaded} brands={samples.brands} notes={SAMPLE_FILE_NOTES} />
         <Card>
           <CardHeader><CardTitle>Brands and rivals</CardTitle></CardHeader>
           <CardContent className="space-y-4">

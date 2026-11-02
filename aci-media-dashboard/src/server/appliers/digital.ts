@@ -5,7 +5,7 @@ import type { RowError } from "@/lib/upload/parse";
 import { ValidationError } from "../errors";
 import { checkDigitalNumbers, DIGITAL_COUNTS, DIGITAL_RATES, type DigitalValues } from "../digital";
 import type { Applier, Missing } from "./types";
-import { createMissingRefs, num, str } from "./shared";
+import { createMissingRefs, inScope, num, str } from "./shared";
 
 export type DigitalItem = DigitalValues & { key: string; brandId: number; month: string; platformId: number };
 
@@ -62,8 +62,8 @@ export const digitalApplier: Applier<DigitalItem> = {
     return rows.map((r) => ({ key: digitalKey(r), source: r.source }));
   },
 
-  async replace(db: Db, periods, items, uploadId) {
-    await db.delete(digitalEntries).where(and(eq(digitalEntries.source, "upload"), inArray(digitalEntries.month, periods)));
+  async replace(db: Db, periods, items, uploadId, scope) {
+    await db.delete(digitalEntries).where(and(eq(digitalEntries.source, "upload"), inArray(digitalEntries.month, periods), inScope(digitalEntries.brandId, scope)));
     if (!items.length) return 0;
     await db.insert(digitalEntries).values(items.map((i) => ({
       brandId: i.brandId, month: i.month, platformId: i.platformId, spend: i.spend, reach: i.reach, impressions: i.impressions,

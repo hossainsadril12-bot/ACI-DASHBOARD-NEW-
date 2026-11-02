@@ -1,6 +1,7 @@
+import { inArray, isNull, notInArray, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { tvStations, vendors } from "@/db/schema";
 import type { Db } from "@/db/types";
-import type { Missing } from "./types";
+import type { BrandScope, Missing } from "./types";
 
 export async function createMissingRefs(db: Db, missing: Missing) {
   if (missing.vendors.length) {
@@ -13,3 +14,10 @@ export async function createMissingRefs(db: Db, missing: Missing) {
 
 export const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 export const num = (v: unknown) => (typeof v === "number" ? v : null);
+
+/** SQL condition limiting a delete to the upload's brand scope (undefined = no limit). */
+export function inScope(brandCol: AnyColumn, scope: BrandScope, nullable = false): SQL | undefined {
+  if (scope.only) return scope.ids.length ? inArray(brandCol, scope.ids) : sql`false`;
+  if (!scope.ids.length) return undefined;
+  return nullable ? or(isNull(brandCol), notInArray(brandCol, scope.ids)) : notInArray(brandCol, scope.ids);
+}

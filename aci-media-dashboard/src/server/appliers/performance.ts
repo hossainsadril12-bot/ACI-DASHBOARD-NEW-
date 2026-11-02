@@ -5,7 +5,7 @@ import type { RowError } from "@/lib/upload/parse";
 import { ValidationError } from "../errors";
 import { checkPerformanceRow, TV_FIELDS, type PerformanceValues } from "../performance";
 import type { Applier, Missing } from "./types";
-import { createMissingRefs, num, str } from "./shared";
+import { createMissingRefs, inScope, num, str } from "./shared";
 
 export type PerformanceItem = PerformanceValues & { key: string; brandId: number; month: string; channelId: number };
 
@@ -63,8 +63,8 @@ export const performanceApplier: Applier<PerformanceItem> = {
     return rows.map((r) => ({ key: performanceKey(r), source: r.source }));
   },
 
-  async replace(db: Db, periods, items, uploadId) {
-    await db.delete(performanceEntries).where(and(eq(performanceEntries.source, "upload"), inArray(performanceEntries.month, periods)));
+  async replace(db: Db, periods, items, uploadId, scope) {
+    await db.delete(performanceEntries).where(and(eq(performanceEntries.source, "upload"), inArray(performanceEntries.month, periods), inScope(performanceEntries.brandId, scope)));
     if (!items.length) return 0;
     await db.insert(performanceEntries).values(items.map((i) => ({
       brandId: i.brandId, month: i.month, channelId: i.channelId, spend: i.spend, peopleReached: i.peopleReached, grp: i.grp,

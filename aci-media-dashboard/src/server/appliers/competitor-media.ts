@@ -6,7 +6,7 @@ import { ValidationError } from "../errors";
 import { checkMediaNumbers, parseMediaType, touchSource, type CompetitorMediaType } from "../competitors";
 import { normName } from "../lookups";
 import type { Applier, Missing } from "./types";
-import { createMissingRefs, num, str } from "./shared";
+import { createMissingRefs, inScope, num, str } from "./shared";
 
 export type CompetitorMediaItem = {
   key: string;
@@ -82,8 +82,8 @@ export const competitorMediaApplier: Applier<CompetitorMediaItem> = {
     return rows.map((r) => ({ key: mediaKey(r), source: r.source }));
   },
 
-  async replace(db: Db, periods, items, uploadId) {
-    await db.delete(competitorMedia).where(and(eq(competitorMedia.source, "upload"), inArray(competitorMedia.month, periods)));
+  async replace(db: Db, periods, items, uploadId, scope) {
+    await db.delete(competitorMedia).where(and(eq(competitorMedia.source, "upload"), inArray(competitorMedia.month, periods), inScope(competitorMedia.brandId, scope)));
     if (items.length) {
       await db.insert(competitorMedia).values(items.map((i) => ({
         brandId: i.brandId, month: i.month, rivalId: i.rivalId, media: i.media, spend: i.spend, spots: i.spots,

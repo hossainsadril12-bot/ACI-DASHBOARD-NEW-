@@ -6,7 +6,7 @@ import type { RowError } from "@/lib/upload/parse";
 import { ValidationError } from "../errors";
 import { checkBill, parseBillStatus, type BillStatus } from "../billing";
 import { addMissing, type Applier, type Missing } from "./types";
-import { createMissingRefs, num, str } from "./shared";
+import { createMissingRefs, inScope, num, str } from "./shared";
 
 export type BillItem = {
   key: string;
@@ -80,11 +80,12 @@ export const billsApplier: Applier<BillItem> = {
     return rows.map((r) => ({ key: billKey(r.billNo), source: r.source }));
   },
 
-  async replace(db: Db, periods, items, uploadId) {
+  async replace(db: Db, periods, items, uploadId, scope) {
     const keys = items.map((i) => i.key);
     await db.delete(bills).where(and(
       eq(bills.source, "upload"),
       or(inArray(bills.month, periods), ...(keys.length ? [inArray(sql`lower(${bills.billNo})`, keys)] : [])),
+      inScope(bills.brandId, scope, true),
     ));
     if (!items.length) return 0;
     await db.insert(bills).values(items.map((i) => ({

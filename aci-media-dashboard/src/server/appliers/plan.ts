@@ -3,7 +3,7 @@ import { campaignLines, campaigns } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { RowError } from "@/lib/upload/parse";
 import { normName } from "../lookups";
-import { createMissingRefs, num, str } from "./shared";
+import { createMissingRefs, inScope, num, str } from "./shared";
 import type { Applier } from "./types";
 
 type Status = "planned" | "live" | "done";
@@ -68,8 +68,8 @@ export const planApplier: Applier<PlanItem> = {
     return rows.map((r) => ({ key: planKey(r.brandId, r.name, r.startDate), source: r.source }));
   },
 
-  async replace(db: Db, periods, items, uploadId) {
-    await db.delete(campaigns).where(and(eq(campaigns.source, "upload"), inArray(startMonth, periods)));
+  async replace(db: Db, periods, items, uploadId, scope) {
+    await db.delete(campaigns).where(and(eq(campaigns.source, "upload"), inArray(startMonth, periods), inScope(campaigns.brandId, scope)));
     for (const it of items) {
       const [row] = await db
         .insert(campaigns)

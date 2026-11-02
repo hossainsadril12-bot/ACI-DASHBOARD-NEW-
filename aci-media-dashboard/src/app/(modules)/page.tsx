@@ -5,8 +5,10 @@ import { connection } from "next/server";
 import { getDb } from "@/db/client";
 import { PageHeader } from "@/components/shell/page-header";
 import { CardLink } from "@/components/data/card-link";
+import { EmptyState } from "@/components/data/empty-state";
+import { FlaskConical } from "lucide-react";
 import { StatCard, StatGrid } from "@/components/data/stat-card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CHANNEL_COLORS, FALLBACK_COLOR, mainChannel } from "@/lib/channel-colors";
 import { formatMillion, formatTaka } from "@/lib/money";
@@ -57,6 +59,12 @@ async function HomeContent({ searchParams }: { searchParams: Search }) {
   return (
     <div className="space-y-6">
       <div className="[&>header]:mb-0"><Greeting /></div>
+      {h.budgets.length === 0 && (
+        <EmptyState icon={FlaskConical} title="No brands yet"
+          message="Load the sample data in Settings to see every page filled in, or add your first real brand there.">
+          <Link href="/settings" className={buttonVariants()}>Open Settings</Link>
+        </EmptyState>
+      )}
       <form method="get" aria-label="Home month" className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
         <label className="flex items-center gap-1">Budget month
           <input type="month" name="month" defaultValue={month} className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm" />

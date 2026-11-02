@@ -3,7 +3,7 @@ import { spendEntries } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { RowError } from "@/lib/upload/parse";
 import { addMissing, type Applier, type Missing } from "./types";
-import { createMissingRefs, num, str } from "./shared";
+import { createMissingRefs, inScope, num, str } from "./shared";
 
 export type SpendItem = {
   key: string;
@@ -60,8 +60,8 @@ export const spendApplier: Applier<SpendItem> = {
     return rows.map((r) => ({ key: spendKey(r), source: r.source }));
   },
 
-  async replace(db: Db, periods, items, uploadId) {
-    await db.delete(spendEntries).where(and(eq(spendEntries.source, "upload"), inArray(spendEntries.month, periods)));
+  async replace(db: Db, periods, items, uploadId, scope) {
+    await db.delete(spendEntries).where(and(eq(spendEntries.source, "upload"), inArray(spendEntries.month, periods), inScope(spendEntries.brandId, scope)));
     if (!items.length) return 0;
     await db.insert(spendEntries).values(
       items.map((i) => ({

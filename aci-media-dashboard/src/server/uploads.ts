@@ -1,5 +1,5 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { historyLog, uploads } from "@/db/schema";
+import { and, desc, eq, inArray, like } from "drizzle-orm";
+import { brands, historyLog, uploads } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { logChange } from "@/db/history";
 import { formatMonth } from "@/lib/month";
@@ -16,7 +16,8 @@ import { digitalApplier } from "./appliers/digital";
 import { performanceApplier } from "./appliers/performance";
 import { planApplier } from "./appliers/plan";
 import { spendApplier } from "./appliers/spend";
-import type { Applier, Missing } from "./appliers/types";
+import type { Applier, BrandScope, Missing } from "./appliers/types";
+import { isSampleUpload, SAMPLE_TAG } from "@/lib/sample";
 
 const APPLIERS: Partial<Record<UploadKind, Applier>> = {
   spend: spendApplier as Applier,
@@ -137,20 +138,32 @@ export async function previewUpload(db: Db, input: { kind: UploadKind; fileName:
   });
 }
 
+/**
+ * Sample and real records never replace each other: a file naming only sample brands replaces
+ * sample rows only, any other file replaces everything except sample rows.
+ */
+async function brandScope(tx: Db, rows: ParsedRow[]): Promise<BrandScope> {
+  const sampleIds = (await tx.select({ id: brands.id }).from(brands).where(like(brands.name, `%${SAMPLE_TAG}`))).map((b) => b.id);
+  return { ids: sampleIds, only: isSampleUpload(rows.map((r) => r.values)) };
+}
+
 async function applySnapshot(tx: Db, applier: Applier, rows: ParsedRow[], periods: string[], uploadId: number) {
   const first = applier.resolve(rows, await loadLookups(tx));
   await applier.createMissing(tx, first.missing);
   const { items, errors } = applier.resolve(rows, await loadLookups(tx));
   if (errors.length) throw new ValidationError(`Row ${errors[0].row}: ${errors[0].message}`);
   const { toInsert, conflicts } = planMerge(await applier.existingKeys(tx, periods), items);
-  const inserted = await applier.replace(tx, periods, toInsert, uploadId);
+  const inserted = await applier.replace(tx, periods, toInsert, uploadId, await brandScope(tx, rows));
   return { inserted, skippedManual: conflicts.length };
 }
 
-async function supersedeOverlapping(tx: Db, kind: UploadKind, periods: string[], keepId: number) {
-  const confirmed = await tx.select({ id: uploads.id, periods: uploads.periods }).from(uploads)
+async function supersedeOverlapping(tx: Db, kind: UploadKind, periods: string[], keepId: number, sample: boolean) {
+  const confirmed = await tx.select({ id: uploads.id, periods: uploads.periods, rows: uploads.rows }).from(uploads)
     .where(and(eq(uploads.kind, kind), eq(uploads.status, "confirmed")));
-  const ids = confirmed.filter((u) => u.id !== keepId && u.periods.some((p) => periods.includes(p))).map((u) => u.id);
+  // A sample file only supersedes sample versions, and a real file only real ones.
+  const ids = confirmed
+    .filter((u) => u.id !== keepId && u.periods.some((p) => periods.includes(p)) && isSampleUpload(u.rows) === sample)
+    .map((u) => u.id);
   if (ids.length) await tx.update(uploads).set({ status: "superseded" }).where(inArray(uploads.id, ids));
 }
 
@@ -167,25 +180,52 @@ export async function confirmUpload(
   if (preview.totals.status === "mismatch" && !input.acceptMismatch) {
     throw new ValidationError(`Totals differ by ${formatTaka(Math.abs(preview.totals.diff))} BDT. Tick the box to confirm the rows are correct.`);
   }
-  const applier = applierFor(input.kind);
-  const parsed = parseSheet(input.data, input.kind);
+  return saveUpload(db, {
+    kind: input.kind, fileName: input.fileName, fileHash: preview.fileHash, periods: preview.periods,
+    rowCount: preview.rowCount, totals: preview.totals, rows: parseSheet(input.data, input.kind).rows,
+  });
+}
 
+type SaveInput = {
+  kind: UploadKind; fileName: string; fileHash: string; periods: string[]; rowCount: number;
+  totals: UploadPreview["totals"]; rows: ParsedRow[];
+};
+
+/** One transaction: record the version, supersede overlapping ones, apply the rows, log it. */
+async function saveUpload(db: Db, input: SaveInput) {
+  const applier = applierFor(input.kind);
   return db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
     const [up] = await tx.insert(uploads).values({
-      kind: input.kind, fileName: input.fileName, fileHash: preview.fileHash, periods: preview.periods, rowCount: preview.rowCount,
+      kind: input.kind, fileName: input.fileName, fileHash: input.fileHash, periods: input.periods, rowCount: input.rowCount,
       // Money columns hold whole taka; a TOTAL row with VAT decimals is rounded like the rows are.
-      controlTotal: preview.totals.controlTotal === null ? null : Math.round(preview.totals.controlTotal),
-      rowsTotal: Math.round(preview.totals.rowsTotal), rows: parsed.rows.map((r) => r.values),
+      controlTotal: input.totals.controlTotal === null ? null : Math.round(input.totals.controlTotal),
+      rowsTotal: Math.round(input.totals.rowsTotal), rows: input.rows.map((r) => r.values),
     }).returning({ id: uploads.id });
-    await supersedeOverlapping(tx, input.kind, preview.periods, up.id);
-    const res = await applySnapshot(tx, applier, parsed.rows, preview.periods, up.id);
+    await supersedeOverlapping(tx, input.kind, input.periods, up.id, isSampleUpload(input.rows.map((r) => r.values)));
+    const res = await applySnapshot(tx, applier, input.rows, input.periods, up.id);
     await logChange(tx, {
       entity: "upload", entityId: up.id, action: "upload",
-      after: { kind: input.kind, fileName: input.fileName, periods: preview.periods, ...res, totals: preview.totals },
-      reason: preview.totals.status === "mismatch" ? "Total mismatch accepted" : undefined,
+      after: { kind: input.kind, fileName: input.fileName, periods: input.periods, ...res, totals: input.totals },
+      reason: input.totals.status === "mismatch" ? "Total mismatch accepted" : undefined,
     });
     return { uploadId: up.id, ...res };
+  });
+}
+
+/**
+ * Save a file the app generated itself (sample data) without the preview round trips.
+ * The rows still go through the same appliers, so any bad row still fails the whole file.
+ */
+export async function importGeneratedFile(db: Db, input: { kind: UploadKind; fileName: string; data: Uint8Array }) {
+  const def = TEMPLATES[input.kind];
+  const parsed = parseSheet(input.data, input.kind);
+  const problem = parsed.headerErrors[0] ?? (parsed.errors[0] && `Row ${parsed.errors[0].row}: ${parsed.errors[0].message}`);
+  if (problem) throw new ValidationError(`${input.fileName}: ${problem}`);
+  const t = checkTotals(parsed.rows, def.totalKey, parsed.controlTotal);
+  return saveUpload(db, {
+    kind: input.kind, fileName: input.fileName, fileHash: fileHash(input.data), periods: detectPeriods(parsed.rows, def),
+    rowCount: parsed.rows.length, totals: { ...t, controlTotal: parsed.controlTotal }, rows: parsed.rows,
   });
 }
 
@@ -197,7 +237,7 @@ export async function restoreUpload(db: Db, uploadId: number) {
   const rows: ParsedRow[] = up.rows.map((values, i) => ({ rowNumber: i + 2, values }));
   return db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
-    await supersedeOverlapping(tx, up.kind, up.periods, up.id);
+    await supersedeOverlapping(tx, up.kind, up.periods, up.id, isSampleUpload(up.rows));
     await tx.update(uploads).set({ status: "confirmed" }).where(eq(uploads.id, up.id));
     const res = await applySnapshot(tx, applier, rows, up.periods, up.id);
     await logChange(tx, { entity: "upload", entityId: up.id, action: "restore", after: { kind: up.kind, fileName: up.fileName, periods: up.periods, ...res } });
