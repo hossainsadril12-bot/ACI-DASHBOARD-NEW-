@@ -77,7 +77,14 @@ export function UploadPanel({ kind, viewMonth }: { kind: UploadKind; viewMonth?:
         // The rows went to a month that is not on screen; without this the page looks unchanged.
         toast.success(`${saved} for ${formatMonth(other)}`, {
           duration: 12_000,
-          action: { label: `Show ${formatMonth(other)}`, onClick: () => router.push(`${pathname}?month=${other}`) },
+          action: {
+            label: `Show ${formatMonth(other)}`,
+            onClick: () => {
+              const q = new URLSearchParams(window.location.search);
+              q.set("month", other);
+              router.push(`${pathname}?${q.toString()}`);
+            },
+          },
         });
       } else {
         toast.success(saved);

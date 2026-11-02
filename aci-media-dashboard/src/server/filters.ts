@@ -1,3 +1,6 @@
+import { and, eq } from "drizzle-orm";
+import { brands } from "@/db/schema";
+import type { Db } from "@/db/types";
 import { BILL_STATUSES, type BillStatus } from "@/lib/bill-status";
 import { isMonth } from "@/lib/month";
 import type { AgeFilter, BillFilter } from "./billing";
@@ -33,4 +36,11 @@ export function parseBillFilter(sp: Params): BillFilter {
     brandId: parseBrandId(sp),
     age: age && AGES.includes(age as AgeFilter) ? (age as AgeFilter) : undefined,
   };
+}
+
+/** The brand filter only applies to an active brand; anything else (deleted, inactive, stale) means "All brands". */
+export async function activeBrandId(db: Db, id: number | undefined): Promise<number | undefined> {
+  if (!id) return undefined;
+  const [b] = await db.select({ id: brands.id }).from(brands).where(and(eq(brands.id, id), eq(brands.active, true)));
+  return b?.id;
 }

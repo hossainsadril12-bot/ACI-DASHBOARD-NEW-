@@ -16,7 +16,8 @@ import { formatMillion } from "@/lib/money";
 import { addMonths, formatMonth, todayDhaka } from "@/lib/month";
 import { listBrandsWithRivals, listTvStations, listVendors } from "@/server/master-data";
 import { listChannels } from "@/server/plan";
-import { parseSpendQuery } from "@/server/filters";
+import { activeBrandId, parseSpendQuery } from "@/server/filters";
+import { RememberView } from "@/components/data/remember-view";
 import { listSpendEntries, spendBreakdown, spendMatrix, type ChannelGroup } from "@/server/spend";
 import { SpendEntries } from "./spend-entries";
 import { PageSkeleton } from "@/components/data/page-skeleton";
@@ -49,10 +50,11 @@ export default function SpendPage({ searchParams }: { searchParams: Search }) {
 async function SpendContent({ searchParams }: { searchParams: Search }) {
   await connection();
   const sp = await searchParams;
-  const { month, brandId, group } = parseSpendQuery(sp, todayDhaka());
+  const { month, brandId: askedBrand, group } = parseSpendQuery(sp, todayDhaka());
   const months = [-3, -2, -1, 0].map((n) => addMonths(month, n));
 
   const db = getDb();
+  const brandId = await activeBrandId(db, askedBrand);
   const [allBrands, channels, stations, vendors, matrix, entries, byStation, byVendor] = await Promise.all([
     listBrandsWithRivals(db), listChannels(db), listTvStations(db), listVendors(db),
     spendMatrix(db, { months, brandId, group }),
@@ -75,6 +77,7 @@ async function SpendContent({ searchParams }: { searchParams: Search }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <FilterBar month={month} brands={brands} brandId={brandId} keep={group ? { group } : {}} />
+        <RememberView month={month} brandId={brandId} />
         <a href={`/api/export/spend?${query(group ?? "")}`} download className={buttonVariants({ variant: "secondary", size: "sm" })}><Download aria-hidden />Export to Excel</a>
       </div>
 

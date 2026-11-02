@@ -18,6 +18,7 @@ import {
   competitorOverview, listCompetitorAds, listCompetitorMedia, listSources, listYoutube, MEDIA_TYPES, STALE_DAYS,
 } from "@/server/competitors";
 import { listBrandsWithRivals } from "@/server/master-data";
+import { RememberView } from "@/components/data/remember-view";
 import { AdLog } from "./ad-log";
 import { MediaEntries } from "./media-entries";
 import { SourcesTable } from "./sources-table";
@@ -69,6 +70,7 @@ async function CompetitorsContent({ searchParams }: { searchParams: Search }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <FilterBar month={month} brands={active.map((b) => ({ id: b.id, name: b.name }))} brandId={brand.id} allowAll={false} />
+        <RememberView month={month} brand={false} />
         <p className="text-sm text-gray-600" data-testid="rivals-line">
           <span className="font-medium text-gray-900">{brand.name}</span>
           {brand.rivals.length ? ` vs ${brand.rivals.map((r) => r.name).join(", ")}` : " has no rivals yet"}

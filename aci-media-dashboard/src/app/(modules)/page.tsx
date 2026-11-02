@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { PageHeader } from "@/components/shell/page-header";
 import { CardLink } from "@/components/data/card-link";
 import { EmptyState } from "@/components/data/empty-state";
+import { RememberView } from "@/components/data/remember-view";
 import { FlaskConical } from "lucide-react";
 import { StatCard, StatGrid } from "@/components/data/stat-card";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -65,6 +66,7 @@ async function HomeContent({ searchParams }: { searchParams: Search }) {
           <Link href="/settings" className={buttonVariants()}>Open Settings</Link>
         </EmptyState>
       )}
+      <RememberView month={month} brand={false} />
       <form method="get" aria-label="Home month" className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
         <label className="flex items-center gap-1">Budget month
           <input type="month" name="month" defaultValue={month} className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm" />

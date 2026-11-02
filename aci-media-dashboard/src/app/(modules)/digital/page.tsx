@@ -14,6 +14,8 @@ import { formatMonth, isMonth, todayDhaka } from "@/lib/month";
 import { cn } from "@/lib/utils";
 import { digitalSpendByBusiness, digitalSummary, listDigital, listDigitalPlatforms, type PlatformSummary } from "@/server/digital";
 import { listBrandsWithRivals } from "@/server/master-data";
+import { activeBrandId } from "@/server/filters";
+import { RememberView } from "@/components/data/remember-view";
 import { DigitalEntries } from "./digital-entries";
 import { PageSkeleton } from "@/components/data/page-skeleton";
 
@@ -36,9 +38,10 @@ async function DigitalContent({ searchParams }: { searchParams: Search }) {
   await connection();
   const sp = await searchParams;
   const month = typeof sp.month === "string" && isMonth(sp.month) ? sp.month : todayDhaka().slice(0, 7);
-  const brandId = typeof sp.brand === "string" && /^\d+$/.test(sp.brand) ? Number(sp.brand) : undefined;
+  const askedBrand = typeof sp.brand === "string" && /^\d+$/.test(sp.brand) ? Number(sp.brand) : undefined;
 
   const db = getDb();
+  const brandId = await activeBrandId(db, askedBrand);
   const [allBrands, platforms, summary, entries, byBusiness] = await Promise.all([
     listBrandsWithRivals(db), listDigitalPlatforms(db), digitalSummary(db, { month, brandId }),
     listDigital(db, { month, brandId }), digitalSpendByBusiness(db, { month, brandId }),
@@ -52,6 +55,7 @@ async function DigitalContent({ searchParams }: { searchParams: Search }) {
   return (
     <div className="space-y-6">
       <FilterBar month={month} brands={brands} brandId={brandId} />
+      <RememberView month={month} brandId={brandId} />
 
       <div className="grid gap-4 md:grid-cols-3">
         {summary.map((p) => <PlatformTile key={p.code} p={p} />)}

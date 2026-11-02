@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatTaka } from "@/lib/money";
 import { formatMonth, isMonth, todayDhaka } from "@/lib/month";
 import { listBrandsWithRivals } from "@/server/master-data";
+import { activeBrandId } from "@/server/filters";
+import { RememberView } from "@/components/data/remember-view";
 import { listChannels } from "@/server/plan";
 import { listPerformance, reachCost, type ReachView } from "@/server/performance";
 import { CHANNEL_GROUPS } from "@/server/spend";
@@ -47,10 +49,11 @@ async function PerformanceContent({ searchParams }: { searchParams: Search }) {
   await connection();
   const sp = await searchParams;
   const month = typeof sp.month === "string" && isMonth(sp.month) ? sp.month : todayDhaka().slice(0, 7);
-  const brandId = typeof sp.brand === "string" && /^\d+$/.test(sp.brand) ? Number(sp.brand) : undefined;
+  const askedBrand = typeof sp.brand === "string" && /^\d+$/.test(sp.brand) ? Number(sp.brand) : undefined;
   const view: ReachView = VIEW_TABS.some((t) => t.key === sp.view) ? (sp.view as ReachView) : "all";
 
   const db = getDb();
+  const brandId = await activeBrandId(db, askedBrand);
   const [allBrands, channels, costs, entries] = await Promise.all([
     listBrandsWithRivals(db), listChannels(db), reachCost(db, { month, brandId, view }), listPerformance(db, { month, brandId }),
   ]);
@@ -78,6 +81,7 @@ async function PerformanceContent({ searchParams }: { searchParams: Search }) {
   return (
     <div className="space-y-6">
       <FilterBar month={month} brands={brands} brandId={brandId} keep={view !== "all" ? { view } : {}} />
+      <RememberView month={month} brandId={brandId} />
 
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">

@@ -11,6 +11,8 @@ import { addMonths, formatMonth, isMonth, monthBounds, todayDhaka } from "@/lib/
 import { listBrandsWithRivals } from "@/server/master-data";
 import { listCampaigns, listChannels, planVsBudget } from "@/server/plan";
 import { PlanBoard, type PlanView } from "./plan-board";
+import { activeBrandId } from "@/server/filters";
+import { RememberView } from "@/components/data/remember-view";
 import { BudgetPanel } from "./budget-panel";
 import { UploadPanel } from "@/components/data/upload-panel";
 import { PageSkeleton } from "@/components/data/page-skeleton";
@@ -43,9 +45,10 @@ async function PlanContent({ searchParams }: { searchParams: Search }) {
   const today = todayDhaka();
   const month = typeof sp.month === "string" && isMonth(sp.month) ? sp.month : today.slice(0, 7);
   const view: PlanView = VIEWS.some((v) => v.key === sp.view) ? (sp.view as PlanView) : "timeline";
-  const brandId = typeof sp.brand === "string" && /^\d+$/.test(sp.brand) ? Number(sp.brand) : undefined;
+  const askedBrand = typeof sp.brand === "string" && /^\d+$/.test(sp.brand) ? Number(sp.brand) : undefined;
 
   const db = getDb();
+  const brandId = await activeBrandId(db, askedBrand);
   const { start, end } = monthBounds(month);
   const [allBrands, channels, campaigns, budgetRows] = await Promise.all([
     listBrandsWithRivals(db),
@@ -71,6 +74,7 @@ async function PlanContent({ searchParams }: { searchParams: Search }) {
         </div>
         <SegmentedLinks label="Plan views" value={view} items={VIEWS.map((v) => ({ key: v.key, label: v.label, href: href({ view: v.key }) }))} />
         <FilterBar month={month} brands={activeBrands} brandId={brandId} keep={{ view }} />
+        <RememberView month={month} brandId={brandId} />
       </div>
 
       <PlanBoard
