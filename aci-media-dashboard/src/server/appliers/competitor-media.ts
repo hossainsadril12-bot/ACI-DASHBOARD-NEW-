@@ -90,7 +90,8 @@ export const competitorMediaApplier: Applier<CompetitorMediaItem> = {
         shareOfVoice: i.shareOfVoice, source: "upload" as const, uploadId,
       })));
     }
-    await touchSource(db, "competitor_media");
+    // Sample files must not make the real monitoring source look recently updated.
+    if (!scope.only) await touchSource(db, "competitor_media");
     return items.length;
   },
 };

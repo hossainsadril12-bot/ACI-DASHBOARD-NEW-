@@ -14,6 +14,9 @@ import { listBills, listOpenReminders } from "./billing";
 import { planVsBudget } from "./plan";
 import { spendMatrix } from "./spend";
 import { confirmUpload, previewUpload } from "./uploads";
+import { saveBill } from "./billing";
+import { setSourceOwner } from "./competitors";
+import { sourceOwners } from "@/db/schema";
 import { loadSampleData, removeSampleData, sampleStatus, sampleUploadFile } from "./samples";
 
 const TODAY = "2026-11-18";
@@ -128,5 +131,37 @@ describe("sample and real data stay apart", () => {
     expect((await realRows()).map((r) => r.amount)).toEqual([2_000_000]);
     expect(await monthSpend(M)).toBe(sampleTotal + 1_000_000);
     expect((await db.select().from(uploads)).find((u) => u.fileName === sample.fileName)?.status).toBe("confirmed");
+  });
+});
+
+describe("removal and loading leave real data alone", () => {
+  it("keeps real look-alikes, real source owners, and refuses the reserved tag and mixed files", async () => {
+    const biz = (await listBusinesses(db))[0].id;
+    await expect(createBrand(db, { name: "My Brand (sample)", businessId: biz })).rejects.toThrow(/kept for sample data/);
+    await createBrand(db, { name: "Real Brand", businessId: biz });
+    await saveBill(db, null, { billNo: "SMP-900", month: M, billDate: "2026-11-01", amount: 10 });
+    await confirmUpload(db, { kind: "spend", fileName: "sample-looking-real.xlsx", acceptMismatch: false, data: (() => {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([TEMPLATES.spend.columns.map((c) => c.header), [M, null, "Real Brand", "TV", null, null, 5, null]]), "S");
+      return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+    })() });
+    await setSourceOwner(db, "meta_ads", "Real owner");
+    await db.update(sourceOwners).set({ lastUpdatedAt: "2026-09-01T00:00:00Z" }).where(like(sourceOwners.sourceKey, "meta_ads"));
+
+    await loadSampleData(db, TODAY);
+    const [meta] = await db.select().from(sourceOwners).where(like(sourceOwners.sourceKey, "meta_ads"));
+    expect(meta.ownerName).toBe("Real owner");
+    expect(new Date(meta.lastUpdatedAt!).toISOString().slice(0, 10)).toBe("2026-09-01");
+
+    const mixed = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(mixed, XLSX.utils.aoa_to_sheet([TEMPLATES.spend.columns.map((c) => c.header),
+      [M, null, "Real Brand", "TV", null, null, 5, null], [M, null, "crystal salt (sample)", "TV", null, null, 5, null]]), "S");
+    const p = await previewUpload(db, { kind: "spend", fileName: "mixed.xlsx", data: new Uint8Array(XLSX.write(mixed, { type: "array", bookType: "xlsx" })) });
+    expect(p.checks.find((c) => c.label === "Sample and real brands kept apart")?.status).toBe("fail");
+
+    await removeSampleData(db);
+    expect((await db.select().from(bills)).map((b) => b.billNo)).toEqual(["SMP-900"]);
+    expect((await db.select().from(uploads)).map((u) => u.fileName)).toEqual(["sample-looking-real.xlsx"]);
+    expect((await db.select().from(brands)).map((b) => b.name)).toEqual(["Real Brand"]);
   });
 });

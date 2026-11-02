@@ -1,15 +1,15 @@
 import * as XLSX from "xlsx";
-import { and, eq, like, notExists, or, sql } from "drizzle-orm";
-import { bills, brands, spendEntries, tvStations, uploads, vendors } from "@/db/schema";
+import { and, eq, ilike, inArray, like, notExists, sql } from "drizzle-orm";
+import { bills, brands, sourceOwners, spendEntries, tvStations, uploads, vendors } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { logChange } from "@/db/history";
 import { addDays, addMonths, daysInMonth } from "@/lib/month";
 import { TEMPLATES, type UploadKind } from "@/lib/upload/templates";
-import { SAMPLE_TAG } from "@/lib/sample";
+import { isSampleUpload, SAMPLE_NAME_PATTERN, SAMPLE_TAG } from "@/lib/sample";
 import { ValidationError } from "./errors";
 import { listBills, remindBill } from "./billing";
 import { saveCompetitorAd, saveYoutubeMonth, setSourceOwner } from "./competitors";
-import { addRival, createBrand, listBrandsWithRivals, listBusinesses } from "./master-data";
+import { addRival, listBrandsWithRivals, listBusinesses } from "./master-data";
 import { setBudget } from "./plan";
 import { importGeneratedFile } from "./uploads";
 
@@ -242,7 +242,7 @@ export function sampleUploadFile(kind: UploadKind, today: string): SampleFile {
 // ---------- load and remove ----------
 
 export async function sampleStatus(db: Db) {
-  const [r] = await db.select({ n: sql<string>`count(*)` }).from(brands).where(like(brands.name, `%${SAMPLE_TAG}`));
+  const [r] = await db.select({ n: sql<string>`count(*)` }).from(brands).where(ilike(brands.name, SAMPLE_NAME_PATTERN));
   const n = Number(r?.n ?? 0);
   return { loaded: n > 0, brands: n };
 }
@@ -257,11 +257,15 @@ export async function loadSampleData(db: Db, today: string) {
   const m = today.slice(0, 7);
   const prev = addMonths(m, -1);
   const businesses = await listBusinesses(db);
+  // Competitor sources are shared with real data; keep the real owners and dates as they were.
+  const sourcesBefore = await db.select().from(sourceOwners);
 
   for (const b of BRANDS) {
     const biz = businesses.find((x) => x.name === b.business);
     if (!biz) throw new ValidationError(`Business "${b.business}" is missing. Run the database setup first.`);
-    const brand = await createBrand(db, { name: b.name, businessId: biz.id });
+    // Inserted directly: brand names with the sample tag are refused for normal use.
+    const [brand] = await db.insert(brands).values({ name: b.name, businessId: biz.id }).returning();
+    await logChange(db, { entity: "brand", entityId: brand.id, action: "create", after: brand, reason: "Sample data" });
     for (const r of b.rivals) await addRival(db, { brandId: brand.id, name: r });
   }
 
@@ -305,10 +309,12 @@ export async function loadSampleData(db: Db, today: string) {
       });
     }
   }
-  await setSourceOwner(db, "competitor_media", "Media monitoring team");
-  await setSourceOwner(db, "meta_ads", "Digital team");
-  await setSourceOwner(db, "youtube", "Digital team");
-  await setSourceOwner(db, "tiktok_ads", "Digital team");
+  for (const [key, owner] of [["competitor_media", "Media monitoring team"], ["meta_ads", "Digital team"], ["youtube", "Digital team"], ["tiktok_ads", "Digital team"]] as const) {
+    if (!sourcesBefore.some((s) => s.sourceKey === key && s.ownerName)) await setSourceOwner(db, key, owner);
+  }
+  for (const s of sourcesBefore) {
+    await db.update(sourceOwners).set({ ownerName: s.ownerName, lastUpdatedAt: s.lastUpdatedAt }).where(eq(sourceOwners.sourceKey, s.sourceKey));
+  }
   const overdue = (await listBills(db, today, { search: "SMP-001" }))[0];
   if (overdue) await remindBill(db, overdue.id);
 
@@ -318,17 +324,21 @@ export async function loadSampleData(db: Db, today: string) {
 
 /** Delete every sample record. Real brands, bills, uploads, vendors and TV stations are left alone. */
 export async function removeSampleData(db: Db) {
-  await db.delete(bills).where(like(bills.billNo, "SMP-%"));
+  const sampleIds = (await db.select({ id: brands.id }).from(brands).where(ilike(brands.name, SAMPLE_NAME_PATTERN))).map((b) => b.id);
+  // Only SMP- bills that belong to sample brands; a real bill with the same prefix stays.
+  if (sampleIds.length) await db.delete(bills).where(and(like(bills.billNo, "SMP-%"), inArray(bills.brandId, sampleIds)));
+  // Upload versions are judged by their rows, not their file name.
+  const sampleUploads = (await db.select({ id: uploads.id, rows: uploads.rows }).from(uploads)).filter((u) => isSampleUpload(u.rows)).map((u) => u.id);
+  if (sampleUploads.length) await db.delete(uploads).where(inArray(uploads.id, sampleUploads));
   // Brands cascade to rivals, campaigns, budgets, spend, performance, digital and competitor records.
-  const removed = await db.delete(brands).where(like(brands.name, `%${SAMPLE_TAG}`)).returning({ id: brands.id });
-  await db.delete(uploads).where(or(like(uploads.fileName, "sample-%"), like(uploads.fileName, "aci-sample-%")));
+  const removed = sampleIds.length ? await db.delete(brands).where(inArray(brands.id, sampleIds)).returning({ id: brands.id }) : [];
   await db.delete(vendors).where(and(
-    like(vendors.name, `%${SAMPLE_TAG}`),
+    ilike(vendors.name, SAMPLE_NAME_PATTERN),
     notExists(db.select({ x: sql`1` }).from(spendEntries).where(eq(spendEntries.vendorId, vendors.id))),
     notExists(db.select({ x: sql`1` }).from(bills).where(eq(bills.vendorId, vendors.id))),
   ));
   await db.delete(tvStations).where(and(
-    like(tvStations.name, `%${SAMPLE_TAG}`),
+    ilike(tvStations.name, SAMPLE_NAME_PATTERN),
     notExists(db.select({ x: sql`1` }).from(spendEntries).where(eq(spendEntries.tvStationId, tvStations.id))),
   ));
   await logChange(db, { entity: "sample_data", entityId: "all", action: "delete", after: { brands: removed.length } });

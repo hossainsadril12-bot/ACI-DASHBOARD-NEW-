@@ -20,3 +20,6 @@ aci-media-dashboard/Asset/
 
 # Local manual-test files and guide
 manual-test/
+
+# Spine review receipt is written per review run
+.spine/review-receipt

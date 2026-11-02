@@ -4,12 +4,14 @@ import type { Db } from "@/db/types";
 import { logChange } from "@/db/history";
 import { DEFAULT_THRESHOLDS, type Thresholds } from "@/lib/rules";
 import { ValidationError, isUniqueViolation } from "./errors";
+import { isSampleName, SAMPLE_TAG } from "@/lib/sample";
 
 const MAX_RIVALS = 3;
 
 function cleanName(name: string, label: string): string {
   const n = name.trim().replace(/\s+/g, " ");
   if (!n) throw new ValidationError(`${label} name is required`);
+  if (label !== "Rival" && isSampleName(n)) throw new ValidationError(`Names ending with "${SAMPLE_TAG}" are kept for sample data. Choose another name.`);
   return n;
 }
 

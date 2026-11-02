@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, like } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray } from "drizzle-orm";
 import { brands, historyLog, uploads } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { logChange } from "@/db/history";
@@ -17,7 +17,7 @@ import { performanceApplier } from "./appliers/performance";
 import { planApplier } from "./appliers/plan";
 import { spendApplier } from "./appliers/spend";
 import type { Applier, BrandScope, Missing } from "./appliers/types";
-import { isSampleUpload, SAMPLE_TAG } from "@/lib/sample";
+import { isSampleUpload, mixesSampleAndReal, SAMPLE_NAME_PATTERN } from "@/lib/sample";
 
 const APPLIERS: Partial<Record<UploadKind, Applier>> = {
   spend: spendApplier as Applier,
@@ -104,6 +104,10 @@ export async function previewUpload(db: Db, input: { kind: UploadKind; fileName:
       : { label: "Not a copy of an earlier upload", status: "pass" },
   );
 
+  if (mixesSampleAndReal(parsed.rows.map((r) => r.values))) {
+    checks.push({ label: "Sample and real brands kept apart", status: "fail", detail: "This file mixes sample brands with real ones. Upload them as separate files." });
+  }
+
   const lk = await loadLookups(db);
   const resolved = applier.resolve(parsed.rows, lk);
   const errors = [...parsed.errors, ...resolved.errors].sort((a, b) => a.row - b.row);
@@ -143,7 +147,7 @@ export async function previewUpload(db: Db, input: { kind: UploadKind; fileName:
  * sample rows only, any other file replaces everything except sample rows.
  */
 async function brandScope(tx: Db, rows: ParsedRow[]): Promise<BrandScope> {
-  const sampleIds = (await tx.select({ id: brands.id }).from(brands).where(like(brands.name, `%${SAMPLE_TAG}`))).map((b) => b.id);
+  const sampleIds = (await tx.select({ id: brands.id }).from(brands).where(ilike(brands.name, SAMPLE_NAME_PATTERN))).map((b) => b.id);
   return { ids: sampleIds, only: isSampleUpload(rows.map((r) => r.values)) };
 }
 
