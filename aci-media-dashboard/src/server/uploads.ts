@@ -95,12 +95,15 @@ export async function previewUpload(db: Db, input: { kind: UploadKind; fileName:
   );
 
   const [dup] = await db
-    .select({ id: uploads.id, fileName: uploads.fileName })
+    .select({ id: uploads.id, fileName: uploads.fileName, periods: uploads.periods })
     .from(uploads)
     .where(and(eq(uploads.fileHash, hash), eq(uploads.kind, input.kind), eq(uploads.status, "confirmed")));
   checks.push(
     dup
-      ? { label: "Not a copy of an earlier upload", status: "fail", detail: `Same file as version ${dup.id} (${dup.fileName})` }
+      ? {
+        label: "Not a copy of an earlier upload", status: "fail",
+        detail: `Same file as version ${dup.id} (${dup.fileName}). Its data is already saved${dup.periods.length ? ` for ${dup.periods.map(formatMonth).join(", ")}` : ""}.`,
+      }
       : { label: "Not a copy of an earlier upload", status: "pass" },
   );
 
@@ -174,7 +177,7 @@ async function supersedeOverlapping(tx: Db, kind: UploadKind, periods: string[],
 export async function confirmUpload(
   db: Db,
   input: { kind: UploadKind; fileName: string; data: Uint8Array; acceptMismatch: boolean },
-): Promise<{ uploadId: number; inserted: number; skippedManual: number }> {
+): Promise<{ uploadId: number; inserted: number; skippedManual: number; periods: string[] }> {
   const preview = await previewUpload(db, input);
   const failed = preview.checks.find((c) => c.status === "fail");
   if (failed) {
@@ -184,10 +187,11 @@ export async function confirmUpload(
   if (preview.totals.status === "mismatch" && !input.acceptMismatch) {
     throw new ValidationError(`Totals differ by ${formatTaka(Math.abs(preview.totals.diff))} BDT. Tick the box to confirm the rows are correct.`);
   }
-  return saveUpload(db, {
+  const saved = await saveUpload(db, {
     kind: input.kind, fileName: input.fileName, fileHash: preview.fileHash, periods: preview.periods,
     rowCount: preview.rowCount, totals: preview.totals, rows: parseSheet(input.data, input.kind).rows,
   });
+  return { ...saved, periods: preview.periods };
 }
 
 type SaveInput = {

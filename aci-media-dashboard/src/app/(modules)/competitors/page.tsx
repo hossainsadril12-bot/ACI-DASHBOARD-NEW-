@@ -139,7 +139,7 @@ async function CompetitorsContent({ searchParams }: { searchParams: Search }) {
 
       <SourcesTable rows={sources} staleDays={STALE_DAYS} />
 
-      <UploadPanel kind="competitor_media" />
+      <UploadPanel kind="competitor_media" viewMonth={month} />
     </div>
   );
 }

@@ -41,7 +41,7 @@ export async function previewUploadAction(fd: FormData): Promise<ActionState & {
 
 export async function confirmUploadAction(
   fd: FormData,
-): Promise<ActionState & { result?: { uploadId: number; inserted: number; skippedManual: number } }> {
+): Promise<ActionState & { result?: { uploadId: number; inserted: number; skippedManual: number; periods: string[] } }> {
   try {
     const input = await readForm(fd);
     const result = await confirmUpload(getDb(), { ...input, acceptMismatch: fd.get("acceptMismatch") === "on" });

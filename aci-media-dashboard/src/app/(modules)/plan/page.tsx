@@ -86,7 +86,7 @@ async function PlanContent({ searchParams }: { searchParams: Search }) {
 
       {shownBrands.length > 0 && <BudgetPanel month={month} rows={budgetRows} />}
 
-      <UploadPanel kind="plan" />
+      <UploadPanel kind="plan" viewMonth={month} />
     </div>
   );
 }

@@ -94,7 +94,7 @@ async function DigitalContent({ searchParams }: { searchParams: Search }) {
       <DigitalEntries month={month} rows={entries} brands={brands} brandId={brandId}
         platforms={platforms.map((p) => ({ id: p.id, name: p.name }))} />
 
-      <UploadPanel kind="digital" />
+      <UploadPanel kind="digital" viewMonth={month} />
     </div>
   );
 }

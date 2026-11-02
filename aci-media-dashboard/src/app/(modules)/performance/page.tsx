@@ -143,7 +143,7 @@ async function PerformanceContent({ searchParams }: { searchParams: Search }) {
       <PerformanceResults month={month} rows={entries} brands={brands} brandId={brandId}
         channels={channels.map((c) => ({ id: c.id, name: c.name, code: c.code }))} />
 
-      <UploadPanel kind="performance" />
+      <UploadPanel kind="performance" viewMonth={month} />
     </div>
   );
 }

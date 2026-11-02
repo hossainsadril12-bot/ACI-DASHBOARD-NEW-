@@ -152,7 +152,7 @@ async function SpendContent({ searchParams }: { searchParams: Search }) {
         <Breakdown title={`Agencies and vendors · ${formatMonth(month)}`} rows={byVendor} empty="No spend this month." />
       </div>
 
-      <UploadPanel kind="spend" />
+      <UploadPanel kind="spend" viewMonth={month} />
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TEMPLATES, type UploadKind } from "@/lib/upload/templates";
 import { cn } from "@/lib/utils";
+import { formatMonth } from "@/lib/month";
+import { usePathname, useRouter } from "next/navigation";
 import type { CheckStatus, UploadPreview } from "@/server/uploads";
 import { confirmUploadAction, previewUploadAction } from "@/app/(modules)/uploads/actions";
 
@@ -17,7 +19,10 @@ const CHIP: Record<CheckStatus, { label: string; className: string }> = {
   fail: { label: "Failed", className: "bg-red-100 text-red-800" },
 };
 
-export function UploadPanel({ kind }: { kind: UploadKind }) {
+/** `viewMonth`: the month the page shows; after saving a file for other months, offer to open them. */
+export function UploadPanel({ kind, viewMonth }: { kind: UploadKind; viewMonth?: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const def = TEMPLATES[kind];
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -66,7 +71,17 @@ export function UploadPanel({ kind }: { kind: UploadKind }) {
       const res = await confirmUploadAction(fd);
       if (res.error) return setError(res.error);
       const r = res.result!;
-      toast.success(`Saved as version ${r.uploadId}: ${r.inserted} added${r.skippedManual ? `, ${r.skippedManual} kept as manual edits` : ""}`);
+      const saved = `Saved as version ${r.uploadId}: ${r.inserted} added${r.skippedManual ? `, ${r.skippedManual} kept as manual edits` : ""}`;
+      const other = viewMonth && r.periods.length && !r.periods.includes(viewMonth) ? r.periods[0] : null;
+      if (other) {
+        // The rows went to a month that is not on screen; without this the page looks unchanged.
+        toast.success(`${saved} for ${formatMonth(other)}`, {
+          duration: 12_000,
+          action: { label: `Show ${formatMonth(other)}`, onClick: () => router.push(`${pathname}?month=${other}`) },
+        });
+      } else {
+        toast.success(saved);
+      }
       reset();
     });
   }
