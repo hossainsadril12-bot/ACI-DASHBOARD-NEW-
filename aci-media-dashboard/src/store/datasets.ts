@@ -35,17 +35,21 @@ export type HistoryRow = {
 export async function publishVersion(store: Store, input: PublishInput): Promise<{ versionId: number }> {
   const key = input.datasetKey.trim();
   if (!key || key.length > 120) throw new ValidationError("Dataset key must be 1 to 120 characters.");
+  const kind = input.kind.trim();
+  if (!kind || kind.length > 60) throw new ValidationError("Dataset kind must be 1 to 60 characters.");
+  const label = input.label.trim();
+  if (!label || label.length > 255) throw new ValidationError("Label must be 1 to 255 characters.");
   return store.transaction(async (tx) => {
     const fileId = input.file ? (await saveFile(tx, input.file)).id : null;
     const [v] = await tx
       .insert(datasetVersion)
-      .values({ datasetKey: key, kind: input.kind, label: input.label, source: input.source, summary: input.summary, data: input.data, fileId })
+      .values({ datasetKey: key, kind, label, source: input.source, summary: input.summary, data: input.data, fileId })
       .returning({ id: datasetVersion.id });
     const updatedAt = new Date();
     await tx
       .insert(dataset)
-      .values({ key, kind: input.kind, activeVersionId: v.id, updatedAt })
-      .onConflictDoUpdate({ target: dataset.key, set: { activeVersionId: v.id, kind: input.kind, updatedAt } });
+      .values({ key, kind, activeVersionId: v.id, updatedAt })
+      .onConflictDoUpdate({ target: dataset.key, set: { activeVersionId: v.id, kind, updatedAt } });
     return { versionId: v.id };
   });
 }
@@ -86,6 +90,7 @@ export async function listHistory(store: Store, opts: { datasetKey?: string; lim
 
 /** Points that dataset (only that one) back at an older version. History is never rewritten. */
 export async function restoreVersion(store: Store, versionId: number): Promise<{ datasetKey: string }> {
+  // No transaction needed: versions are never deleted and the update is idempotent.
   const v = await store.query.datasetVersion.findFirst({ where: eq(datasetVersion.id, versionId), columns: { datasetKey: true } });
   if (!v) throw new ValidationError("That upload no longer exists.");
   await store.update(dataset).set({ activeVersionId: versionId, updatedAt: new Date() }).where(eq(dataset.key, v.datasetKey));

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { uploadFile, datasetVersion } from "./schema";
+import { dataset, uploadFile, datasetVersion } from "./schema";
 import { createTestStore } from "./test-store";
 import { getFile } from "./files";
-import { getActiveData, listHistory, publishVersion, restoreVersion, type PublishInput } from "./datasets";
+import { getActiveData, listHistory, publishVersion, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
 
 const input = (over: Partial<PublishInput> = {}): PublishInput => ({
   datasetKey: "billing",
@@ -63,6 +63,43 @@ describe("datasets", () => {
     await expect(publishVersion(store, input({ file: { name: "empty.xlsx", bytes: Buffer.alloc(0) } }))).rejects.toThrow(/empty/);
     expect(await store.select().from(datasetVersion)).toEqual([]);
     expect(await store.select().from(uploadFile)).toEqual([]);
+  });
+
+  it("rolls back the saved file when a later step fails", async () => {
+    const store = await createTestStore();
+    await expect(
+      publishVersion(store, input({ source: "bogus" as DatasetSource, file: { name: "ok.xlsx", bytes: Buffer.from("PK bytes") } })),
+    ).rejects.toThrow();
+    expect(await store.select().from(uploadFile)).toEqual([]);
+    expect(await store.select().from(datasetVersion)).toEqual([]);
+    expect(await store.select().from(dataset)).toEqual([]);
+  });
+
+  it("refuses a dataset kind outside 1 to 60 characters", async () => {
+    const store = await createTestStore();
+    await expect(publishVersion(store, input({ kind: "  " }))).rejects.toThrow("Dataset kind must be 1 to 60 characters.");
+    await expect(publishVersion(store, input({ kind: "k".repeat(61) }))).rejects.toThrow("Dataset kind must be 1 to 60 characters.");
+  });
+
+  it("refuses a label outside 1 to 255 characters", async () => {
+    const store = await createTestStore();
+    await expect(publishVersion(store, input({ label: "  " }))).rejects.toThrow("Label must be 1 to 255 characters.");
+    await expect(publishVersion(store, input({ label: "l".repeat(256) }))).rejects.toThrow("Label must be 1 to 255 characters.");
+  });
+
+  it("stores the trimmed kind and label", async () => {
+    const store = await createTestStore();
+    await publishVersion(store, input({ kind: " billing ", label: "  Hello  " }));
+    const [h] = await listHistory(store);
+    expect([h.kind, h.label]).toEqual(["billing", "Hello"]);
+  });
+
+  it("leaves the number of versions unchanged on restore", async () => {
+    const store = await createTestStore();
+    const a = await publishVersion(store, input({ label: "A" }));
+    await publishVersion(store, input({ label: "B" }));
+    await restoreVersion(store, a.versionId);
+    expect(await store.select().from(datasetVersion)).toHaveLength(2);
   });
 
   it("refuses a blank dataset key", async () => {

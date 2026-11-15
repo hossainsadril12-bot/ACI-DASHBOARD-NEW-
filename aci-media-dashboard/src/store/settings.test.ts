@@ -15,6 +15,12 @@ describe("USD rate", () => {
     expect(await getUsdRate(store)).toBe(121);
   });
 
+  it("accepts the upper limit of 1000", async () => {
+    const store = await createTestStore();
+    await setUsdRate(store, 1000);
+    expect(await getUsdRate(store)).toBe(1000);
+  });
+
   it.each([0, -1, 1001, Number.NaN])("refuses %s", async (rate) => {
     await expect(setUsdRate(await createTestStore(), rate)).rejects.toThrow(/USD rate must be/);
   });
