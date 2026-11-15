@@ -28,13 +28,21 @@ async function lockNow(store: Store, now: Date): Promise<void> {
 
 /** Count this try BEFORE the password is checked, in one SQL statement, so parallel tries cannot overrun the limit. */
 export async function beginAttempt(store: Store, now: Date = new Date()): Promise<AttemptTicket> {
-  const current = await getLockState(store, now);
-  if (current.locked) return { allowed: false, state: current };
+  const ms = now.getTime();
   const [row] = await store
     .insert(loginLock)
     .values({ key: KEY, failedCount: 1, lockedUntil: null, updatedAt: now })
-    .onConflictDoUpdate({ target: loginLock.key, set: { failedCount: sql`${loginLock.failedCount} + 1`, updatedAt: now } })
+    .onConflictDoUpdate({
+      target: loginLock.key,
+      set: {
+        failedCount: sql`CASE WHEN ${loginLock.lockedUntil} IS NOT NULL AND ${loginLock.lockedUntil} <= ${ms} THEN 1 ELSE ${loginLock.failedCount} + 1 END`,
+        lockedUntil: sql`CASE WHEN ${loginLock.lockedUntil} <= ${ms} THEN NULL ELSE ${loginLock.lockedUntil} END`,
+        updatedAt: now,
+      },
+      setWhere: sql`${loginLock.lockedUntil} IS NULL OR ${loginLock.lockedUntil} <= ${ms}`,
+    })
     .returning({ failedCount: loginLock.failedCount });
+  if (!row) return { allowed: false, state: await getLockState(store, now) };
   if (row.failedCount > MAX_TRIES) {
     await lockNow(store, now);
     return { allowed: false, state: await getLockState(store, now) };
@@ -45,7 +53,7 @@ export async function beginAttempt(store: Store, now: Date = new Date()): Promis
 /** The password was wrong. The try was already counted by beginAttempt. */
 export async function failAttempt(
   store: Store,
-  ticket: { allowed: true; count: number },
+  ticket: Extract<AttemptTicket, { allowed: true }>,
   now: Date = new Date(),
 ): Promise<LockState> {
   if (ticket.count >= MAX_TRIES) await lockNow(store, now);

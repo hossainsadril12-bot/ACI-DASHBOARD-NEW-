@@ -85,6 +85,26 @@ describe("sign-in lock", () => {
     expect((await getLockState(store, new Date(t0.getTime() + 60_000))).retryAt).toEqual(new Date(t0.getTime() + LOCK_MS));
   });
 
+  it("20 parallel begins during a lock are all refused and retryAt is unchanged", async () => {
+    const store = await createTestStore();
+    for (let i = 0; i < 5; i++) {
+      const t = await beginAttempt(store, t0);
+      if (!t.allowed) throw new Error("should be allowed");
+      await failAttempt(store, t, t0);
+    }
+    const at = new Date(t0.getTime() + 1000);
+    const tickets = await Promise.all(Array.from({ length: 20 }, () => beginAttempt(store, at)));
+    expect(tickets.every((t) => !t.allowed)).toBe(true);
+    expect((await getLockState(store, at)).retryAt).toEqual(new Date(t0.getTime() + LOCK_MS));
+  });
+
+  it("begins during a lock leave no stale count after it expires", async () => {
+    const store = await createTestStore();
+    for (let i = 0; i < 5; i++) await recordFailure(store, t0);
+    await Promise.all(Array.from({ length: 5 }, () => beginAttempt(store, new Date(t0.getTime() + 1000))));
+    expect(await beginAttempt(store, new Date(t0.getTime() + LOCK_MS))).toEqual({ allowed: true, count: 1 });
+  });
+
   it("begin after the lock expires is allowed with count 1", async () => {
     const store = await createTestStore();
     for (let i = 0; i < 5; i++) await recordFailure(store, t0);
