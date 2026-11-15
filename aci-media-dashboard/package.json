@@ -16,7 +16,8 @@
     "demo": "playwright test --config playwright.demo.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:setup": "tsx src/db/setup-run.ts",
-    "db:store:generate": "drizzle-kit generate --config drizzle.store.config.ts"
+    "db:store:generate": "drizzle-kit generate --config drizzle.store.config.ts",
+    "store:restore": "tsx scripts/restore-backup.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
