@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/auth/admin";
 import { getDb } from "@/db/client";
 import { addRival, createBrand, createTvStation, createVendor, removeRival, setThresholds } from "@/server/master-data";
 import { toActionError, type ActionState } from "@/server/action-state";
@@ -14,6 +15,7 @@ const done = (): ActionState => {
 
 export async function createBrandAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     await createBrand(getDb(), { name: String(fd.get("name") ?? ""), businessId: Number(fd.get("businessId")) });
     return done();
   } catch (e) {
@@ -23,6 +25,7 @@ export async function createBrandAction(_: ActionState, fd: FormData): Promise<A
 
 export async function addRivalAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     await addRival(getDb(), { brandId: Number(fd.get("brandId")), name: String(fd.get("name") ?? "") });
     return done();
   } catch (e) {
@@ -32,6 +35,7 @@ export async function addRivalAction(_: ActionState, fd: FormData): Promise<Acti
 
 export async function removeRivalAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     await removeRival(getDb(), Number(fd.get("id")));
     return done();
   } catch (e) {
@@ -41,6 +45,7 @@ export async function removeRivalAction(_: ActionState, fd: FormData): Promise<A
 
 export async function createVendorAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     const kind = String(fd.get("kind")) as "agency" | "media" | "other";
     await createVendor(getDb(), { name: String(fd.get("name") ?? ""), kind });
     return done();
@@ -51,6 +56,7 @@ export async function createVendorAction(_: ActionState, fd: FormData): Promise<
 
 export async function createTvStationAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     await createTvStation(getDb(), String(fd.get("name") ?? ""));
     return done();
   } catch (e) {
@@ -60,6 +66,7 @@ export async function createTvStationAction(_: ActionState, fd: FormData): Promi
 
 export async function setThresholdsAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     await setThresholds(getDb(), {
       billYellowDays: Number(fd.get("billYellowDays")),
       billRedDays: Number(fd.get("billRedDays")),
@@ -74,6 +81,7 @@ export async function setThresholdsAction(_: ActionState, fd: FormData): Promise
 
 export async function loadSampleDataAction(): Promise<ActionState & { message?: string }> {
   try {
+    await requireAdmin();
     const res = await loadSampleData(getDb(), todayDhaka());
     // Sample data touches every page, so refresh them all.
     revalidatePath("/", "layout");
@@ -85,6 +93,7 @@ export async function loadSampleDataAction(): Promise<ActionState & { message?: 
 
 export async function removeSampleDataAction(): Promise<ActionState & { message?: string }> {
   try {
+    await requireAdmin();
     const res = await removeSampleData(getDb());
     revalidatePath("/", "layout");
     return { error: null, ok: true, message: `Removed ${res.brands} sample brands and all their records` };

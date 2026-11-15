@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/auth/admin";
 import { getDb } from "@/db/client";
 import {
   deleteCompetitorAd, deleteCompetitorMedia, saveCompetitorAd, saveCompetitorMedia, saveYoutubeMonth, setSourceOwner,
@@ -10,6 +11,7 @@ import { toActionError, type ActionState } from "@/server/action-state";
 
 async function run(work: () => Promise<unknown>): Promise<ActionState> {
   try {
+    await requireAdmin();
     await work();
     for (const p of ["/competitors", "/"]) revalidatePath(p);
     return { error: null, ok: true };

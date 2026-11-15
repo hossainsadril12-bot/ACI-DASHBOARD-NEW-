@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/auth/admin";
 import { getDb } from "@/db/client";
 import { createCampaign, deleteCampaign, setBudget, updateCampaign, type CampaignInput } from "@/server/plan";
 import { toActionError, type ActionState } from "@/server/action-state";
@@ -13,6 +14,7 @@ const done = (): ActionState => {
 
 export async function saveCampaignAction(id: number | null, input: CampaignInput): Promise<ActionState> {
   try {
+    await requireAdmin();
     if (id) await updateCampaign(getDb(), id, input);
     else await createCampaign(getDb(), input);
     return done();
@@ -23,6 +25,7 @@ export async function saveCampaignAction(id: number | null, input: CampaignInput
 
 export async function deleteCampaignAction(id: number): Promise<ActionState> {
   try {
+    await requireAdmin();
     await deleteCampaign(getDb(), id);
     return done();
   } catch (e) {
@@ -32,6 +35,7 @@ export async function deleteCampaignAction(id: number): Promise<ActionState> {
 
 export async function setBudgetAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
+    await requireAdmin();
     await setBudget(getDb(), {
       brandId: Number(fd.get("brandId")),
       month: String(fd.get("month") ?? ""),

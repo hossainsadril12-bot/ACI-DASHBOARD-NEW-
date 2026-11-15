@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/auth/admin";
 import { getDb } from "@/db/client";
 import { createSpendEntry, deleteSpendEntry, updateSpendEntry, type SpendInput } from "@/server/spend";
 import { toActionError, type ActionState } from "@/server/action-state";
@@ -12,6 +13,7 @@ const done = (): ActionState => {
 
 export async function saveSpendAction(id: number | null, input: SpendInput): Promise<ActionState> {
   try {
+    await requireAdmin();
     if (id) await updateSpendEntry(getDb(), id, input);
     else await createSpendEntry(getDb(), input);
     return done();
@@ -22,6 +24,7 @@ export async function saveSpendAction(id: number | null, input: SpendInput): Pro
 
 export async function deleteSpendAction(id: number): Promise<ActionState> {
   try {
+    await requireAdmin();
     await deleteSpendEntry(getDb(), id);
     return done();
   } catch (e) {
