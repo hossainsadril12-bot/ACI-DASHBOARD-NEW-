@@ -9,9 +9,10 @@ export function assertStoreEnv(env: Record<string, string | undefined>, cwd: str
   const raw = env.MEDIA_MIND_DATA_DIR?.trim();
   if (!raw) throw new Error("MEDIA_MIND_DATA_DIR is not set. Point it at a folder outside the app, for example ../media-mind-data.");
   const dataDir = path.resolve(cwd, raw);
+  const fold = (x: string) => (process.platform === "win32" ? x.toLowerCase() : x);
   for (const forbidden of ["src", "public", ".next"]) {
     const f = path.resolve(cwd, forbidden);
-    if (dataDir === f || dataDir.startsWith(f + path.sep)) {
+    if (fold(dataDir) === fold(f) || fold(dataDir).startsWith(fold(f + path.sep))) {
       throw new Error(`MEDIA_MIND_DATA_DIR must not be inside ${forbidden}/. Refusing to start.`);
     }
   }

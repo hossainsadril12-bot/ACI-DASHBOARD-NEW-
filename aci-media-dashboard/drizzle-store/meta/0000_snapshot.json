@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9eb6b759-b79c-4430-a3dd-80b941032985",
+  "id": "ee43944c-b688-4b8f-a8a6-d475ca17d301",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "admin_session": {
@@ -85,7 +85,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "dataset_key_length": {
+          "name": "dataset_key_length",
+          "value": "length(\"dataset\".\"key\") BETWEEN 1 AND 120"
+        }
+      }
     },
     "dataset_version": {
       "name": "dataset_version",
@@ -181,7 +186,16 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "dataset_version_source_valid": {
+          "name": "dataset_version_source_valid",
+          "value": "\"dataset_version\".\"source\" IN ('upload', 'manual')"
+        },
+        "dataset_version_key_length": {
+          "name": "dataset_version_key_length",
+          "value": "length(\"dataset_version\".\"dataset_key\") BETWEEN 1 AND 120"
+        }
+      }
     },
     "login_lock": {
       "name": "login_lock",
@@ -220,7 +234,12 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "login_lock_failed_count_nonneg": {
+          "name": "login_lock_failed_count_nonneg",
+          "value": "\"login_lock\".\"failed_count\" >= 0"
+        }
+      }
     },
     "meta": {
       "name": "meta",
@@ -327,7 +346,12 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "upload_file_size_positive": {
+          "name": "upload_file_size_positive",
+          "value": "\"upload_file\".\"size_bytes\" > 0"
+        }
+      }
     }
   },
   "views": {},

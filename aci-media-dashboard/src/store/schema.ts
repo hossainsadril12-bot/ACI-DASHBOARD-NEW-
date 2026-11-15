@@ -1,4 +1,5 @@
-import { blob, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { blob, check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const now = () => new Date();
 
@@ -16,14 +17,18 @@ export const setting = sqliteTable("setting", {
 });
 
 /** Original uploaded files, kept so they can be downloaded again and travel in the backup. */
-export const uploadFile = sqliteTable("upload_file", {
+export const uploadFile = sqliteTable(
+  "upload_file",
+  {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
   sha256: text("sha256").notNull(),
   bytes: blob("bytes", { mode: "buffer" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
-});
+  },
+  (t) => [check("upload_file_size_positive", sql`${t.sizeBytes} > 0`)],
+);
 
 /** Every published version of every dataset: the Upload History. Never updated, never deleted. */
 export const datasetVersion = sqliteTable(
@@ -39,16 +44,24 @@ export const datasetVersion = sqliteTable(
     fileId: integer("file_id").references(() => uploadFile.id),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
   },
-  (t) => [index("dataset_version_key_idx").on(t.datasetKey, t.id)],
+  (t) => [
+    index("dataset_version_key_idx").on(t.datasetKey, t.id),
+    check("dataset_version_source_valid", sql`${t.source} IN ('upload', 'manual')`),
+    check("dataset_version_key_length", sql`length(${t.datasetKey}) BETWEEN 1 AND 120`),
+  ],
 );
 
 /** One row per dataset (e.g. "billing", "atl:Savlon Soap"): which version the pages show. */
-export const dataset = sqliteTable("dataset", {
+export const dataset = sqliteTable(
+  "dataset",
+  {
   key: text("key").primaryKey(),
   kind: text("kind").notNull(),
   activeVersionId: integer("active_version_id").notNull().references(() => datasetVersion.id),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
-});
+  },
+  (t) => [check("dataset_key_length", sql`length(${t.key}) BETWEEN 1 AND 120`)],
+);
 
 /** Admin sessions. Only the SHA-256 of the cookie token is stored. */
 export const adminSession = sqliteTable("admin_session", {
@@ -58,9 +71,13 @@ export const adminSession = sqliteTable("admin_session", {
 });
 
 /** Wrong sign-in tries and the 10-minute lock. One row, key "admin". */
-export const loginLock = sqliteTable("login_lock", {
+export const loginLock = sqliteTable(
+  "login_lock",
+  {
   key: text("key").primaryKey(),
   failedCount: integer("failed_count").notNull().default(0),
   lockedUntil: integer("locked_until", { mode: "timestamp_ms" }),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
-});
+  },
+  (t) => [check("login_lock_failed_count_nonneg", sql`${t.failedCount} >= 0`)],
+);

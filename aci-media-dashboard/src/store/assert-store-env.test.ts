@@ -23,6 +23,10 @@ describe("assertStoreEnv", () => {
     expect(() => assertStoreEnv({ ...base, MEDIA_MIND_DATA_DIR: dir }, cwd)).toThrow(/must not be inside/);
   });
 
+  it.runIf(process.platform === "win32").each(["PUBLIC", "Src/data"])("refuses %s on Windows regardless of case", (dir) => {
+    expect(() => assertStoreEnv({ ...base, MEDIA_MIND_DATA_DIR: dir }, cwd)).toThrow(/must not be inside/);
+  });
+
   it("refuses a missing admin user", () => {
     expect(() => assertStoreEnv({ ...base, ADMIN_USER: " " }, cwd)).toThrow(/ADMIN_USER is not set/);
   });
