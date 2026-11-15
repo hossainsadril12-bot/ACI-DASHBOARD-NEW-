@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:setup": "tsx src/db/setup-run.ts",
     "db:store:generate": "drizzle-kit generate --config drizzle.store.config.ts",
-    "store:restore": "tsx scripts/restore-backup.ts"
+    "store:restore": "tsx scripts/restore-backup.ts",
+    "admin:hash": "tsx scripts/hash-password.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -25,6 +26,7 @@
     "@neon/config": "^1.10.0",
     "@neon/env": "^1.6.8",
     "@neondatabase/serverless": "^1.2.0",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "date-fns": "^4.4.0",
