@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createTestStore } from "@/store/test-store";
 import { adminSession } from "@/store/schema";
-import { SESSION_MS, createSession, deleteSession, isValidSession } from "./session";
+import { SESSION_COOKIE_OPTIONS, SESSION_MS, createSession, deleteSession, isValidSession } from "./session";
 
 const t0 = new Date("2026-11-15T10:00:00Z");
 
@@ -37,5 +37,11 @@ describe("admin sessions", () => {
     await createSession(store, t0);
     await createSession(store, new Date(t0.getTime() + SESSION_MS + 1));
     expect(await store.select().from(adminSession)).toHaveLength(1);
+  });
+});
+
+describe("session cookie options", () => {
+  it("pins httpOnly, secure, sameSite lax and path /", () => {
+    expect(SESSION_COOKIE_OPTIONS).toEqual({ httpOnly: true, secure: true, sameSite: "lax", path: "/" });
   });
 });

@@ -15,6 +15,18 @@ describe("assertStoreEnv", () => {
     });
   });
 
+  it("passes the base env with no serverless variable (control)", () => {
+    expect(() => assertStoreEnv({ ...base, NETLIFY: "", VERCEL: undefined }, cwd)).not.toThrow();
+  });
+
+  it.each(["NETLIFY", "VERCEL", "AWS_LAMBDA_FUNCTION_NAME"])("refuses serverless hosting when %s is set", (name) => {
+    expect(() => assertStoreEnv({ ...base, [name]: "true" }, cwd)).toThrow(/needs one long-running server with a disk/);
+  });
+
+  it("refuses an 80-character base64url string that is not a bcrypt hash", () => {
+    expect(() => assertStoreEnv({ ...base, ADMIN_PASSWORD_HASH: "bcrypt:" + "A".repeat(80) }, cwd)).toThrow(/ADMIN_PASSWORD_HASH/);
+  });
+
   it("refuses a missing data dir", () => {
     expect(() => assertStoreEnv({ ...base, MEDIA_MIND_DATA_DIR: "" }, cwd)).toThrow(/MEDIA_MIND_DATA_DIR is not set/);
   });

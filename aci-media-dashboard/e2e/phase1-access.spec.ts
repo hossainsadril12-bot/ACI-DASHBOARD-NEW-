@@ -33,7 +33,7 @@ test("viewer cannot download a backup", async ({ request }) => {
 test.describe("signed-in admin", () => {
   test.use({ storageState: "e2e/.auth/admin.json" });
 
-  test("sees Admin, downloads one backup file, and can sign out", async ({ page }) => {
+  test("sees Sign out, downloads one backup file", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download backup" }).click()]);

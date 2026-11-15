@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { defineConfig, devices } from "@playwright/test";
 import { E2E_ADMIN } from "./e2e/admin-credentials";
 
-// Live walkthrough for presentations: visible browser, slowed down, data is kept afterwards.
+// Live walkthrough for presentations: visible browser, slowed down, the store is a fresh temp folder each run; only the Neon dev data is kept.
 // Runs only against the Neon dev branch (same guard as e2e). Run: npm run demo
 const adminHash = "bcrypt:" + Buffer.from(bcrypt.hashSync(E2E_ADMIN.password, 10)).toString("base64url");
 const dataDir = path.join(os.tmpdir(), `media-mind-e2e-${process.pid}`);

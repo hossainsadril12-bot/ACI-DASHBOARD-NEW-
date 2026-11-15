@@ -35,7 +35,7 @@ let storePromise: Promise<Store> | undefined;
 export function getStore(): Promise<Store> {
   if (!storePromise) {
     const { dataDir } = assertStoreEnv(process.env);
-    fs.mkdirSync(dataDir, { recursive: true });
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     storePromise = openStore(toFileUrl(path.join(dataDir, STORE_FILE))).catch((e: unknown) => {
       storePromise = undefined;
       throw e;

@@ -4,6 +4,7 @@ import { adminSession } from "@/store/schema";
 import type { Store } from "@/store/client";
 
 export const SESSION_COOKIE = "mm_admin";
+export const SESSION_COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: "lax", path: "/" } as const;
 export const SESSION_MS = 8 * 60 * 60 * 1000;
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");

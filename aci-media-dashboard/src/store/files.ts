@@ -11,7 +11,7 @@ export async function saveFile(db: Store | StoreTx, input: { name: string; bytes
   if (input.bytes.length === 0) throw new ValidationError("The file is empty.");
   if (input.bytes.length > MAX_FILE_BYTES) throw new ValidationError("The file is larger than 60 MB.");
   const name = input.name.trim().slice(0, 255) || "upload";
-  const sha256 =createHash("sha256").update(input.bytes).digest("hex");
+  const sha256 = createHash("sha256").update(input.bytes).digest("hex");
   const [row] = await db
     .insert(uploadFile)
     .values({ name, sizeBytes: input.bytes.length, sha256, bytes: input.bytes })

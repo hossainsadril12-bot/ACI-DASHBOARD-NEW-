@@ -78,7 +78,7 @@ describe("attemptSignIn", () => {
     };
     const r = await attemptSignIn(store, admin, good, t0);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/^Too many wrong tries. Sign-in is locked until/);
+    if (!r.ok) expect(r.error).toMatch(/^Too many wrong tries\. Sign-in is locked until/);
     expect(await store.select().from(adminSession)).toHaveLength(0);
   });
 });

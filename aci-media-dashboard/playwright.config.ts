@@ -10,6 +10,8 @@ const adminHash = "bcrypt:" + Buffer.from(bcrypt.hashSync(E2E_ADMIN.password, 10
 const dataDir = path.join(os.tmpdir(), `media-mind-e2e-${process.pid}`);
 
 export default defineConfig({
+  // One dev server and one shared Neon dev branch: run specs one at a time.
+  workers: 1,
   testDir: "./e2e",
   globalSetup: "./e2e/global-setup.ts",
   globalTeardown: "./e2e/global-teardown.ts",
