@@ -2,6 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createClient } from "@libsql/client";
+import { eq } from "drizzle-orm";
+import { meta } from "./schema";
 import { createTestStore } from "./test-store";
 import { openStore, toFileUrl, STORE_FILE } from "./client";
 import { publishVersion, getActiveData } from "./datasets";
@@ -76,5 +79,45 @@ describe("restoreBackupFile", () => {
     const fake = path.join(dir, "fake.db");
     await fs.writeFile(fake, "not a database at all");
     await expect(restoreBackupFile(dir, fake)).rejects.toThrow(/not a Media Mind backup/);
+  });
+
+  async function liveDirWithFile() {
+    const dataDir = await tempDir();
+    await fs.writeFile(path.join(dataDir, STORE_FILE), "live");
+    return dataDir;
+  }
+  async function expectUntouched(dataDir: string) {
+    expect(await fs.readFile(path.join(dataDir, STORE_FILE), "utf8")).toBe("live");
+    expect((await fs.readdir(dataDir)).filter((n) => n.includes("before-restore"))).toEqual([]);
+  }
+
+  it("refuses a real SQLite file with another schema and leaves the live file alone", async () => {
+    const dataDir = await liveDirWithFile();
+    const other = path.join(await tempDir(), "other.db");
+    const c = createClient({ url: toFileUrl(other) });
+    await c.execute("create table x(a)");
+    c.close();
+    await expect(restoreBackupFile(dataDir, other)).rejects.toThrow(/not a Media Mind backup/);
+    await expectUntouched(dataDir);
+  });
+
+  it("refuses a database whose app id is different and leaves the live file alone", async () => {
+    const dataDir = await liveDirWithFile();
+    const store = await createTestStore();
+    await store.update(meta).set({ value: "other-app" }).where(eq(meta.key, "app"));
+    const file = path.join(await tempDir(), "wrong-app.db");
+    await fs.writeFile(file, await createBackup(store));
+    await expect(restoreBackupFile(dataDir, file)).rejects.toThrow(/not a Media Mind backup/);
+    await expectUntouched(dataDir);
+  });
+
+  it("restores into an empty data folder", async () => {
+    const dataDir = await tempDir();
+    const source = await createTestStore();
+    await publish(source, "backup-data");
+    const backupPath = path.join(await tempDir(), "backup.db");
+    await fs.writeFile(backupPath, await createBackup(source));
+    expect(await restoreBackupFile(dataDir, backupPath)).toEqual({ previous: null });
+    await fs.stat(path.join(dataDir, STORE_FILE));
   });
 });

@@ -16,6 +16,10 @@ export async function createBackup(store: Store): Promise<Buffer> {
   }
 }
 
+export function fileStamp(now: Date): string {
+  return now.toISOString().slice(0, 16).replace(/[:T]/g, "-");
+}
+
 export function backupFileName(now: Date = new Date()): string {
-  return `media-mind-backup-${now.toISOString().slice(0, 16).replace(/[:T]/g, "-")}.db`;
+  return `media-mind-backup-${fileStamp(now)}.db`;
 }

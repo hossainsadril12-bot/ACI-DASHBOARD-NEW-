@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { createClient } from "@libsql/client";
 import { APP_ID, STORE_FILE, toFileUrl } from "./client";
+import { fileStamp } from "./backup";
 
 const NOT_BACKUP = "This is not a Media Mind backup file.";
 
@@ -29,14 +30,24 @@ export async function restoreBackupFile(dataDir: string, backupPath: string, now
 
   const target = path.join(dataDir, STORE_FILE);
   let previous: string | null = null;
+  const moved: string[] = [];
   if (existsSync(target)) {
-    const stamp = now.toISOString().slice(0, 16).replace(/[:T]/g, "-");
-    previous = path.join(dataDir, `media-mind.before-restore-${stamp}.db`);
+    previous = path.join(dataDir, `media-mind.before-restore-${fileStamp(now)}.db`);
     await fs.rename(target, previous);
+    moved.push("");
     for (const ext of ["-wal", "-shm"]) {
-      if (existsSync(target + ext)) await fs.rename(target + ext, previous + ext);
+      if (existsSync(target + ext)) {
+        await fs.rename(target + ext, previous + ext);
+        moved.push(ext);
+      }
     }
   }
-  await fs.copyFile(backupPath, target);
+  try {
+    await fs.copyFile(backupPath, target);
+  } catch (e) {
+    // Put the old store back so a failed restore never leaves the app without data.
+    if (previous) for (const ext of moved) await fs.rename(previous + ext, target + ext);
+    throw e;
+  }
   return { previous };
 }
