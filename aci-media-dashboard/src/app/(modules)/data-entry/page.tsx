@@ -29,7 +29,7 @@ const tabOf = (sp: Record<string, string | string[] | undefined>): Tab => (sp.ta
 export default function DataEntryPage({ searchParams }: { searchParams: Search }) {
   return (
     <>
-      <PageHeader title="Data Entry" subtitle="Upload his usual Excel files. Every upload is kept in Upload History.">
+      <PageHeader title="Data Entry" subtitle="Upload your usual Excel files. Every upload is kept in Upload History.">
         <Suspense fallback={<SegmentedLinks label="Data Entry sections" items={TABS} value="" />}>
           <Tabs searchParams={searchParams} />
         </Suspense>
