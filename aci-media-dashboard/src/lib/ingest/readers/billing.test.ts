@@ -18,7 +18,9 @@ type Cell = string | number | null;
  *    billraw.py `round(x,2)`). At an exact .5 the JS value is the key value + 1 (or + 0.01) and the key value is even.
  *  - po-spread: see SPREAD_ROWS.
  */
-const normText = (k: Cell): Cell => (typeof k === "string" ? k.replace(/ 00:00:00$/, "").trim() : k);
+// Only the PO (bl index 7) and invoice (bl index 8) columns may differ by trim; only the invoice column by the date suffix.
+const normText = (k: Cell, c: number): Cell =>
+  typeof k === "string" && (c === 7 || c === 8) ? (c === 8 ? k.replace(/ 00:00:00$/, "") : k).trim() : k;
 
 /*
  * Rows 2306 and 2466 (PO 2505004341, invoices "D096" and " D096"). billing.py's PO-spread pass groups by the raw
@@ -44,8 +46,8 @@ describe.skipIf(!hasClientFiles)("Billing master: the real file", () => {
         const k = key[i][c];
         if (v === k) return;
         if (SPREAD_ROWS[i] && (c === 9 || c === 11 || c === 16)) { n.spread++; return; }
-        if (typeof v === "string" && typeof k === "string" && v === normText(k)) {
-          if (k.endsWith(" 00:00:00")) n.date++; else n.trim++;
+        if (typeof v === "string" && typeof k === "string" && v === normText(k, c)) {
+          if (c === 8 && k.endsWith(" 00:00:00")) n.date++; else n.trim++;
           return;
         }
         if (typeof v === "number" && typeof k === "number" && c >= 9 && c <= 15 && v - k === 1 && k % 2 === 0) { n.round++; return; }
@@ -84,5 +86,23 @@ describe("Billing master rules", () => {
     const r = readBilling(open(makeXlsx([{ name: "Master", rows: [H, line(1), line(2)] }])));
     expect(r.data.bl.map((x) => x[9])).toEqual([58, 58]); // 115 shared between the two lines, his Math.round(115 * 0.5)
     expect(r.data.bl.map((x) => x[16])).toEqual([1, 1]);
+  });
+  const mk = (sl: number, po: string, inv: string, poAmt: number, bill: number, month = "Oct'26") =>
+    [sl, "Asiatic", "Toiletries", "Savlon Soap", month, "TVC", po, 100, poAmt, inv, bill, 100, 0, 0, 0, 15, 0, "", "", "", "", ""];
+  it("spreads the unbilled amount over several invoices on one PO (his w = bill / total bill)", () => {
+    // PO 1000 on both invoices, bills 300 + 500 = 800, so U = 200; w = 0.375 and 0.625.
+    const r = readBilling(open(makeXlsx([{ name: "Master", rows: [H, mk(1, "PO1", "INV1", 1000, 300), mk(2, "PO1", "INV2", 1000, 500)] }])));
+    expect(r.data.bl.map((x) => [x[9], x[10], x[11], x[16]])).toEqual([[375, 300, 75, 2], [625, 500, 125, 2]]);
+  });
+  it("does not split when the same PO and invoice have different amounts", () => {
+    const r = readBilling(open(makeXlsx([{ name: "Master", rows: [H, mk(1, "PO1", "INV1", 115, 100), mk(2, "PO1", "INV1", 115, 200)] }])));
+    expect(r.data.bl.map((x) => [x[9], x[10], x[16]])).toEqual([[115, 100, 0], [115, 200, 0]]);
+  });
+  it("rejects a Master sheet with only a header", () => {
+    expect(() => readBilling(open(makeXlsx([{ name: "Master", rows: [H] }])))).toThrow(new ReadError('The "Master" sheet has no rows.'));
+  });
+  it("warns about a month that can't be read", () => {
+    const r = readBilling(open(makeXlsx([{ name: "Master", rows: [H, mk(1, "PO1", "INV1", 115, 100, "Oct'26"), mk(2, "PO2", "INV2", 115, 100, "???")] }])));
+    expect(r.warnings).toEqual(["1 lines have a month that couldn't be read"]);
   });
 });
