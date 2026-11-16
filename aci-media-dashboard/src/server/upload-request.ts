@@ -2,9 +2,8 @@ import { isAdmin, NOT_ADMIN_MESSAGE } from "@/auth/admin";
 import { MAX_FILE_BYTES } from "@/store/files";
 import { ValidationError } from "@/server/errors";
 import { type UploadInput } from "@/server/ingest";
-import { readUploadForm } from "@/server/upload-form";
+import { readUploadForm, TOO_BIG } from "@/server/upload-form";
 
-const TOO_BIG = "The files together are larger than 60 MB. Upload them in smaller groups.";
 const CAP = MAX_FILE_BYTES + 1024 * 1024; // room for multipart framing
 
 export type UploadRequest = { ok: true; inputs: UploadInput[] } | { ok: false; status: number; error: string };
@@ -21,7 +20,9 @@ export async function readUploadRequest(req: Request): Promise<UploadRequest> {
   if (origin !== null) {
     let originHost: string | null = null;
     try { originHost = new URL(origin).host; } catch { /* treated as cross-site */ }
-    if (originHost === null || originHost !== (req.headers.get("host") ?? new URL(req.url).host)) return refuse(403, "Cross-site upload refused.");
+    const forwarded = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const expected = forwarded || req.headers.get("host") || new URL(req.url).host;
+    if (originHost === null || originHost !== expected) return refuse(403, "Cross-site upload refused.");
   }
 
   const len = req.headers.get("content-length");
@@ -42,7 +43,9 @@ export async function readUploadRequest(req: Request): Promise<UploadRequest> {
 
   let fd: FormData;
   try {
-    fd = await new Response(Buffer.concat(chunks), { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData();
+    const joined = Buffer.concat(chunks);
+    chunks.length = 0;
+    fd = await new Response(joined, { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData();
   } catch {
     return refuse(400, "The upload could not be read. Please try again.");
   }

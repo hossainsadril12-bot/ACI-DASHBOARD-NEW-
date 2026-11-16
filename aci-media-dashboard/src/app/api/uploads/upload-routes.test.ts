@@ -89,6 +89,21 @@ describe("upload routes: refusals happen before the body is read", () => {
 });
 
 describe("upload routes: admin", () => {
+  it("accepts a same-origin request from the admin", async () => {
+    await asAdmin();
+    const res = await preview.POST(await post(form(xlsx(calendarBook(), "cal.xlsx")), { origin: "http://app.test" }));
+    expect(res.status).toBe(200);
+  });
+  it("compares the origin with x-forwarded-host behind a proxy", async () => {
+    await asAdmin();
+    const proxied = { host: "internal:3000", "x-forwarded-host": "app.test" };
+    const ok = await preview.POST(await post(form(xlsx(calendarBook(), "cal.xlsx")), { ...proxied, origin: "http://app.test" }));
+    expect(ok.status).toBe(200);
+    const bad = await preview.POST(await post(form(xlsx(calendarBook(), "cal.xlsx")), { ...proxied, origin: "http://evil.test" }));
+    expect(bad.status).toBe(403);
+    const list = await preview.POST(await post(form(xlsx(calendarBook(), "cal.xlsx")), { ...proxied, "x-forwarded-host": " app.test , other.test", origin: "http://app.test" }));
+    expect(list.status).toBe(200);
+  });
   it("previews a calendar file", async () => {
     await asAdmin();
     const res = await preview.POST(await post(form(xlsx(calendarBook(), "cal.xlsx"))));
