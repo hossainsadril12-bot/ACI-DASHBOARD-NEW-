@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { DM_Sans } from "next/font/google";
+import { Agentation } from "agentation";
 import { AdminStatus } from "@/components/shell/admin-status";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TopBar } from "@/components/shell/top-bar";
@@ -28,6 +29,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </main>
         </div>
         <Toaster />
+        {/* Dev-only feedback toolbar: click an element, add a note, copy it to the coding agent. Never in a production build. */}
+        {process.env.NODE_ENV === "development" && <Agentation appName="ACI Media" />}
       </body>
     </html>
   );
