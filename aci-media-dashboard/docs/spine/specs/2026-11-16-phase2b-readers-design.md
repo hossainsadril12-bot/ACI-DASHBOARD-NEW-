@@ -56,6 +56,8 @@ Every reader returns the same `ReadResult` as Part A: type, dataset key, label, 
     1. The script adds an `ob` field (the brand as written). His pages never read it, so we leave it out.
     2. His app fills an empty Content Type on Savlon rows with "Master TVC – …" (template.html line 602). The script doesn't. This changes 3 Toiletries YouTube rows ("Savlon Relaunch - All Placement / - TV / - Mobile").
     - Everything else matches exactly. That includes all 424 summary ad rows (`dig3.json`).
+  - **FY spend (found 16 Nov 2026):** his `data.json` → `fy` was made by `source/scripts/extract.py`. That script keeps 59 rows that are all zeros (108 rows in total). His app's reader drops rows with no value in any month and no last-year value (template.html line 614). We follow his app, so the test compares with his data after that same filter, which leaves 49 rows that are identical.
+  - **Channel Cost:** the 11 Nov file already has Nov'26 amounts for 26 TV channels, so its label reads "Jul'26 to Nov'26". The month labels sit in row 2 of the real file, not row 1.
 
 **Read errors and warnings.** Each reader keeps his own messages. Warnings never block a publish, and read errors do. His warnings include:
 - Digital: no rows have a month;
