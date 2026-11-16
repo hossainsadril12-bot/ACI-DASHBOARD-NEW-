@@ -19,9 +19,9 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
-    // 60 MB: matches MAX_FILE_BYTES; per-file and total limits are also checked in code.
-    // This app is self-hosted, so there is no hosting-provider request cap to stay under.
-    serverActions: { bodySizeLimit: "60mb" },
+    // Server action bodies are buffered before any action code (and its admin check) runs, so keep this small.
+    // Uploads (up to 60 MB) do not use actions: they go through /api/uploads/preview and /publish, which check the admin first.
+    serverActions: { bodySizeLimit: "4mb" },
   },
   turbopack: {
     rules: {

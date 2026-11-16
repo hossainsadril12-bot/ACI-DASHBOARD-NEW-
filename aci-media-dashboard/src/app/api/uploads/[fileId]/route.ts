@@ -7,7 +7,7 @@ const text = (body: string, status: number) => new Response(body, { status, head
 /** filename= is plain ASCII with quotes, backslashes and control characters replaced; filename*= keeps the real name. */
 function contentDisposition(name: string): string {
   const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 }
 
 /** The original uploaded file, unchanged. Admin only (viewers get Source Excel downloads in Phase 5). */

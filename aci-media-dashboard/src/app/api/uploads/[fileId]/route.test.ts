@@ -32,6 +32,16 @@ describe("GET /api/uploads/:fileId", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
+  it("keeps filename= pure ASCII for non-ASCII and backslash names, and encodes RFC 5987 specials", async () => {
+    h.jar.set(SESSION_COOKIE, (await createSession(h.store)).token);
+    await publishVersion(h.store, { datasetKey: "calendar", kind: "calendar", label: "L", source: "upload", summary: {}, data: {}, file: { name: "Café\\ “Q3”.xlsx", bytes: Buffer.from("PK") } });
+    await publishVersion(h.store, { datasetKey: "spend", kind: "spend", label: "L", source: "upload", summary: {}, data: {}, file: { name: "Bob's (1)*.xlsx", bytes: Buffer.from("PK") } });
+    const a = (await call("1")).headers.get("content-disposition")!;
+    expect(a.match(/filename="([^"]*)"/)![1]).toMatch(/^[\x20-\x7e]*$/);
+    expect(a).toContain('filename="Caf__ _Q3_.xlsx"');
+    const b = (await call("2")).headers.get("content-disposition")!;
+    expect(b).toContain("filename*=UTF-8''Bob%27s%20%281%29%2A.xlsx");
+  });
   it("404s for a bad or missing id", async () => {
     h.jar.set(SESSION_COOKIE, (await createSession(h.store)).token);
     expect((await call("abc")).status).toBe(404);

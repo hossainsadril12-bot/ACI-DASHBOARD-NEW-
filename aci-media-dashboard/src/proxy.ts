@@ -19,7 +19,7 @@ export function proxy(request: NextRequest) {
   return target.search === url.search ? NextResponse.next() : NextResponse.rewrite(target);
 }
 
-// Only the pages that have a month (and brand) filter.
+// Only the pages that have a month (and brand) filter. Keep /api/uploads and /data-entry OUT of this matcher: proxy buffers bodies with a 10 MB cap and would truncate uploads.
 export const config = {
   matcher: ["/", "/plan", "/spend", "/performance", "/digital", "/competitors"],
 };
