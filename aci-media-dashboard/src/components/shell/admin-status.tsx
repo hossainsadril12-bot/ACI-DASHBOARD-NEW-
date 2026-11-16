@@ -9,7 +9,7 @@ export async function AdminStatus() {
   await connection();
   if (!(await isAdmin())) {
     return (
-      <Link href="/sign-in" className={buttonVariants({ size: "lg", className: "px-6" })}>
+      <Link href="/sign-in" className={buttonVariants({ size: "lg", className: "w-26" })}>
         Login
       </Link>
     );

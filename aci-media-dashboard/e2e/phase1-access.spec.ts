@@ -21,7 +21,9 @@ test("viewer sees a Login button at the far right, and no admin-only chrome", as
   // Last item in the top bar's right-hand group, so it sits in the far-right corner.
   await expect(page.getByTestId("topbar-actions").locator("> *").last()).toHaveText("Login");
   // Big enough to read as the button it is (same height as the page's primary buttons).
-  expect((await login.boundingBox())!.height).toBeGreaterThanOrEqual(36);
+  const box = (await login.boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(36);
+  expect(box.width).toBe(104);
   await expect(page.getByText("Single user")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Quick actions" })).toHaveCount(0);
   await login.click();
