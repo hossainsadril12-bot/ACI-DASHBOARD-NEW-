@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createTestStore } from "@/store/test-store";
 import { getActiveData, listHistory } from "@/store/datasets";
 import { makeXlsx, clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
+import { NOT_USUAL_FILE } from "@/lib/ingest/detect";
 import { previewUploads, publishUploads, type UploadInput } from "./ingest";
 
 const u8 = (b: Buffer) => new Uint8Array(b);
@@ -76,6 +77,15 @@ describe("previewUploads", () => {
   it("does not let an unknown override publish an unrecognised workbook", async () => {
     const [p] = await previewUploads(await createTestStore(), [file("x.xlsx", makeXlsx([{ name: "S", rows: [["a"]] }]), "constructor" as UploadInput["chosenType"])]);
     expect(p).toMatchObject({ canPublish: false, type: null, blockReason: "This is not one of the usual Media Mind files." });
+  });
+  it("keeps a workbook that is none of his files blocked even when the admin picks a type", async () => {
+    // Calendar layout, but no month in the sheet name or A1 alone, so detection says none; the calendar reader could still read it.
+    const book = makeXlsx([{ name: "26", rows: [["CB Media Activity Nov"], ["Business", "Brand", "Media"], [null, null, "TV", "Total"], ["T", "Savlon Soap", 1, 1], ["Grand Total", null, 1, 1]] }]);
+    const store = await createTestStore();
+    const [p] = await previewUploads(store, [file("x.xlsx", book, "calendar")]);
+    expect(p.detection?.status).toBe("none");
+    expect(p).toMatchObject({ canPublish: false, blockReason: "This is not one of the usual Media Mind files.", errors: [NOT_USUAL_FILE] });
+    await expect(publishUploads(store, [file("x.xlsx", book, "calendar")])).rejects.toThrow(/not one of the usual Media Mind files/);
   });
   it("only warns about the file in use on publishable previews", async () => {
     const store = await createTestStore();

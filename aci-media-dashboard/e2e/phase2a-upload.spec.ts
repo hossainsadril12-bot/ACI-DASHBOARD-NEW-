@@ -40,6 +40,7 @@ test("2. a plain workbook is refused as not his file", async ({ page }) => {
   const row = page.getByTestId("preview-row");
   await expect(row.getByText("This is not one of the usual Media Mind files.").first()).toBeVisible();
   await expect(row.getByText("Can't publish")).toBeVisible();
+  await expect(page.getByLabel("File type for plain.xlsx")).toBeDisabled(); // no type can make it publishable
   await expect(publishBtn(page)).toBeDisabled();
 });
 
@@ -103,7 +104,7 @@ test("7. republish the same file with a warning, then restore the older one", as
   await publishBtn(page).click();
   await expect(page.getByText(/^Published 1 file/)).toBeVisible();
 
-  let rows = await historyRows(page);
+  const rows = await historyRows(page);
   const savlon = () => rows.filter({ hasText: SAVLON_LABEL });
   await expect(savlon()).toHaveCount(2);
   await expect(savlon().first()).toContainText("In use"); // newest first
@@ -114,11 +115,8 @@ test("7. republish the same file with a warning, then restore the older one", as
   await expect.poll(() => confirms.length).toBe(1);
   expect(confirms[0]).toMatch(/^Use this upload for /);
   expect(confirms[0]).toContain("Only that dataset changes.");
-  // The badge moves only after a fresh load of the history.
-  await expect.poll(async () => {
-    rows = await historyRows(page);
-    return (await savlon().first().textContent())?.includes("In use");
-  }, { timeout: 15000 }).toBe(false);
+  await expect(page.getByText(/^Restored\. /)).toBeVisible();
+  // The badge moves on the same page, without a reload.
   await expect(savlon().first()).not.toContainText("In use");
   await expect(savlon().nth(1)).toContainText("In use");
 });

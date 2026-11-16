@@ -16,7 +16,8 @@ describe.skipIf(!hasClientFiles)("ATL: all 13 real files match his built-in data
   it.each(files.map((f) => [f.rel, f.bytes] as const))("%s", (_rel, bytes) => {
     const r = readAtl(open(bytes));
     const catKey = r.datasetKey.replace(/^atl:/, "");
-    const { src: _src, ...want } = key.cats[catKey];
+    const want = { ...key.cats[catKey] };
+    delete want.src;
     expect(r.data).toEqual(want);
     expect(r.type).toBe("atl");
     expect(r.label).toMatch(new RegExp(`^ATL, ${want.name}, \\w{3}'\\d{2} to \\w{3}'\\d{2}$`));

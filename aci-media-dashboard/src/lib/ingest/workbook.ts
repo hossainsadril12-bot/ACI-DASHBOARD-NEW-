@@ -43,10 +43,12 @@ export function openWorkbook(bytes: Uint8Array): Workbook {
     const data = (ws["!data"] ?? []) as (XLSX.CellObject | undefined)[][];
     const range = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
     const cell = (r: number, c: number) => (r < 1 || c < 1 ? EMPTY : toCell(data[r - 1]?.[c - 1]));
+    // !ref comes from the file's <dimension>, which a crafted file can stretch to A1:XFD1048576; never loop past the data.
+    const longestRow = data.reduce((m, row) => Math.max(m, row?.length ?? 0), 0);
     const sheet: Sheet = {
       name: wb.SheetNames[i],
-      maxRow: range ? range.e.r + 1 : 0,
-      maxCol: range ? range.e.c + 1 : 0,
+      maxRow: range ? Math.min(range.e.r + 1, data.length) : 0,
+      maxCol: range ? Math.min(range.e.c + 1, longestRow) : 0,
       v: (r, c) => cell(r, c).v,
       cell,
     };

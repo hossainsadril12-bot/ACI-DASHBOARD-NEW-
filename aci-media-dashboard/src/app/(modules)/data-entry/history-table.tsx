@@ -50,7 +50,7 @@ export function HistoryTable({ rows, admin }: { rows: HistoryRow[]; admin: boole
             </Table>
           </div>
         )}
-        {rows.length > 0 && <p className="mt-2 text-xs text-gray-500">Showing the latest 200 uploads.</p>}
+        {rows.length === 200 && <p className="mt-2 text-xs text-gray-500">Showing the latest 200 uploads.</p>}
       </CardContent>
     </Card>
   );

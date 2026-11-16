@@ -42,7 +42,7 @@ Sources: `docs/design-summary-2026-11-15.md` section 3, `docs/build-plan-2026-11
 ## 3. How an upload works
 
 1. The admin opens Data Entry, then Upload, and drops one or more `.xlsx` files.
-2. The browser sends the files to the server action `previewUploads`. Only the admin may call it.
+2. The browser sends the files to the server action `previewUploads`. Only the admin may call it. (Changed: uploads go to the admin-checked route `POST /api/uploads/preview` instead, see the plan's Amendment to Task 7.)
 3. For each file, the server:
    - refuses it if it is over 60 MB;
    - refuses it if the bytes are not an `.xlsx` workbook (zip signature and `xl/workbook.xml`);
@@ -64,7 +64,7 @@ Sources: `docs/design-summary-2026-11-15.md` section 3, `docs/build-plan-2026-11
    - lines with no type picked.
 
    The admin can also remove any line. Warnings never block a publish.
-7. **Publish** sends the files and the chosen types to `publishUploads`. Only the admin may call it. The server reads every file again and never trusts the preview. It then publishes all the files in one transaction: either all of them are saved or none is.
+7. **Publish** sends the files and the chosen types to `publishUploads`. Only the admin may call it. (Changed: through the admin-checked route `POST /api/uploads/publish`, see the plan's Amendment to Task 7.) The server reads every file again and never trusts the preview. It then publishes all the files in one transaction: either all of them are saved or none is.
    - Each file becomes a new version of its dataset, with the original file attached.
    - Only that dataset changes. For ATL, only that category changes.
 8. **Cancel**, or leaving the page, changes nothing.
@@ -126,7 +126,7 @@ The key's type part is stored as the version's `kind`.
 
 - **Storage.** Everything goes into the Phase 1 store: `dataset_version`, `dataset` and `upload_file` via `publishVersion`. A batch version of `publishVersion` publishes several files in one transaction.
 - **History cannot change.** A new store migration adds SQLite triggers. They refuse any UPDATE or DELETE on `dataset_version` and `upload_file`. Restore changes only `dataset.active_version_id`.
-- **Request size.** The `serverActions.bodySizeLimit` in `next.config.ts` goes from 4 MB to 60 MB. The per-file cap is also checked in code.
+- **Request size.** The `serverActions.bodySizeLimit` in `next.config.ts` goes from 4 MB to 60 MB. The per-file cap is also checked in code. (Changed: uploads go through the admin-checked routes `POST /api/uploads/preview` and `/publish`, so the server-action limit stays at 4 MB; see the plan's Amendment to Task 7.)
 - **Admin only.** Every new server action and the original-file download call `requireAdmin()` first. The guard test calls each exported server action as a viewer and expects it to be refused.
 - **Safe errors.** Error messages never show stack traces or file paths. SheetJS stays at 0.20.3, which has no known prototype-pollution issue.
 

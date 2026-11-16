@@ -1479,8 +1479,8 @@ Tracker: p2-80 (request limit), p2-82, p2-14 (download).
 **Interfaces:**
 - Consumes: `requireAdmin`, `isAdmin`, `NOT_ADMIN_MESSAGE` and `NotAdminError` (`src/auth/admin.ts`); `getStore`; `restoreVersion` and `getFile`; `previewUploads`, `publishUploads` and `MAX_FILES`; `isFileType`; `MAX_FILE_BYTES`; and `toActionError` and `ActionState`.
 - Produces:
-  - `previewUploadsAction(fd: FormData): Promise<ActionState & { previews?: FilePreview[] }>`
-  - `publishUploadsAction(fd: FormData): Promise<ActionState & { published?: { datasetKey: string; label: string; versionId: number }[] }>`
+  - `previewUploadsAction(fd: FormData): Promise<ActionState & { previews?: FilePreview[] }>` (replaced by the amendment below)
+  - `publishUploadsAction(fd: FormData): Promise<ActionState & { published?: { datasetKey: string; label: string; versionId: number }[] }>` (replaced by the amendment below)
   - `restoreVersionAction(versionId: number): Promise<ActionState>`
   - `GET /api/uploads/:fileId`
 

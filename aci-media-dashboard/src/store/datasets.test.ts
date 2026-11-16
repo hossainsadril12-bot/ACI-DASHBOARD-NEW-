@@ -148,11 +148,20 @@ describe("publishVersions", () => {
     expect((await getActiveData(store, "calendar"))?.data).toEqual({ k: "calendar" });
   });
 
-  it("is all or nothing", async () => {
+  it("refuses the whole batch when one input fails validation", async () => {
     const store = await createTestStore();
     const bad = { ...mk("calendar"), label: "" }; // fails validation
     await expect(publishVersions(store, [mk("atl:soap"), bad])).rejects.toThrow(/Label/);
     expect(await store.$count(datasetVersion)).toBe(0);
+    expect(await store.$count(uploadFile)).toBe(0);
+  });
+
+  it("is all or nothing when the second file fails inside the transaction", async () => {
+    const store = await createTestStore();
+    const bad = { ...mk("calendar"), file: { name: "b.xlsx", bytes: Buffer.alloc(0) } }; // passes validation, saveFile throws after the first insert
+    await expect(publishVersions(store, [mk("atl:soap"), bad])).rejects.toThrow(/The file is empty/);
+    expect(await store.$count(datasetVersion)).toBe(0);
+    expect(await store.$count(dataset)).toBe(0);
     expect(await store.$count(uploadFile)).toBe(0);
   });
 

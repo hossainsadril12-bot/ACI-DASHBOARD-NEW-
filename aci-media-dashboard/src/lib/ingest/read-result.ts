@@ -9,7 +9,7 @@ export class ReadError extends Error {
 export type ReadResult<T> = {
   type: FileType;
   datasetKey: string;   // e.g. "atl:soap", "calendar"
-  label: string;        // e.g. "ATL, Savlon Soap, Jul'26 to Oct'26"
+  label: string;        // e.g. "ATL, Savlon Soap, Jul'25 to Oct'26"
   summary: string;      // one line, like his app's summary
   months: string[];     // "YYYY-MM", sorted
   rowCount: number;

@@ -1,11 +1,13 @@
 "use client";
 
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { restoreVersionAction } from "./actions";
 
 export function RestoreVersionButton({ versionId, label }: { versionId: number; label: string }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   return (
     <Button
@@ -17,7 +19,10 @@ export function RestoreVersionButton({ versionId, label }: { versionId: number; 
         startTransition(async () => {
           const res = await restoreVersionAction(versionId);
           if (res.error) toast.error(res.error);
-          else toast.success(`Restored. ${label} uses this upload again.`);
+          else {
+            toast.success(`Restored. ${label} uses this upload again.`);
+            router.refresh(); // moves the "In use" badge without a manual reload
+          }
         });
       }}
     >

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
 import { openWorkbook } from "./workbook";
 import { clientFiles, hasClientFiles, makeXlsx } from "./test-workbooks";
 import { checkXlsxBytes } from "./xlsx-check";
@@ -25,6 +26,16 @@ describe("openWorkbook", () => {
     expect(s.v(99, 99)).toBeNull();
     expect(s.maxRow).toBe(3);
     expect(s.maxCol).toBe(3);
+  });
+  it("sizes a sheet by its data, not by an inflated range", () => {
+    const ws = XLSX.utils.aoa_to_sheet([["a", "b"], ["c"]]);
+    ws["!ref"] = "A1:Z5000"; // written as <dimension ref="A1:Z5000"/>, as a crafted file could say
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, ws, "S");
+    const s = openWorkbook(new Uint8Array(XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer)).sheet(0)!;
+    expect(s.maxRow).toBe(2);
+    expect(s.maxCol).toBe(2);
+    expect(openWorkbook(new Uint8Array(makeXlsx([{ name: "E", rows: [] }]))).sheet(0)).toMatchObject({ maxRow: 0, maxCol: 0 });
   });
   it("finds sheets by index and returns null when missing", () => {
     expect(wb.sheet(1)?.name).toBe("Oct'26");

@@ -60,12 +60,11 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   }
   preview.detection = detection;
 
+  // Spec p2-04: a file that matches none of his usual files is refused, whatever type the admin picks.
+  if (detection.status === "none") return block("This is not one of the usual Media Mind files.", detection.lookedFor);
   const chosen = isFileType(input.chosenType) ? input.chosenType : null; // an unknown override is ignored
   const type: FileType | null = chosen ?? (detection.status === "sure" ? detection.type : null);
-  if (!type) {
-    if (detection.status === "none") return block("This is not one of the usual Media Mind files.", detection.lookedFor);
-    return block("Pick the file type.", null);
-  }
+  if (!type) return block("Pick the file type.", null);
   preview.type = type;
   if (detection.status === "sure" && detection.type !== type) {
     preview.warnings.push(`Detected as ${FILE_TYPE_LABEL[detection.type]}, but you picked ${FILE_TYPE_LABEL[type]}.`);

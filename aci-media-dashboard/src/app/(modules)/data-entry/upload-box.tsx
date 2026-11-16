@@ -184,7 +184,7 @@ function PreviewRow({ name, preview: p, choice, disabled, onType, onRemove }: {
         <select
           aria-label={`File type for ${name}`}
           value={choice || p?.type || ""}
-          disabled={disabled}
+          disabled={disabled || p?.detection?.status === "none"} // not one of his files: no type makes it publishable
           onChange={(e) => onType(isFileType(e.target.value) ? e.target.value : "")}
           className="h-9 w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm md:w-56"
         >
