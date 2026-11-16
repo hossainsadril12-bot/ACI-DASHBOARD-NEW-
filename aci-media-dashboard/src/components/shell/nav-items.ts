@@ -9,6 +9,7 @@ export const NAV_ITEMS: { href: string; label: string; group: (typeof NAV_GROUPS
   { href: "/performance", label: "Performance", group: "Results" },
   { href: "/digital", label: "Digital Data", group: "Results" },
   { href: "/competitors", label: "Competitor Tracking", group: "Results" },
+  { href: "/data-entry", label: "Data Entry", group: "Data" },
   { href: "/uploads", label: "Uploads & History", group: "Data" },
   { href: "/settings", label: "Settings", group: "Data" },
 ];

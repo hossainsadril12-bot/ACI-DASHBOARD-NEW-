@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
-  CalendarRange, ChartColumn, History, House, MonitorSmartphone, ReceiptText, Settings, Target, Wallet, type LucideIcon,
+  CalendarRange, ChartColumn, FileUp, History, House, MonitorSmartphone, ReceiptText, Settings, Target, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, NAV_ITEMS } from "./nav-items";
@@ -17,6 +17,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/performance": ChartColumn,
   "/digital": MonitorSmartphone,
   "/competitors": Target,
+  "/data-entry": FileUp,
   "/uploads": History,
   "/settings": Settings,
 };
