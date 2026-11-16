@@ -57,6 +57,11 @@ Every reader returns the same `ReadResult` as Part A: type, dataset key, label, 
     2. His app fills an empty Content Type on Savlon rows with "Master TVC – …" (template.html line 602). The script doesn't. This changes 3 Toiletries YouTube rows ("Savlon Relaunch - All Placement / - TV / - Mobile").
     - Everything else matches exactly. That includes all 424 summary ad rows (`dig3.json`).
   - **FY spend (found 16 Nov 2026):** his `data.json` → `fy` was made by `source/scripts/extract.py`. That script keeps 59 rows that are all zeros (108 rows in total). His app's reader drops rows with no value in any month and no last-year value (template.html line 614). We follow his app, so the test compares with his data after that same filter, which leaves 49 rows that are identical.
+  - **Billing master (found 16 Nov 2026):** his `billing.json` and `billraw.json` were made by `source/scripts/billing.py` and `billraw.py`, not by his app's reader. We follow his app. The differences, all explained and counted in the test:
+    1. **Rounding.** Python rounds halves to even; his app rounds them up. Money cells differ by at most 1 BDT (or 0.01 in the raw sheet).
+    2. **Invoice dates.** The script writes invoice dates as "1930-04-24 00:00:00"; his app writes "1930-04-24".
+    3. **Leading spaces.** The script keeps a leading space in invoice numbers; his app trims it.
+    4. **One bill.** On PO 2505004341, invoice "D096" appears once as " D096" with a leading space. His app treats both lines as the same bill, so no unbilled amount is spread. The script treated them as two bills.
   - **Channel Cost:** the 11 Nov file already has Nov'26 amounts for 26 TV channels, so its label reads "Jul'26 to Nov'26". The month labels sit in row 2 of the real file, not row 1.
 
 **Read errors and warnings.** Each reader keeps his own messages. Warnings never block a publish, and read errors do. His warnings include:
