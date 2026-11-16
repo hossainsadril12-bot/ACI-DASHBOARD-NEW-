@@ -19,8 +19,9 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
-    // Excel uploads go through server actions; stay under Vercel's 4.5 MB request cap.
-    serverActions: { bodySizeLimit: "4mb" },
+    // 60 MB: matches MAX_FILE_BYTES; per-file and total limits are also checked in code.
+    // This app is self-hosted, so there is no hosting-provider request cap to stay under.
+    serverActions: { bodySizeLimit: "60mb" },
   },
   turbopack: {
     rules: {
