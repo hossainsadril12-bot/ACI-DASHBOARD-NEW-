@@ -11,7 +11,21 @@ test("viewer opens the link and reads every page without signing in", async ({ p
     const res = await page.goto(p);
     expect(res?.status(), p).toBeLessThan(400);
   }
-  await expect(page.getByRole("link", { name: "Admin sign in" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Login", exact: true })).toBeVisible();
+});
+
+test("viewer sees a Login button at the far right, and no admin-only chrome", async ({ page }) => {
+  await page.goto("/");
+  const login = page.getByRole("link", { name: "Login", exact: true });
+  await expect(login).toBeVisible();
+  // Last item in the top bar's right-hand group, so it sits in the far-right corner.
+  await expect(page.getByTestId("topbar-actions").locator("> *").last()).toHaveText("Login");
+  // Big enough to read as the button it is (same height as the page's primary buttons).
+  expect((await login.boundingBox())!.height).toBeGreaterThanOrEqual(36);
+  await expect(page.getByText("Single user")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Quick actions" })).toHaveCount(0);
+  await login.click();
+  await expect(page).toHaveURL(/\/sign-in$/);
 });
 
 test("viewer tries to change data and the server refuses", async ({ page }) => {
@@ -36,6 +50,11 @@ test.describe("signed-in admin", () => {
   test("sees Sign out, downloads one backup file", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    // Sign out takes the Login button's place in the far-right corner; no "Admin" pill, no sidebar footer.
+    await expect(page.getByTestId("topbar-actions").locator("> *").last()).toContainText("Sign out");
+    await expect(page.getByText("Admin", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Single user")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Quick actions" }).first()).toBeVisible();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download backup" }).click()]);
     expect(download.suggestedFilename()).toMatch(/^media-mind-backup-.*\.db$/);
     const head = (await fs.readFile(await download.path())).subarray(0, 16).toString("latin1");

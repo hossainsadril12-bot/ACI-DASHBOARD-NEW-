@@ -6,12 +6,14 @@ import { usePathname } from "next/navigation";
 import { CalendarDays, ChevronRight } from "lucide-react";
 import { todayDhaka } from "@/lib/month";
 import { NAV_ITEMS } from "./nav-items";
-import { QuickActions } from "./quick-actions";
 
 const noop = () => () => {};
 
-/** White bar above every page: where you are on the left, today's date and the money rule on the right. */
-export function TopBar({ adminSlot }: { adminSlot?: ReactNode }) {
+/**
+ * White bar above every page: where you are on the left; date, money rule, the admin's
+ * quick actions (phone only) and the Login / Sign out slot on the right, Login last.
+ */
+export function TopBar({ adminSlot, quickActionsSlot }: { adminSlot?: ReactNode; quickActionsSlot?: ReactNode }) {
   const pathname = usePathname();
   const page = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
   // The layout is prerendered, so the date is read on the client only (null on the server).
@@ -29,16 +31,17 @@ export function TopBar({ adminSlot }: { adminSlot?: ReactNode }) {
             </>
           )}
         </nav>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {adminSlot}
+        <div data-testid="topbar-actions" className="flex shrink-0 items-center gap-2">
+          {/* Date and money pills hide below md so the Login / Sign out buttons fit on phones and small tablets. */}
           {today && (
-            <span className="hidden items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-600 sm:flex">
+            <span className="hidden items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-600 md:flex">
               <CalendarDays className="size-3.5" aria-hidden />
               {new Date(`${today}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}
             </span>
           )}
-          <span className="hidden rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground sm:inline">BDT · with VAT</span>
-          <div className="w-36 sm:w-44 md:hidden"><QuickActions /></div>
+          <span className="hidden rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground md:inline">BDT · with VAT</span>
+          {quickActionsSlot}
+          {adminSlot}
         </div>
       </div>
     </div>

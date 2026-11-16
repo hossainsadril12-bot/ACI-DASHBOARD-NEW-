@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
   CalendarRange, ChartColumn, History, House, MonitorSmartphone, ReceiptText, Settings, Target, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, NAV_ITEMS } from "./nav-items";
-import { QuickActions } from "./quick-actions";
 
 const ICONS: Record<string, LucideIcon> = {
   "/": House,
@@ -21,8 +21,8 @@ const ICONS: Record<string, LucideIcon> = {
   "/settings": Settings,
 };
 
-/** Wix-style dark navigation: brand, quick actions, short grouped lists, signed-in user. */
-export function Sidebar() {
+/** Wix-style dark navigation: brand, the admin's quick actions (desktop), short grouped lists. */
+export function Sidebar({ quickActionsSlot }: { quickActionsSlot?: ReactNode }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
@@ -36,7 +36,7 @@ export function Sidebar() {
         </span>
       </Link>
 
-      <div className="hidden px-4 pb-4 md:block"><QuickActions /></div>
+      {quickActionsSlot}
 
       <nav aria-label="Main" className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-1 md:flex-col md:gap-0 md:overflow-y-auto md:pb-0">
         {NAV_GROUPS.map((group) => (
@@ -64,14 +64,6 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
-
-      <div className="hidden items-center gap-3 border-t border-sidebar-border px-5 py-4 md:flex">
-        <span className="grid size-8 place-items-center rounded-full bg-sidebar-accent text-xs font-semibold text-white">AD</span>
-        <span className="leading-tight">
-          <span className="block text-sm font-medium text-white">Admin</span>
-          <span className="block text-xs text-sidebar-foreground/60">Single user</span>
-        </span>
-      </div>
     </div>
   );
 }
