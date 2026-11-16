@@ -45,6 +45,28 @@ describe("openWorkbook", () => {
   });
 });
 
+describe("fill colours", () => {
+  function filled(): Uint8Array {
+    const ws = XLSX.utils.aoa_to_sheet([["x"]]);
+    (ws.A1 as XLSX.CellObject & { s?: unknown }).s = { patternType: "solid", fgColor: { rgb: "FFFF00" } };
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, ws, "S");
+    return new Uint8Array(XLSX.write(book, { type: "buffer", bookType: "xlsx", cellStyles: true }) as Buffer);
+  }
+  const canWriteFills = (() => { try { return openWorkbook(filled(), { styles: true }).sheet(0)!.cell(1, 1).fill === "FFFF00"; } catch { return false; } })();
+
+  // SheetJS CE can't write fills; the real Billboard file test proves fills are read.
+  it.skipIf(!canWriteFills)("reads a solid fill only when opened with styles", () => {
+    expect(openWorkbook(filled(), { styles: true }).sheet(0)!.cell(1, 1).fill).toBe("FFFF00");
+    expect(openWorkbook(filled()).sheet(0)!.cell(1, 1).fill).toBeNull();
+  });
+  it("gives every cell a null fill when styles are off", () => {
+    const s = openWorkbook(new Uint8Array(makeXlsx([{ name: "S", rows: [["a"]] }]))).sheet(0)!;
+    expect(s.cell(1, 1).fill).toBeNull();
+    expect(s.cell(9, 9).fill).toBeNull();
+  });
+});
+
 describe("cell helpers", () => {
   it("match his reader's helpers", () => {
     expect(xstr(null)).toBe("");

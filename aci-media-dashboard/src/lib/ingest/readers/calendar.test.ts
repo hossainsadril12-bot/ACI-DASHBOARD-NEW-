@@ -39,6 +39,6 @@ describe("Activity Calendar read errors and warnings", () => {
     expect(r.months).toEqual(["2026-11"]);
   });
   it("is registered with the ATL and Digital readers", () => {
-    expect(Object.keys(READERS).sort()).toEqual(["atl", "billing", "calendar", "channel", "digital", "fy"]);
+    expect(Object.keys(READERS).sort()).toEqual(["atl", "billboard", "billing", "calendar", "channel", "digital", "fy"]);
   });
 });
