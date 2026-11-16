@@ -51,7 +51,7 @@ Sources: `docs/design-summary-2026-11-15.md` section 3, `docs/build-plan-2026-11
    - detects the type and runs that type's reader.
 4. The preview shows one line per file:
    - the file name;
-   - the type and what it covers, for example "ATL, Savlon Soap, Jul'26 to Oct'26";
+   - the type and what it covers, for example "ATL, Savlon Soap, Jul'25 to Oct'26";
    - the number of rows;
    - warnings in amber and read errors in red.
 5. A type selector sits on every line.
