@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 import { clientFile, hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
 
 // Phase 2 Part A user flow, every path. Serial: paths 6 and 7 build on each other.
@@ -92,7 +92,11 @@ test("6. publish several files: toast and two In use rows", async ({ page }) => 
 
 test("7. republish the same file with a warning, then restore the older one", async ({ page }) => {
   test.skip(!hasClientFiles, "client files not present");
-  page.on("dialog", (d) => void d.accept());
+  const confirms: string[] = [];
+  page.on("dialog", (d) => {
+    confirms.push(d.message());
+    void d.accept();
+  });
   await openUpload(page);
   await addFiles(page, [fileOf(SAVLON)]);
   await expect(page.getByTestId("preview-row").getByText("This is the same file as the one in use.")).toBeVisible();
@@ -107,8 +111,14 @@ test("7. republish the same file with a warning, then restore the older one", as
   const older = savlon().nth(1);
   await expect(older).not.toContainText("In use");
   await older.getByRole("button", { name: /Restore/ }).click();
-  await expect(savlon().first()).not.toContainText("In use", { timeout: 15000 });
-  rows = await historyRows(page);
+  await expect.poll(() => confirms.length).toBe(1);
+  expect(confirms[0]).toMatch(/^Use this upload for /);
+  expect(confirms[0]).toContain("Only that dataset changes.");
+  // The badge moves only after a fresh load of the history.
+  await expect.poll(async () => {
+    rows = await historyRows(page);
+    return (await savlon().first().textContent())?.includes("In use");
+  }, { timeout: 15000 }).toBe(false);
   await expect(savlon().first()).not.toContainText("In use");
   await expect(savlon().nth(1)).toContainText("In use");
 });
@@ -124,17 +134,41 @@ test("8. admin can download the original file", async ({ page }) => {
   expect(body.equals(clientFile(SAVLON))).toBe(true);
 });
 
+// The viewer checks must not depend on client files: make sure History has a row first.
+const seedHistory = async (browser: Browser) => {
+  const ctx = await browser.newContext({ storageState: "e2e/.auth/admin.json", baseURL: "http://localhost:3100" });
+  const rows = [["CB Media Activity Nov'26"], ["Business", "Brand", "Media"], [null, null, "TV", "Digital", "Print", "OOH", "Total"], ["Toiletries", "Savlon Soap", 1, 0.5, 0, 0, 1.5], ["Grand Total", null, 1, 0.5, 0, 0, 1.5]];
+  const res = await ctx.request.post("/api/uploads/publish", {
+    headers: { Origin: "http://localhost:3100" },
+    multipart: { files: { name: "seed-cal.xlsx", mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: "Nov'26", rows }]) } },
+  });
+  expect(res.status()).toBe(200);
+  await ctx.close();
+};
+
 test.describe("9. viewer", () => {
+  test.beforeAll(async ({ browser }) => seedHistory(browser));
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("sees History without Restore or Download, and Upload says only the admin can upload", async ({ page }) => {
     await page.goto("/data-entry?tab=history");
     await expect(page.getByTestId("history-table")).toBeVisible();
+    await expect(page.getByTestId("history-table").locator("tbody tr").first()).toBeVisible();
+    expect(await page.getByTestId("history-table").locator("tbody tr").count()).toBeGreaterThan(0);
     await expect(page.getByRole("button", { name: /Restore/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
     await page.goto("/data-entry");
     await expect(page.getByText("Only the admin can upload. Sign in to upload files.")).toBeVisible();
     await expect(page.getByTestId("upload-drop")).toHaveCount(0);
+  });
+
+  test("the server refuses the viewer", async ({ request }) => {
+    expect((await request.get("/api/uploads/1")).status()).toBe(403);
+    const res = await request.post("/api/uploads/publish", {
+      headers: { Origin: "http://localhost:3100" },
+      multipart: { files: { name: "x.xlsx", mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: "S", rows: [["a"]] }]) } },
+    });
+    expect(res.status()).toBe(403);
   });
 });
 
@@ -173,9 +207,12 @@ test.describe("phone width (375 px)", () => {
 
   test.describe("9 on a phone: viewer", () => {
     test.use({ storageState: { cookies: [], origins: [] } });
+    test.beforeAll(async ({ browser }) => seedHistory(browser));
     test("sees the history and the admin-only message without side scroll", async ({ page }) => {
       await page.goto("/data-entry?tab=history");
       await expect(page.getByTestId("history-table")).toBeVisible();
+      await expect(page.getByTestId("history-table").locator("tbody tr").first()).toBeVisible();
+      expect(await page.getByTestId("history-table").locator("tbody tr").count()).toBeGreaterThan(0);
       await expect(page.getByRole("button", { name: /Restore/ })).toHaveCount(0);
       expect(await noSideScroll(page)).toBe(true);
       await page.goto("/data-entry");
