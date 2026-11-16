@@ -52,6 +52,10 @@ Every reader returns the same `ReadResult` as Part A: type, dataset key, label, 
 - For each of the 9 real files involved, the test reads the file and the result must equal his built-in data.
 - For OOH, his `sites.json` adds fields the sheet doesn't have (id, photos, city, which he added on his site page). The test compares the sheet's own fields only: sl, location, brand, size, start, end, cost, vendor, lat and lng.
 - Where his built-in data and his own reader disagree, we look into it and follow the PRD. Each such difference is written down, never hidden.
+  - **Digital (found 16 Nov 2026):** his `digraw.json` was made by a separate script (`source/scripts/digraw.py`), not by his app's reader, and it differs in two ways. We follow his app's reader, which is what his dashboard shows after any upload.
+    1. The script adds an `ob` field (the brand as written). His pages never read it, so we leave it out.
+    2. His app fills an empty Content Type on Savlon rows with "Master TVC – …" (template.html line 602). The script doesn't. This changes 3 Toiletries YouTube rows ("Savlon Relaunch - All Placement / - TV / - Mobile").
+    - Everything else matches exactly. That includes all 424 summary ad rows (`dig3.json`).
 
 **Read errors and warnings.** Each reader keeps his own messages. Warnings never block a publish, and read errors do. His warnings include:
 - Digital: no rows have a month;
