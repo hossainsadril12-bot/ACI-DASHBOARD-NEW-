@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { dataset, uploadFile, datasetVersion } from "./schema";
 import { createTestStore } from "./test-store";
 import { getFile } from "./files";
-import { getActiveData, listHistory, publishVersion, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
+import { getActiveData, getActiveFileHashes, listHistory, publishVersion, publishVersions, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
 
 const input = (over: Partial<PublishInput> = {}): PublishInput => ({
   datasetKey: "billing",
@@ -104,5 +105,68 @@ describe("datasets", () => {
 
   it("refuses a blank dataset key", async () => {
     await expect(publishVersion(await createTestStore(), input({ datasetKey: "  " }))).rejects.toThrow(/Dataset key/);
+  });
+});
+
+/** Drizzle wraps driver errors; the trigger's message is on the cause. */
+async function failure(p: Promise<unknown>): Promise<string> {
+  try { await p; return ""; } catch (e) { return `${String(e)} ${String((e as { cause?: unknown }).cause ?? "")}`; }
+}
+
+const mk = (key: string, name = "a.xlsx", bytes = "abc") => ({
+  datasetKey: key, kind: key.split(":")[0], label: `L ${key}`, source: "upload" as const,
+  summary: {}, data: { k: key }, file: { name, bytes: Buffer.from(bytes) },
+});
+
+describe("Upload History is append-only", () => {
+  it("refuses to change or delete versions and files", async () => {
+    const store = await createTestStore();
+    const { versionId } = await publishVersion(store, mk("calendar"));
+    expect(await failure(store.update(datasetVersion).set({ label: "x" }).where(eq(datasetVersion.id, versionId)))).toMatch(/Upload History cannot be changed/);
+    expect(await failure(store.delete(datasetVersion))).toMatch(/Upload History cannot be deleted/);
+    expect(await failure(store.update(uploadFile).set({ name: "b" }))).toMatch(/Uploaded files cannot be changed/);
+    expect(await failure(store.delete(uploadFile))).toMatch(/Uploaded files cannot be deleted/);
+    expect(await store.$count(datasetVersion)).toBe(1);
+  });
+
+  it("still lets restore move the active pointer", async () => {
+    const store = await createTestStore();
+    const a = await publishVersion(store, mk("calendar", "a.xlsx", "a"));
+    await publishVersion(store, mk("calendar", "b.xlsx", "b"));
+    await restoreVersion(store, a.versionId);
+    const [row] = await store.select().from(dataset).where(eq(dataset.key, "calendar"));
+    expect(row.activeVersionId).toBe(a.versionId);
+  });
+});
+
+describe("publishVersions", () => {
+  it("publishes several datasets in one go", async () => {
+    const store = await createTestStore();
+    const { versionIds } = await publishVersions(store, [mk("atl:soap"), mk("calendar")]);
+    expect(versionIds).toHaveLength(2);
+    expect((await getActiveData(store, "atl:soap"))?.data).toEqual({ k: "atl:soap" });
+    expect((await getActiveData(store, "calendar"))?.data).toEqual({ k: "calendar" });
+  });
+
+  it("is all or nothing", async () => {
+    const store = await createTestStore();
+    const bad = { ...mk("calendar"), label: "" }; // fails validation
+    await expect(publishVersions(store, [mk("atl:soap"), bad])).rejects.toThrow(/Label/);
+    expect(await store.$count(datasetVersion)).toBe(0);
+    expect(await store.$count(uploadFile)).toBe(0);
+  });
+
+  it("refuses an empty list", async () => {
+    await expect(publishVersions(await createTestStore(), [])).rejects.toThrow(/Nothing to publish/);
+  });
+});
+
+describe("getActiveFileHashes", () => {
+  it("returns the SHA-256 of each active version's original file", async () => {
+    const store = await createTestStore();
+    await publishVersion(store, mk("calendar", "a.xlsx", "abc"));
+    const map = await getActiveFileHashes(store, ["calendar", "atl:soap"]);
+    expect(map.get("calendar")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    expect(map.has("atl:soap")).toBe(false);
   });
 });

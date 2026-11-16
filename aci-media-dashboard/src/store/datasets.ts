@@ -1,8 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { ValidationError } from "@/server/errors";
 import { dataset, datasetVersion, uploadFile } from "./schema";
 import { saveFile } from "./files";
-import type { Store } from "./client";
+import type { Store, StoreTx } from "./client";
 
 export type DatasetSource = "upload" | "manual";
 
@@ -31,27 +31,57 @@ export type HistoryRow = {
   isActive: boolean;
 };
 
-/** Saves a new version (and its original file) and makes it the one the pages show. All or nothing. */
-export async function publishVersion(store: Store, input: PublishInput): Promise<{ versionId: number }> {
-  const key = input.datasetKey.trim();
-  if (!key || key.length > 120) throw new ValidationError("Dataset key must be 1 to 120 characters.");
+function checkInput(input: PublishInput): PublishInput {
+  const datasetKey = input.datasetKey.trim();
+  if (!datasetKey || datasetKey.length > 120) throw new ValidationError("Dataset key must be 1 to 120 characters.");
   const kind = input.kind.trim();
   if (!kind || kind.length > 60) throw new ValidationError("Dataset kind must be 1 to 60 characters.");
   const label = input.label.trim();
   if (!label || label.length > 255) throw new ValidationError("Label must be 1 to 255 characters.");
+  return { ...input, datasetKey, kind, label };
+}
+
+async function insertVersion(tx: StoreTx, input: PublishInput): Promise<number> {
+  const fileId = input.file ? (await saveFile(tx, input.file)).id : null;
+  const [v] = await tx
+    .insert(datasetVersion)
+    .values({ datasetKey: input.datasetKey, kind: input.kind, label: input.label, source: input.source, summary: input.summary, data: input.data, fileId })
+    .returning({ id: datasetVersion.id });
+  const updatedAt = new Date();
+  await tx
+    .insert(dataset)
+    .values({ key: input.datasetKey, kind: input.kind, activeVersionId: v.id, updatedAt })
+    .onConflictDoUpdate({ target: dataset.key, set: { activeVersionId: v.id, kind: input.kind, updatedAt } });
+  return v.id;
+}
+
+/** Saves new versions (with their original files) and makes them the ones the pages show. All of them or none. */
+export async function publishVersions(store: Store, inputs: PublishInput[]): Promise<{ versionIds: number[] }> {
+  if (inputs.length === 0) throw new ValidationError("Nothing to publish.");
+  const clean = inputs.map(checkInput); // validate everything before writing anything
   return store.transaction(async (tx) => {
-    const fileId = input.file ? (await saveFile(tx, input.file)).id : null;
-    const [v] = await tx
-      .insert(datasetVersion)
-      .values({ datasetKey: key, kind, label, source: input.source, summary: input.summary, data: input.data, fileId })
-      .returning({ id: datasetVersion.id });
-    const updatedAt = new Date();
-    await tx
-      .insert(dataset)
-      .values({ key, kind, activeVersionId: v.id, updatedAt })
-      .onConflictDoUpdate({ target: dataset.key, set: { activeVersionId: v.id, kind, updatedAt } });
-    return { versionId: v.id };
+    const versionIds: number[] = [];
+    for (const input of clean) versionIds.push(await insertVersion(tx, input));
+    return { versionIds };
   });
+}
+
+/** Saves a new version (and its original file) and makes it the one the pages show. All or nothing. */
+export async function publishVersion(store: Store, input: PublishInput): Promise<{ versionId: number }> {
+  const { versionIds } = await publishVersions(store, [input]);
+  return { versionId: versionIds[0] };
+}
+
+/** SHA-256 of the original file behind each dataset's active version, so a preview can say "same file as the one in use". */
+export async function getActiveFileHashes(store: Store, datasetKeys: string[]): Promise<Map<string, string>> {
+  if (datasetKeys.length === 0) return new Map();
+  const rows = await store
+    .select({ key: dataset.key, sha256: uploadFile.sha256 })
+    .from(dataset)
+    .innerJoin(datasetVersion, eq(dataset.activeVersionId, datasetVersion.id))
+    .innerJoin(uploadFile, eq(datasetVersion.fileId, uploadFile.id))
+    .where(inArray(dataset.key, datasetKeys));
+  return new Map(rows.map((r) => [r.key, r.sha256]));
 }
 
 export async function getActiveData<T>(store: Store, datasetKey: string): Promise<ActiveData<T> | null> {
