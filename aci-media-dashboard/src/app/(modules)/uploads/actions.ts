@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/auth/admin";
 import { getDb } from "@/db/client";
 import { UPLOAD_KINDS, type UploadKind } from "@/lib/upload/templates";
 import { ValidationError } from "@/server/errors";
@@ -33,6 +34,7 @@ function refresh(kind: UploadKind) {
 
 export async function previewUploadAction(fd: FormData): Promise<ActionState & { preview?: UploadPreview }> {
   try {
+    await requireAdmin();
     return { error: null, ok: true, preview: await previewUpload(getDb(), await readForm(fd)) };
   } catch (e) {
     return toActionError(e);
@@ -43,6 +45,7 @@ export async function confirmUploadAction(
   fd: FormData,
 ): Promise<ActionState & { result?: { uploadId: number; inserted: number; skippedManual: number; periods: string[] } }> {
   try {
+    await requireAdmin();
     const input = await readForm(fd);
     const result = await confirmUpload(getDb(), { ...input, acceptMismatch: fd.get("acceptMismatch") === "on" });
     refresh(input.kind);
@@ -54,6 +57,7 @@ export async function confirmUploadAction(
 
 export async function restoreUploadAction(id: number, kind: UploadKind): Promise<ActionState> {
   try {
+    await requireAdmin();
     await restoreUpload(getDb(), id);
     refresh(kind);
     return { error: null, ok: true };

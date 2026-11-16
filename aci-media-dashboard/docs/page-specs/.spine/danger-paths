@@ -1,0 +1,5 @@
+# One glob per line. A diff touching any of these forces full review (Phase 2 enforces).
+# Examples — edit per repo:
+# src/auth/**
+# **/migrations/**
+# src/payments/**
