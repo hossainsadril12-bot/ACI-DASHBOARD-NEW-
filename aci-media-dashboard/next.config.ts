@@ -19,7 +19,8 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
-    // Excel uploads go through server actions; stay under Vercel's 4.5 MB request cap.
+    // Server action bodies are buffered before any action code (and its admin check) runs, so keep this small.
+    // Uploads (up to 60 MB) do not use actions: they go through /api/uploads/preview and /publish, which check the admin first.
     serverActions: { bodySizeLimit: "4mb" },
   },
   turbopack: {

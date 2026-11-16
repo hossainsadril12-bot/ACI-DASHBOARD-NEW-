@@ -7,7 +7,7 @@ import { E2E_ADMIN } from "./admin-credentials";
 test.describe.configure({ mode: "serial" });
 
 test("viewer opens the link and reads every page without signing in", async ({ page }) => {
-  for (const p of ["/", "/spend", "/performance", "/digital", "/competitors", "/billing", "/uploads", "/settings"]) {
+  for (const p of ["/", "/spend", "/performance", "/digital", "/competitors", "/billing", "/uploads", "/data-entry", "/settings"]) {
     const res = await page.goto(p);
     expect(res?.status(), p).toBeLessThan(400);
   }
@@ -61,6 +61,17 @@ test.describe("signed-in admin", () => {
     expect(download.suggestedFilename()).toMatch(/^media-mind-backup-.*\.db$/);
     const head = (await fs.readFile(await download.path())).subarray(0, 16).toString("latin1");
     expect(head).toBe("SQLite format 3\u0000");
+  });
+
+  test("on a phone the top bar fits: Sign out stays last and the page does not scroll sideways", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    for (const path of ["/", "/uploads", "/data-entry"]) {
+      await page.goto(path);
+      await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+      await expect(page.getByTestId("topbar-actions").locator("> *").last()).toContainText("Sign out");
+      await page.waitForLoadState("networkidle");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    }
   });
 });
 
