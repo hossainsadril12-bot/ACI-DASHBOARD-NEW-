@@ -145,10 +145,9 @@ test.describe("phone width (375 px)", () => {
     return page.evaluate(() => document.documentElement.scrollWidth <= 375);
   };
 
-  // The signed-in top bar (Phase 1) is wider than 375 px, so the admin page scrolls sideways.
-  // Admin tests check that the Data Entry content itself fits; the viewer tests check the whole page.
+  // Whole page must fit (top bar included), plus the content box itself.
   const contentFits = async (page: Page, testId: string) => {
-    await page.waitForLoadState("networkidle");
+    if (!(await noSideScroll(page))) return false;
     return page.getByTestId(testId).evaluate((el) => el.getBoundingClientRect().right <= 375 && el.scrollWidth <= el.clientWidth + 1);
   };
 
@@ -168,6 +167,7 @@ test.describe("phone width (375 px)", () => {
     await page.goto("/data-entry?tab=history");
     await expect(page.getByTestId("history-table")).toBeVisible();
     const card = page.getByTestId("history-table").locator("xpath=ancestor::div[contains(@class,'overflow-x-auto')][1]");
+    expect(await noSideScroll(page)).toBe(true);
     expect(await card.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true); // the table scrolls inside its own box
   });
 

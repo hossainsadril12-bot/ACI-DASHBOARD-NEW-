@@ -62,6 +62,17 @@ test.describe("signed-in admin", () => {
     const head = (await fs.readFile(await download.path())).subarray(0, 16).toString("latin1");
     expect(head).toBe("SQLite format 3\u0000");
   });
+
+  test("on a phone the top bar fits: Sign out stays last and the page does not scroll sideways", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    for (const path of ["/", "/uploads", "/data-entry"]) {
+      await page.goto(path);
+      await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+      await expect(page.getByTestId("topbar-actions").locator("> *").last()).toContainText("Sign out");
+      await page.waitForLoadState("networkidle");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    }
+  });
 });
 
 test("admin password: wrong tries count down, the 5th locks, and the right password is refused while locked", async ({ page }) => {
