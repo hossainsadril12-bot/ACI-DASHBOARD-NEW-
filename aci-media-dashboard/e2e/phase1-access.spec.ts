@@ -7,7 +7,7 @@ import { E2E_ADMIN } from "./admin-credentials";
 test.describe.configure({ mode: "serial" });
 
 test("viewer opens the link and reads every page without signing in", async ({ page }) => {
-  for (const p of ["/", "/spend", "/performance", "/digital", "/competitors", "/billing", "/uploads", "/settings"]) {
+  for (const p of ["/", "/spend", "/performance", "/digital", "/competitors", "/billing", "/uploads", "/data-entry", "/settings"]) {
     const res = await page.goto(p);
     expect(res?.status(), p).toBeLessThan(400);
   }
