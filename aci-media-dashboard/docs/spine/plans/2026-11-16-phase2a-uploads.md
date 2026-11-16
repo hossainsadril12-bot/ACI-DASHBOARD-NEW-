@@ -91,7 +91,7 @@ src/server/
   ingest.ts              prepareFile(), previewUploads(), publishUploads(), MAX_FILES
   ingest.test.ts
 src/app/(modules)/data-entry/
-  actions.ts             previewUploadsAction, publishUploadsAction, restoreVersionAction
+  actions.ts             restoreVersionAction (uploads: POST /api/uploads/preview and /publish, see Amendment to Task 7)
   page.tsx               Data Entry page (tabs: Upload | Upload History)
   upload-box.tsx         client: drop zone, preview lines, type picker, Publish/Cancel
   history-table.tsx      server: Upload History table
@@ -896,7 +896,7 @@ describe.skipIf(!hasClientFiles)("ATL: all 13 real files match his built-in data
   });
   it("Savlon Soap reads as Jul'26 to Oct'26", () => {
     const f = files.find((x) => x.rel.includes("Savlon_Soap"))!;
-    expect(readAtl(open(f.bytes)).label).toBe("ATL, Savlon Soap, Jul'26 to Oct'26");
+    expect(readAtl(open(f.bytes)).label).toBe("ATL, Savlon Soap, Jul'25 to Oct'26");
   });
 });
 
@@ -1726,6 +1726,21 @@ git commit -m "feat(data-entry): upload, publish and restore actions; admin-only
 
 ---
 
+### Amendment to Task 7 (16 Nov 2026, Sadril chose "login check first")
+
+The Task 7 review found that `serverActions.bodySizeLimit` is global. Next.js buffers the whole body before any action code runs, so a 60 MB limit would let anyone, signed in or not, send 60 MB to any action. The fix:
+
+- **Upload routes.** Uploads move to two route handlers: `POST /api/uploads/preview` and `POST /api/uploads/publish`. Each one checks, in this order, before reading the body:
+  1. the admin session (403, JSON `{ error: NOT_ADMIN_MESSAGE }`);
+  2. a same-origin `Origin` header (403);
+  3. the `Content-Length`: missing or above the 60 MB file cap plus 1 MB of multipart overhead gives 413.
+
+  Each route then reads the body with a streaming byte cap and returns 413 past the cap. It then parses the multipart body and returns JSON in the same shape as the old actions: `{ error, ok, previews }` and `{ error, ok, published }`.
+- **Old actions removed.** `previewUploadsAction` and `publishUploadsAction` are removed. `restoreVersionAction` stays a server action.
+- **Body limit restored.** `serverActions.bodySizeLimit` goes back to `"4mb"`.
+- **Shared form reading.** Form reading lives in one shared module. An empty file is refused rather than dropped, so `type-<i>` always matches the browser's file order.
+- **Task 8 change.** The upload box calls these routes with `fetch` and `FormData`, instead of the two actions.
+
 ### Task 8: Data Entry page
 
 Tracker: p2-02, p2-03 and p2-14 (the screens).
@@ -1735,7 +1750,7 @@ Tracker: p2-02, p2-03 and p2-14 (the screens).
 - Modify: `src/components/shell/nav-items.ts` (add an item), `src/components/shell/sidebar.tsx` (add the icon to `ICONS`)
 
 **Interfaces:**
-- Consumes: the Task 7 actions, `listHistory` (`src/store/datasets.ts`), `AdminOnly`, `isAdmin`, `FILE_TYPES`, `FILE_TYPE_LABEL`, `FilePreview`, and the shared UI (`PageHeader`, `SegmentedLinks`, `Card`, `Table`, `Badge`, `Button`, `EmptyState`, `PageSkeleton`).
+- Consumes: `POST /api/uploads/preview` and `POST /api/uploads/publish` (Amendment to Task 7), `restoreVersionAction`, `listHistory` (`src/store/datasets.ts`), `AdminOnly`, `isAdmin`, `FILE_TYPES`, `FILE_TYPE_LABEL`, `FilePreview`, and the shared UI (`PageHeader`, `SegmentedLinks`, `Card`, `Table`, `Badge`, `Button`, `EmptyState`, `PageSkeleton`).
 - Produces: the route `/data-entry?tab=upload|history` (default `upload`). Test hooks: `data-testid="upload-drop"`, `data-testid="preview-row"` (one per file), `data-testid="history-table"`, and a type `<select aria-label="File type for <file name>">`. Buttons: "Publish N files", "Cancel", "Restore" and "Download".
 
 **Behaviour:**
@@ -1743,7 +1758,7 @@ Tracker: p2-02, p2-03 and p2-14 (the screens).
 - **Page header.** `PageHeader title="Data Entry"`, subtitle "Upload his usual Excel files. Every upload is kept in Upload History." On the right, `SegmentedLinks` with the tabs Upload and Upload History.
 - **Upload tab, admin.** The upload box (client component):
   - A drop zone (also a "Choose files" button, `<input type="file" multiple accept=".xlsx">`) with the help text "Drop one or more of your usual Excel files. No templates needed."
-  - When files are chosen, call `previewUploadsAction`. While it runs, show a skeleton row per file, not a spinner.
+  - When files are chosen, POST them with `fetch("/api/uploads/preview", { method: "POST", body: formData })` (JSON `{ error, ok, previews }`). While it runs, show a skeleton row per file, not a spinner.
   - One row per file. It shows:
     - the file name;
     - the type select (empty option "Pick the file type…" plus the 8 types; preselected when detection is sure);
@@ -1751,9 +1766,9 @@ Tracker: p2-02, p2-03 and p2-14 (the screens).
     - a status chip: "Ready" (green) when `canPublish`, "Needs a type" (amber) when `blockReason === "Pick the file type."`, otherwise "Can't publish" (red);
     - errors as a red list, warnings as an amber list, and the `blockReason` in grey when it is not an error;
     - a "Remove" text button.
-  - Changing the select calls `previewUploadsAction` again for **all** current files, with every row's `type-<i>`. Keep it simple and correct.
+  - Changing the select POSTs to `/api/uploads/preview` again for **all** current files, with every row's `type-<i>`. Keep it simple and correct.
   - The footer has "Publish N files" (primary). It is disabled unless at least one row is Ready and **every remaining row is Ready**. The admin removes the rows he does not want. The footer also has "Cancel", which clears everything and changes nothing.
-  - Publish sends the files and their types to `publishUploadsAction`. On success it shows a toast ("Published 2 files: ATL, Savlon Soap…; Activity Calendar…"), clears the box and refreshes with `router.refresh()`. On error it shows the message above the footer in a `p[role=alert]`.
+  - Publish sends the files and their types to `/api/uploads/publish` (JSON `{ error, ok, published }`; a 4xx or 5xx JSON `error` is shown as is). On success it shows a toast ("Published 2 files: ATL, Savlon Soap…; Activity Calendar…"), clears the box and refreshes with `router.refresh()`. On error it shows the message above the footer in a `p[role=alert]`.
 - **Upload tab, viewer.** No drop zone. Show an `EmptyState` with "Only the admin can upload. Sign in to upload files." and a link to `/sign-in`.
 - **Upload History tab.** Everyone can see it.
   - A table with the columns When (Dhaka time, for example "16 Nov 2026, 14:05"), Type, What (the label), File, Rows, and the "In use" badge.
@@ -1798,7 +1813,7 @@ Tracker: p2-90 (Part A paths).
 1. **Read error blocked:** a workbook with "Brand Name: Lux Soap" shows a red error. Publish is disabled.
 2. **Not his file refused:** a plain workbook shows "This is not one of the usual Media Mind files."
 3. **Unsure, admin picks:** a calendar without a Grand Total row shows "Needs a type". The admin picks "Activity Calendar", the row becomes Ready, and the warning is shown.
-4. **Preview:** the real Savlon Soap file shows "ATL, Savlon Soap, Jul'26 to Oct'26".
+4. **Preview:** the real Savlon Soap file shows "ATL, Savlon Soap, Jul'25 to Oct'26". His file covers 16 months, from Jul'25.
 5. **Cancel changes nothing:** Cancel, then Upload History has no new row.
 6. **Publish several:** Savlon Soap plus Septex give a toast and two "In use" rows in History.
 7. **Restore:** publish Savlon Soap again (with the "same file" warning shown), restore the older one, and the "In use" badge moves.
