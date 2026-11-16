@@ -78,7 +78,7 @@ function prepareFile(input: UploadInput, index: number): Prepared {
 
   let result: ReadResult<unknown>;
   try {
-    result = reader(wb);
+    result = reader(wb, { fileName: input.name });
   } catch (e) {
     if (e instanceof ReadError) return block("Fix the read error first.", e.message);
     console.error("reader failed", e);

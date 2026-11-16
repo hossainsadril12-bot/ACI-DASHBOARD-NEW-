@@ -2,6 +2,7 @@ import type { FileType } from "../file-types";
 import type { Reader } from "../read-result";
 import { readAtl } from "./atl";
 import { readCalendar } from "./calendar";
+import { readDigital } from "./digital";
 
 /** Readers that exist so far. A detected type without a reader can't be published yet (Part B adds the rest). */
-export const READERS: Partial<Record<FileType, Reader>> = { atl: readAtl, calendar: readCalendar };
+export const READERS: Partial<Record<FileType, Reader>> = { atl: readAtl, calendar: readCalendar, digital: readDigital };
