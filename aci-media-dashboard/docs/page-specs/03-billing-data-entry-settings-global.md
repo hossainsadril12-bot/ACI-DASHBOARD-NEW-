@@ -1,5 +1,12 @@
 # Content spec 03: Billing, Data Entry, Settings and global parts
 
+> **Decisions of 16 Nov 2026 override this spec where they differ.** See `docs/design-summary-2026-11-15.md` section 11:
+> - real upload dates, never typed-in dates;
+> - "% of last year" like for like when possible;
+> - one CPV rule (spend ÷ views);
+> - built-in OOH borders only;
+> - no built-in data (pages show an empty state until their first upload).
+
 Source read: `Asset/MediaMind_SelfHost_v2.1/media-mind-selfhost/source/template.html` (single file, hash-routed, plain JS, hand-drawn SVG charts) plus `docs/TECHNICAL_SPEC.md`, `server.js` and `public/claude-shim.js` for the self-host login and roles. Sample data in `source/data/billing.json`, `billraw.json`, `billboard.json`.
 
 Conventions used below: "BDT Mn" means BDT divided by 1,000,000 with two decimals. "Page header" means the standard top block on every page: big title, muted subtitle, and on the right the page's own controls followed by the Download menu (see G7). Row/field names for datasets are described in words, not code.

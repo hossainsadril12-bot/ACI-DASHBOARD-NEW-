@@ -1,5 +1,12 @@
 # Content spec: OOH Media Performance, Activity Calendar, FY Media Spend, Channel Wise Spend
 
+> **Decisions of 16 Nov 2026 override this spec where they differ.** See `docs/design-summary-2026-11-15.md` section 11:
+> - real upload dates, never typed-in dates;
+> - "% of last year" like for like when possible;
+> - one CPV rule (spend ÷ views);
+> - built-in OOH borders only;
+> - no built-in data (pages show an empty state until their first upload).
+
 Source read: media-mind-selfhost/source/template.html (render code: OOH page "ooh()" and helpers at about lines 404-414 and 1010-1275; calendar 294-350; FY spend 282-292; channel pages 986-998) plus docs/TECHNICAL_SPEC.md and the sample data in source/data. This is a plain-English description of what his code does today. Where it looks like a mistake it is listed under Questions, not silently fixed.
 
 ## Shared rules (apply to every page below)

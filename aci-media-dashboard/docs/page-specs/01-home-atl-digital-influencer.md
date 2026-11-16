@@ -1,5 +1,12 @@
 # Content spec: 1 Home, 2.1 ATL, 2.2 Digital, 2.4 Influencer
 
+> **Decisions of 16 Nov 2026 override this spec where they differ.** See `docs/design-summary-2026-11-15.md` section 11:
+> - real upload dates, never typed-in dates;
+> - "% of last year" like for like when possible;
+> - one CPV rule (spend ÷ views);
+> - built-in OOH borders only;
+> - no built-in data (pages show an empty state until their first upload).
+
 Source read: Asset/MediaMind_SelfHost_v2.1/media-mind-selfhost/source/template.html (v2.1, state of 12 Nov 2026), plus docs/TECHNICAL_SPEC.md and the built-in files in source/data. Page code lives in the page table near line 209 (home, atl, digital, influencer), with helpers in `digTables` (line 476) and `oohSnapshot` (line 1166). Where the code and TECHNICAL_SPEC disagree, this spec follows the code and flags it under Questions.
 
 ## Shared rules (all four pages)

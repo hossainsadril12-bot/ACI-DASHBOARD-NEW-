@@ -79,3 +79,15 @@ We follow the PRD where his template differs:
 ## 10. Not in the first release
 
 Per-person access, live Meta/Google/TikTok data, influencer fees, photos for all 40 sites.
+
+## 11. Decisions from the template check (16 Nov 2026, Sadril)
+
+All 135 data and analytics items in his template were checked against the page specs: 113 covered, 12 dropped on purpose, 0 missing. The 10 items that were only partly defined are settled as follows. Details are in `.spine/template-coverage-2026-11-16.md`.
+
+1. **"Data updated" dates.** The sidebar footer, the Channel page subtitles and the OOH bill subtitle show the real date of the dataset's last upload or restore, read from Upload History. They are never typed in.
+2. **"% of last year".** This applies to the Home KPI, the Home brand table and FY Media Spend.
+   - It compares like for like (this year's months against the same months last year) whenever last year's months are available, for example from an earlier FY upload.
+   - Until then, it compares with last year's full-year total and says so in the label: "of last FY total (full year)".
+3. **Cost per view.** On Digital and Influencer it is always total spend ÷ total video views (ThruPlays on Meta, TrueView on YouTube, video views on TikTok), worked out from the totals, so it is the same on every screen and with every filter.
+4. **OOH map borders.** Only the 8 built-in divisions are used. There is no "Boundaries" upload.
+5. **No built-in data.** Pages start empty and fill only from uploads. Before a dataset's first upload, its page shows a clear empty state, for example "No Billing data yet. Upload the Dashboard Media Final file in Data Entry." There is no "back to built-in data" button; Restore in Upload History covers going back.
