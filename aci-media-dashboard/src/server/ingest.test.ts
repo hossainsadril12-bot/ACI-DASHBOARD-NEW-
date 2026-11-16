@@ -64,6 +64,26 @@ describe("previewUploads", () => {
     expect(p.warnings).toContain("Detected as Activity Calendar, but you picked Channel Cost.");
     expect(p.canPublish).toBe(false);
   });
+  it("ignores an unknown type override and falls back to detection", async () => {
+    const store = await createTestStore();
+    for (const bad of ["constructor", "zzz", "toString"]) {
+      const [p] = await previewUploads(store, [file("cal.xlsx", calendarBook(), bad as UploadInput["chosenType"])]);
+      expect(p).toMatchObject({ type: "calendar", canPublish: true, datasetKey: "calendar" });
+      expect(JSON.stringify(p)).not.toContain("undefined");
+      expect([...p.warnings, ...p.errors, p.blockReason ?? ""].join(" ")).not.toContain("undefined");
+    }
+  });
+  it("does not let an unknown override publish an unrecognised workbook", async () => {
+    const [p] = await previewUploads(await createTestStore(), [file("x.xlsx", makeXlsx([{ name: "S", rows: [["a"]] }]), "constructor" as UploadInput["chosenType"])]);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: "This is not one of the usual Media Mind files." });
+  });
+  it("only warns about the file in use on publishable previews", async () => {
+    const store = await createTestStore();
+    await publishUploads(store, [file("cal.xlsx", calendarBook())]);
+    const ps = await previewUploads(store, [file("a.xlsx", calendarBook()), file("b.xlsx", calendarBook())]);
+    expect(ps.every((p) => !p.canPublish)).toBe(true);
+    expect(ps.every((p) => !p.warnings.includes("This is the same file as the one in use."))).toBe(true);
+  });
   it("keeps input order", async () => {
     const ps = await previewUploads(await createTestStore(), [file("z.xlsx", Buffer.from("x")), file("a.xlsx", calendarBook())]);
     expect(ps.map((p) => [p.index, p.fileName])).toEqual([[0, "z.xlsx"], [1, "a.xlsx"]]);
@@ -84,6 +104,13 @@ describe("publishUploads", () => {
     expect((await getActiveData<{ months: unknown[] }>(store, "calendar"))?.data.months).toHaveLength(1);
     const [h] = await listHistory(store);
     expect(h).toMatchObject({ datasetKey: "calendar", kind: "calendar", source: "upload", fileName: "cal.xlsx", isActive: true });
+  });
+  it("publishes under the detected type when the override is junk", async () => {
+    const store = await createTestStore();
+    const res = await publishUploads(store, [file("cal.xlsx", calendarBook(), "toString" as UploadInput["chosenType"])]);
+    expect(res.published).toEqual([{ datasetKey: "calendar", label: "Activity Calendar, Nov'26 to Nov'26", versionId: expect.any(Number) }]);
+    const [h] = await listHistory(store);
+    expect(h).toMatchObject({ kind: "calendar" });
   });
   it("publishes nothing when any file is blocked", async () => {
     const store = await createTestStore();

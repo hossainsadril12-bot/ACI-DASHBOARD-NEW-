@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { checkXlsxBytes } from "@/lib/ingest/xlsx-check";
 import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
-import { FILE_TYPE_LABEL, type FileType } from "@/lib/ingest/file-types";
+import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
 import { READERS } from "@/lib/ingest/readers";
 import { ReadError, type ReadResult } from "@/lib/ingest/read-result";
 import { getActiveFileHashes, publishVersions, type PublishInput } from "@/store/datasets";
@@ -60,7 +60,8 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   }
   preview.detection = detection;
 
-  const type: FileType | null = input.chosenType ?? (detection.status === "sure" ? detection.type : null);
+  const chosen = isFileType(input.chosenType) ? input.chosenType : null; // an unknown override is ignored
+  const type: FileType | null = chosen ?? (detection.status === "sure" ? detection.type : null);
   if (!type) {
     if (detection.status === "none") return block("This is not one of the usual Media Mind files.", detection.lookedFor);
     return block("Pick the file type.", null);
@@ -70,7 +71,7 @@ function prepareFile(input: UploadInput, index: number): Prepared {
     preview.warnings.push(`Detected as ${FILE_TYPE_LABEL[detection.type]}, but you picked ${FILE_TYPE_LABEL[type]}.`);
   }
 
-  const reader = READERS[type];
+  const reader = Object.hasOwn(READERS, type) ? READERS[type] : undefined;
   if (!reader) {
     preview.label = FILE_TYPE_LABEL[type];
     return block(`Recognised as ${FILE_TYPE_LABEL[type]}. Its reader comes in the next update.`, null);
@@ -121,7 +122,7 @@ async function prepareAll(store: Store, inputs: UploadInput[]): Promise<Prepared
     const active = await getActiveFileHashes(store, keys);
     for (const p of prepared) {
       const key = p.preview.datasetKey;
-      if (key && active.get(key) === p.preview.sha256) p.preview.warnings.push("This is the same file as the one in use.");
+      if (p.preview.canPublish && key && active.get(key) === p.preview.sha256) p.preview.warnings.push("This is the same file as the one in use.");
     }
   }
   return prepared;
@@ -139,7 +140,8 @@ export async function publishUploads(store: Store, inputs: UploadInput[]) {
   if (blocked) throw new ValidationError(`${blocked.preview.fileName}: ${blocked.preview.blockReason}`);
 
   const publishInputs: PublishInput[] = prepared.map(({ preview, result }, i) => {
-    const r = result!;
+    if (!result) throw new ValidationError(`${preview.fileName}: ${preview.blockReason}`);
+    const r = result;
     return {
       datasetKey: r.datasetKey,
       kind: r.type,
