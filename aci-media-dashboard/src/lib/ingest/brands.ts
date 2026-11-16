@@ -25,7 +25,7 @@ export const BALIAS: Readonly<Record<string, string>> = {
 };
 
 /** His fullB: the official name for a brand, or the tidied name when it has no alias. */
-export const fullB = (s: string): string => { const t = s.replace(/\s+/g, " ").trim(); return BALIAS[t.toLowerCase()] || t; };
+export const fullB = (s: string): string => { const t = s.replace(/\s+/g, " ").trim(); const k = t.toLowerCase(); return Object.hasOwn(BALIAS, k) ? BALIAS[k] : t; };
 
 const BUSINESS_OF = new Map(Object.entries(BRANDLIST).flatMap(([biz, bs]) => bs.map((b) => [b.toLowerCase(), biz] as const)));
 
@@ -38,7 +38,7 @@ const NAME_HINTS: readonly [RegExp, DigitalBusiness][] = [[/toiletries/i, "Toile
 
 export function resolveDigitalBusiness(input: { brands: string[]; fileName: string; chosen: DigitalBusiness | null }):
   { business: DigitalBusiness; source: BusinessSource } | null {
-  if (input.chosen) return { business: input.chosen, source: "admin" };
+  if (isDigitalBusiness(input.chosen)) return { business: input.chosen, source: "admin" };
   const found = new Set(input.brands.map(businessOfBrand).filter((b): b is string => b != null));
   if (found.size === 1) { const [only] = found; if (isDigitalBusiness(only)) return { business: only, source: "brands" }; }
   const hits = NAME_HINTS.filter(([re]) => re.test(input.fileName));

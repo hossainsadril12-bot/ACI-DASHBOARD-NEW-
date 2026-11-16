@@ -59,6 +59,15 @@ describe("Digital read errors", () => {
     expect(() => readDigital(open(b), { fileName: "digital.xlsx" })).toThrow(NeedsBusinessError);
     expect(readDigital(open(b), { fileName: "digital.xlsx", business: "Salt" }).datasetKey).toBe("digital:Salt");
   });
+  it("does not throw on a brand cell named like a prototype key", () => {
+    const b = makeXlsx([sheet("Meta", [head, [], ["constructor", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
+    expect(readDigital(open(b), { fileName: "digital.xlsx", business: "Salt" }).datasetKey).toBe("digital:Salt");
+  });
+  it("skips a percentage sub-header row 2 when counting brands", () => {
+    const sub = ["Savlon Soap", null, null, null, null, null, null, 0.25];
+    const b = makeXlsx([sheet("Meta", [head, sub, ["Freedom Sanitary Napkin", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
+    expect(readDigital(open(b), { fileName: "digital.xlsx" }).business).toEqual({ name: "Hygiene", source: "brands" });
+  });
   it("refuses a file with no ad rows", () => {
     const b = makeXlsx([sheet("Meta", [head]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
     expect(() => readDigital(open(b), { fileName: "Salt.xlsx", business: "Salt" })).toThrow(new ReadError("No ad rows were found in the Meta, YouTube or TikTok sheets."));

@@ -27,6 +27,15 @@ describe("resolveDigitalBusiness", () => {
   it("the admin's pick always wins", () => {
     expect(resolveDigitalBusiness({ brands: ["Freedom Sanitary Napkin"], fileName: "x.xlsx", chosen: "Salt" })).toEqual({ business: "Salt", source: "admin" });
   });
+  it("ignores a runtime-invalid admin pick and falls through", () => {
+    const bad = (v: string) => v as unknown as "Salt";
+    expect(resolveDigitalBusiness({ brands: ["Freedom Sanitary Napkin"], fileName: "x.xlsx", chosen: bad("constructor") })).toEqual({ business: "Hygiene", source: "brands" });
+    expect(resolveDigitalBusiness({ brands: ["Freedom Sanitary Napkin"], fileName: "x.xlsx", chosen: bad("Foo") })).toEqual({ business: "Hygiene", source: "brands" });
+    expect(resolveDigitalBusiness({ brands: ["Mystery"], fileName: "digital.xlsx", chosen: bad("Foo") })).toBeNull();
+  });
+  it("businessOfBrand ignores prototype keys", () => {
+    for (const k of ["constructor", "__proto__", "toString", "valueOf"]) expect(businessOfBrand(k), k).toBeNull();
+  });
   it("allows only the three Digital businesses", () => {
     expect(isDigitalBusiness("Hygiene")).toBe(true);
     expect(isDigitalBusiness("Food & Beverage")).toBe(false);

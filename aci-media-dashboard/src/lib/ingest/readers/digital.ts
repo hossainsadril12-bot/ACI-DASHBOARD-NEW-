@@ -52,7 +52,9 @@ function brandsIn(wb: Workbook): string[] {
   for (const plat of PLATFORMS) {
     const ws = wb.sheet(plat);
     if (!ws) continue;
-    for (let r = 2; r <= ws.maxRow; r++) {
+    let start = 2; // his parseDigital: row 2 holding numbers is the percentage sub-header, data starts at row 3
+    for (let c = 1; c <= ws.maxCol; c++) if (typeof ws.v(2, c) === "number") { start = 3; break; }
+    for (let r = start; r <= ws.maxRow; r++) {
       const s = xstr(ws.v(r, 1));
       if (s && !TOTAL.test(s)) out.push(dNorm(s));
     }
