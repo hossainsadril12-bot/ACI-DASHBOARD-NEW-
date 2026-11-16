@@ -35,6 +35,11 @@ export function openWorkbook(bytes: Uint8Array): Workbook {
     const hit = cache.get(i);
     if (hit) return hit;
     const ws = wb.Sheets[wb.SheetNames[i]];
+    if (!ws || !ws["!data"]) {
+      const empty: Sheet = { name: wb.SheetNames[i], maxRow: 0, maxCol: 0, v: () => null, cell: () => EMPTY };
+      cache.set(i, empty);
+      return empty;
+    }
     const data = (ws["!data"] ?? []) as (XLSX.CellObject | undefined)[][];
     const range = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
     const cell = (r: number, c: number) => (r < 1 || c < 1 ? EMPTY : toCell(data[r - 1]?.[c - 1]));
@@ -53,7 +58,7 @@ export function openWorkbook(bytes: Uint8Array): Workbook {
     sheets,
     sheet(ref) {
       const i = typeof ref === "number" ? ref : sheets.findIndex((s) => s.name.trim().toLowerCase() === ref.trim().toLowerCase());
-      return i >= 0 && i < sheets.length ? load(i) : null;
+      return Number.isInteger(i) && i >= 0 && i < sheets.length ? load(i) : null;
     },
     visibleSheets: () => sheets.flatMap((s, i) => (s.visible ? [load(i)] : [])),
   };

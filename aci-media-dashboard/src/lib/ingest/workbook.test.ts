@@ -29,6 +29,7 @@ describe("openWorkbook", () => {
   it("finds sheets by index and returns null when missing", () => {
     expect(wb.sheet(1)?.name).toBe("Oct'26");
     expect(wb.sheet(-1)).toBeNull();
+    expect(wb.sheet(1.5)).toBeNull();
     expect(wb.sheet("nope")).toBeNull();
   });
 });

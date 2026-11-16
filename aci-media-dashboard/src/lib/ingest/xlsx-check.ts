@@ -1,3 +1,4 @@
+import { inflateRawSync } from "node:zlib";
 import { MAX_FILE_BYTES } from "@/store/files";
 
 export const MAX_UNPACKED_BYTES = 200 * 1024 * 1024;
@@ -10,10 +11,12 @@ const no = (reason: string): XlsxCheck => ({ ok: false, reason });
 
 /**
  * Decides from the bytes (never the file name) whether this is an .xlsx we are willing to parse.
- * Reads only the zip central directory: no inflating, so a zip bomb is refused before any work.
- * The declared sizes could lie; this is a first guard, and only the signed-in admin can upload.
+ * Pass 1 walks the zip central directory and refuses on declared sizes (cheap, no inflating).
+ * Pass 2 does not trust those sizes: it inflates every entry with a hard output cap, so a zip
+ * that understates its sizes still cannot unpack past the limit.
  */
-export function checkXlsxBytes(bytes: Uint8Array): XlsxCheck {
+export function checkXlsxBytes(bytes: Uint8Array, limits?: { maxUnpacked?: number }): XlsxCheck {
+  const maxUnpacked = limits?.maxUnpacked ?? MAX_UNPACKED_BYTES;
   if (bytes.length === 0) return no("The file is empty.");
   if (bytes.length > MAX_FILE_BYTES) return no("The file is larger than 60 MB.");
   if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) return no(OLD_XLS);
@@ -30,17 +33,44 @@ export function checkXlsxBytes(bytes: Uint8Array): XlsxCheck {
   const decoder = new TextDecoder();
   let total = 0;
   let hasWorkbook = false;
+  const entries: { method: number; compSize: number; localOffset: number }[] = [];
   for (let i = 0; i < count; i++) {
     if (p + 46 > bytes.length || dv.getUint32(p, true) !== 0x02014b50) return no(NOT_XLSX);
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
     const size = dv.getUint32(p + 24, true);
+    const localOffset = dv.getUint32(p + 42, true);
     const nameLen = dv.getUint16(p + 28, true);
     const extraLen = dv.getUint16(p + 30, true);
     const commentLen = dv.getUint16(p + 32, true);
-    if (size === 0xffffffff) return no(TOO_BIG);
+    if (size === 0xffffffff || compSize === 0xffffffff || localOffset === 0xffffffff) return no(TOO_BIG);
     total += size;
-    if (total > MAX_UNPACKED_BYTES) return no(TOO_BIG);
+    if (total > maxUnpacked) return no(TOO_BIG);
+    entries.push({ method, compSize, localOffset });
     if (decoder.decode(bytes.subarray(p + 46, p + 46 + nameLen)) === "xl/workbook.xml") hasWorkbook = true;
     p += 46 + nameLen + extraLen + commentLen;
   }
-  return hasWorkbook ? { ok: true } : no(NOT_XLSX);
+  if (!hasWorkbook) return no(NOT_XLSX);
+  let remaining = maxUnpacked;
+  for (const e of entries) {
+    const lo = e.localOffset;
+    if (lo + 30 > bytes.length || dv.getUint32(lo, true) !== 0x04034b50) return no(NOT_XLSX);
+    const start = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true);
+    const end = start + e.compSize;
+    if (end > bytes.length) return no(NOT_XLSX);
+    const data = bytes.subarray(start, end);
+    if (e.method === 0) {
+      remaining -= data.length;
+      if (remaining < 0) return no(TOO_BIG);
+    } else if (e.method === 8) {
+      try {
+        remaining -= inflateRawSync(data, { maxOutputLength: Math.max(remaining, 1) }).length;
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        return no(err instanceof RangeError || code === "ERR_BUFFER_TOO_LARGE" ? TOO_BIG : NOT_XLSX);
+      }
+      if (remaining < 0) return no(TOO_BIG);
+    } else return no(NOT_XLSX);
+  }
+  return { ok: true };
 }
