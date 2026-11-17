@@ -9,7 +9,8 @@ const preview = (over: Partial<FilePreview> = {}): FilePreview => ({
   index: 0, fileName: "atl.xlsx", sizeBytes: 10, sha256: "x",
   detection: { status: "sure", type: "atl" }, type: "atl",
   label: "ATL, Savlon Soap, Jul'26 to Oct'26", summary: "4 months", datasetKey: "atl:soap",
-  rowCount: 12, warnings: [], errors: [], canPublish: true, blockReason: null, ...over,
+  rowCount: 12, warnings: [], errors: [], canPublish: true, blockReason: null,
+  business: null, businessSource: null, needsBusiness: false, ...over,
 });
 
 describe("rowStatus", () => {

@@ -132,6 +132,23 @@ describe("upload routes: admin", () => {
     expect(j.previews[0]).toMatchObject({ fileName: "a.xlsx", type: null, canPublish: false });
     expect(j.previews[1]).toMatchObject({ fileName: "b.xlsx", type: "calendar", canPublish: true });
   });
+  it("passes business-0 to the service and ignores a value that isn't a business", async () => {
+    await asAdmin();
+    const digital = makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
+      ["Brand", "Month", "Content Type", "Content Link", "Bid Type", "Reach", "Impressions", "Spent (USD)"], [],
+      ...(p === "Meta" ? [["Mystery Brand", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]] : []),
+    ] })));
+    const salt = form(xlsx(digital, "digital.xlsx"));
+    salt.set("business-0", "Salt");
+    const ok = await (await preview.POST(await post(salt))).json();
+    expect(ok.previews[0]).toMatchObject({ type: "digital", canPublish: true, business: "Salt", businessSource: "admin", datasetKey: "digital:Salt" });
+    const evil = form(xlsx(digital, "digital.xlsx"));
+    evil.set("business-0", "evil");
+    const bad = await (await preview.POST(await post(evil))).json();
+    expect(bad.previews[0]).toMatchObject({ canPublish: false, needsBusiness: true, business: null, blockReason: "Pick the business." });
+    const pub = await (await publish.POST(await post(salt))).json();
+    expect(pub).toMatchObject({ ok: true, published: [{ datasetKey: "digital:Salt" }] });
+  });
   it("refuses an empty file by name", async () => {
     await asAdmin();
     const res = await preview.POST(await post(form(xlsx(Buffer.alloc(0), "empty.xlsx"))));
