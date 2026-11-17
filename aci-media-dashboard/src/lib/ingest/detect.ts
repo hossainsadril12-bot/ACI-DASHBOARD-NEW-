@@ -20,6 +20,21 @@ const named = (wb: Workbook, name: string) => visible(wb).find((s) => norm(s.nam
 const rows = (ws: Sheet, from: number, to: number) => Array.from({ length: Math.max(0, Math.min(to, ws.maxRow) - from + 1) }, (_, i) => from + i);
 const ratio = (n: number, total: number): Match => (n === total ? "full" : n > 0 ? "partial" : "no");
 
+/** How many keywords can each be matched to a different cell (bipartite matching, augmenting paths). */
+function distinctMatches(keywords: string[], cells: string[]): number {
+  const owner = new Map<number, number>(); // cell index -> keyword index
+  const assign = (k: number, seen: Set<number>): boolean =>
+    cells.some((c, i) => {
+      if (seen.has(i) || !c.includes(keywords[k])) return false;
+      seen.add(i);
+      const prev = owner.get(i);
+      if (prev !== undefined && !assign(prev, seen)) return false;
+      owner.set(i, k);
+      return true;
+    });
+  return keywords.filter((_, k) => assign(k, new Set())).length;
+}
+
 const RULES: Record<FileType, (wb: Workbook) => Match> = {
   atl(wb) {
     const ws = visible(wb)[0];
@@ -50,8 +65,8 @@ const RULES: Record<FileType, (wb: Workbook) => Match> = {
   billing(wb) {
     const ws = named(wb, "master");
     if (!ws) return "no";
-    const cells = rowCells(ws, 1);
-    const found = ["media/ vendor", "business", "brand", "month", "po number", "invoice no"].filter((k) => cells.some((c) => c.includes(k))).length;
+    // Each keyword must be in its own cell, so "Business Brand" in one cell counts once.
+    const found = distinctMatches(["media/ vendor", "business", "brand", "month", "po number", "invoice no"], rowCells(ws, 1));
     return found === 6 ? "full" : found >= 3 ? "partial" : "no";
   },
   billboard(wb) {

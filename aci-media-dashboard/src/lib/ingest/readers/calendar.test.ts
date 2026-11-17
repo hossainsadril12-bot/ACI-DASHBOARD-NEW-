@@ -38,7 +38,7 @@ describe("Activity Calendar read errors and warnings", () => {
     const r = readCalendar(open(makeXlsx([{ ...sheet("Oct'26"), hidden: true }, sheet("Nov'26")])));
     expect(r.months).toEqual(["2026-11"]);
   });
-  it("is registered with the ATL reader, and nothing else yet", () => {
-    expect(Object.keys(READERS).sort()).toEqual(["atl", "calendar"]);
+  it("is registered with the ATL and Digital readers", () => {
+    expect(Object.keys(READERS).sort()).toEqual(["atl", "billboard", "billing", "calendar", "channel", "digital", "fy", "ooh-sites"]);
   });
 });

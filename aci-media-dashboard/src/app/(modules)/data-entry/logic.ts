@@ -1,13 +1,15 @@
+import type { DigitalBusiness } from "@/lib/ingest/brands";
 import type { FileType } from "@/lib/ingest/file-types";
 import type { FilePreview } from "@/server/ingest";
 
 // Pure helpers for the Data Entry page. Safe for the browser: types only from the server.
 
-export type RowStatus = "ready" | "needs-type" | "blocked";
+export type RowStatus = "ready" | "needs-type" | "needs-business" | "blocked";
 export const NEEDS_TYPE = "Pick the file type.";
 
 export function rowStatus(p: FilePreview): RowStatus {
   if (p.canPublish) return "ready";
+  if (p.needsBusiness) return "needs-business";
   return p.blockReason === NEEDS_TYPE ? "needs-type" : "blocked";
 }
 
@@ -29,12 +31,13 @@ export const publishedMessage = (published: { label: string }[]) =>
 export const whenDhaka = (d: Date) =>
   d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Dhaka" });
 
-/** Repeated `files`, plus `type-<i>` only for the rows where the admin picked a type. */
-export function uploadForm(list: File[], types: (FileType | "")[]): FormData {
+/** Repeated `files`, plus `type-<i>` / `business-<i>` only for the rows where the admin picked one. The server re-checks both. */
+export function uploadForm(list: File[], types: (FileType | "")[], businesses: (DigitalBusiness | "")[]): FormData {
   const fd = new FormData();
   list.forEach((f, i) => {
     fd.append("files", f);
     if (types[i]) fd.set(`type-${i}`, types[i]);
+    if (businesses[i]) fd.set(`business-${i}`, businesses[i]);
   });
   return fd;
 }

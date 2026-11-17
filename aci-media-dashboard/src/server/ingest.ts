@@ -3,21 +3,23 @@ import { checkXlsxBytes } from "@/lib/ingest/xlsx-check";
 import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
 import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
-import { READERS } from "@/lib/ingest/readers";
-import { ReadError, type ReadResult } from "@/lib/ingest/read-result";
+import { READERS, READER_NEEDS_STYLES } from "@/lib/ingest/readers";
+import { NeedsBusinessError, ReadError, type ReadResult } from "@/lib/ingest/read-result";
+import { isDigitalBusiness, type BusinessSource, type DigitalBusiness } from "@/lib/ingest/brands";
 import { getActiveFileHashes, publishVersions, type PublishInput } from "@/store/datasets";
 import type { Store } from "@/store/client";
 import { ValidationError } from "./errors";
 
 export const MAX_FILES = 30;
 
-export type UploadInput = { name: string; bytes: Uint8Array; chosenType?: FileType | null };
+export type UploadInput = { name: string; bytes: Uint8Array; chosenType?: FileType | null; chosenBusiness?: DigitalBusiness | null };
 export type FilePreview = {
   index: number; fileName: string; sizeBytes: number; sha256: string;
   detection: Detection | null; type: FileType | null;
   label: string | null; summary: string | null; datasetKey: string | null;
   rowCount: number; warnings: string[]; errors: string[];
   canPublish: boolean; blockReason: string | null;
+  business: DigitalBusiness | null; businessSource: BusinessSource | null; needsBusiness: boolean;
 };
 type Prepared = { preview: FilePreview; result: ReadResult<unknown> | null };
 
@@ -32,6 +34,7 @@ function prepareFile(input: UploadInput, index: number): Prepared {
     sha256: createHash("sha256").update(input.bytes).digest("hex"),
     detection: null, type: null, label: null, summary: null, datasetKey: null,
     rowCount: 0, warnings: [], errors: [], canPublish: false, blockReason: null,
+    business: null, businessSource: null, needsBusiness: false,
   };
   const block = (reason: string, error: string | null = reason): Prepared => {
     if (error !== null) preview.errors = [error];
@@ -76,10 +79,24 @@ function prepareFile(input: UploadInput, index: number): Prepared {
     return block(`Recognised as ${FILE_TYPE_LABEL[type]}. Its reader comes in the next update.`, null);
   }
 
+  if (READER_NEEDS_STYLES.has(type)) {
+    try {
+      wb = openWorkbook(input.bytes, { styles: true }); // fill colours carry data (Billboard statuses)
+    } catch (e) {
+      console.error("openWorkbook failed", e instanceof Error ? e.name : "error");
+      return block(NOT_OPENABLE);
+    }
+  }
+
   let result: ReadResult<unknown>;
   try {
-    result = reader(wb);
+    // An unknown business override is ignored, the same as an unknown type.
+    result = reader(wb, { fileName: preview.fileName, business: isDigitalBusiness(input.chosenBusiness) ? input.chosenBusiness : null });
   } catch (e) {
+    if (e instanceof NeedsBusinessError) {
+      preview.needsBusiness = true;
+      return block("Pick the business.", null);
+    }
     if (e instanceof ReadError) return block("Fix the read error first.", e.message);
     console.error("reader failed", e);
     const msg = `This file could not be read as ${FILE_TYPE_LABEL[type]}.`;
@@ -91,6 +108,11 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   preview.datasetKey = result.datasetKey;
   preview.rowCount = result.rowCount;
   preview.warnings.push(...result.warnings);
+  if (result.business) {
+    preview.business = result.business.name;
+    preview.businessSource = result.business.source;
+    if (result.business.source === "file name") preview.warnings.push("Business taken from the file name.");
+  }
   preview.canPublish = true;
   return { preview, result };
 }
