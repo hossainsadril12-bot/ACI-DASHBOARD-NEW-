@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { blob, check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { blob, check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const now = () => new Date();
 
@@ -61,6 +61,72 @@ export const dataset = sqliteTable(
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
   },
   (t) => [check("dataset_key_length", sql`length(${t.key}) BETWEEN 1 AND 120`)],
+);
+
+/** Businesses the admin owns. The slug is made once from the first name and never changes. */
+export const business = sqliteTable(
+  "business",
+  {
+    slug: text("slug").primaryKey(),
+    name: text("name").notNull(),
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
+  },
+  (t) => [
+    check("business_slug_length", sql`length(${t.slug}) BETWEEN 1 AND 60`),
+    check("business_name_length", sql`length(${t.name}) BETWEEN 1 AND 120`),
+  ],
+);
+
+/** Brands, each under one business. Names are unique across businesses (see name_match). */
+export const brand = sqliteTable(
+  "brand",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    businessSlug: text("business_slug").notNull().references(() => business.slug),
+    name: text("name").notNull(),
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
+  },
+  (t) => [check("brand_name_length", sql`length(${t.name}) BETWEEN 1 AND 120`)],
+);
+
+/** ATL categories (one per Excel tab title), each owned by a business. */
+export const atlCategory = sqliteTable(
+  "atl_category",
+  {
+    slug: text("slug").primaryKey(),
+    name: text("name").notNull(),
+    normName: text("norm_name").notNull().unique(),
+    businessSlug: text("business_slug").notNull().references(() => business.slug),
+    ownBrand: text("own_brand").notNull(),
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
+  },
+  (t) => [
+    check("atl_category_slug_length", sql`length(${t.slug}) BETWEEN 1 AND 60`),
+    check("atl_category_name_length", sql`length(${t.name}) BETWEEN 1 AND 120`),
+    check("atl_category_own_brand_length", sql`length(${t.ownBrand}) BETWEEN 1 AND 120`),
+  ],
+);
+
+/** Every name (normalised) that points at a business or a brand: own names, old names and "same as" names. */
+export const nameMatch = sqliteTable(
+  "name_match",
+  {
+    kind: text("kind", { enum: ["business", "brand"] }).notNull(),
+    normName: text("norm_name").notNull(),
+    businessSlug: text("business_slug").references(() => business.slug),
+    brandId: integer("brand_id").references(() => brand.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.kind, t.normName] }),
+    check(
+      "name_match_target",
+      sql`(${t.kind} = 'business' AND ${t.businessSlug} IS NOT NULL AND ${t.brandId} IS NULL) OR (${t.kind} = 'brand' AND ${t.brandId} IS NOT NULL AND ${t.businessSlug} IS NULL)`,
+    ),
+    check("name_match_norm_name_length", sql`length(${t.normName}) BETWEEN 1 AND 120`),
+  ],
 );
 
 /** Admin sessions. Only the SHA-256 of the cookie token is stored. */
