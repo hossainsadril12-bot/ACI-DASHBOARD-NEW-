@@ -81,7 +81,7 @@ Rejected: one saved JSON document for the whole list (no unique names, edits can
   - `name_match`: kind (`business` | `brand`), normalised name, target id. Every business and brand has a match row for its own name; "Same as" and renames add more rows. Unique on (kind, normalised name).
 - Uploaded data keeps every name exactly as in the file (fidelity with his readers; answer-key tests unchanged).
 - A small read API in `src/store/` (for example `getCatalog()`, `resolveBusiness(name)`, `resolveBrand(name)`) so the Phase 3 pages read names through the lists.
-- **Digital dataset key** becomes `digital:<business id>` so a rename doesn't split the data. The label keeps the business name at publish time. Existing dev data under `digital:<name>` is dev-only and can be re-uploaded.
+- **Digital and ATL dataset keys** use a fixed slug made from the business or category name when it is created (`digital:<business slug>`, `atl:<category slug>`). A rename never changes the slug, so a rename doesn't split the data. The label keeps the name at publish time. Existing dev data under the old keys is dev-only and can be re-uploaded.
 - **ATL:** the category is matched by the file's "Brand Name:" title against `atl_category` names, normalised. Own vs competitor brands come from the category's "Our brand". His 13 category rules become suggestions only.
 - Catalog changes are not versions in Upload History. A short "who changed what, when" log is out of scope.
 
