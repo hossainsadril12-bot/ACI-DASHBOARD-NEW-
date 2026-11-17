@@ -62,7 +62,7 @@ Every reader returns the same `ReadResult` as Part A: type, dataset key, label, 
     2. **Invoice dates.** The script writes invoice dates as "1930-04-24 00:00:00"; his app writes "1930-04-24".
     3. **Leading spaces.** The script keeps a leading space in invoice numbers; his app trims it.
     4. **One bill.** PO 2505004341 has two lines for invoice D096, typed "D096" on one and " D096" (with a leading space) on the other. His app trims the space and treats both lines as the same bill, so no unbilled amount is spread. The script treated them as two bills.
-  - **OOH master sheet, a bug we don't copy (16 Nov 2026):** his reader turns dates typed as text (for example "2 Nov 2026") into the previous day whenever the computer isn't on UTC, which includes a Bangladesh browser or server. Ours keeps the day that was typed. Dates stored as real Excel dates were never affected.
+  - **OOH master sheet, a bug we don't copy (16 Nov 2026):** his reader turns dates typed as text (for example "2 Nov 2026") into the previous day whenever the computer is ahead of UTC, which includes a Bangladesh browser or server. Ours keeps the day that was typed. Dates stored as real Excel dates were never affected.
   - **Channel Cost:** the 11 Nov file already has Nov'26 amounts for 26 TV channels, so its label reads "Jul'26 to Nov'26". The month labels sit in row 2 of the real file, not row 1.
 
 **Read errors and warnings.** Each reader keeps his own messages. Warnings never block a publish, and read errors do. His warnings include:
