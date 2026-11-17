@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { normName } from "@/lib/names-normal";
 import { ValidationError } from "@/server/errors";
 import { atlCategory, brand, business, nameMatch } from "./schema";
 import type { Store, StoreTx } from "./client";
@@ -29,10 +30,7 @@ type MatchKind = "business" | "brand";
 const MAX_NAME = 120;
 const MAX_SLUG = 60;
 
-/** The one name normaliser: trim, collapse whitespace, lower-case. */
-export function normName(s: string): string {
-  return s.trim().replace(/\s+/g, " ").toLowerCase();
-}
+export { normName };
 
 /** Trims and collapses whitespace, keeping the case. Refuses empty or over-long names. */
 export function cleanName(s: string): string {

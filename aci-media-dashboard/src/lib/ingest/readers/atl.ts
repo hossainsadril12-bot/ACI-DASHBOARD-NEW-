@@ -6,7 +6,7 @@ export type AtlRow = { b: string; grp: number; acd: number; ngrp: number; sp: nu
 export type AtlCategory = { name: string; biz: string; title: string; category: string; tg: string; pop: number; own: string[]; brands: string[]; months: Record<string, AtlRow[]> };
 
 /** [key, dashboard name, business, title pattern, own-brand pattern]: his ATLCATS. */
-const ATL_CATEGORIES: [string, string, string, RegExp, RegExp][] = [
+export const ATL_CATEGORIES: [string, string, string, RegExp, RegExp][] = [
   ["soap", "Savlon Soap", "Toiletries", /savlon soap/i, /^savlon soap/i],
   ["septex", "Septex Antiseptic Bar", "Toiletries", /septex/i, /septex/i],
   ["handwash", "Savlon Hand Wash", "Toiletries", /hand ?wash/i, /^savlon/i],
