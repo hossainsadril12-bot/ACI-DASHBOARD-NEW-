@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/data/empty-state";
 import { PageSkeleton } from "@/components/data/page-skeleton";
 import { SegmentedLinks } from "@/components/data/segmented";
 import { buttonVariants } from "@/components/ui/button";
+import { getCatalog } from "@/store/catalog";
 import { listHistory } from "@/store/datasets";
 import { getStore } from "@/store/client";
 import { HistoryTable } from "./history-table";
@@ -60,5 +61,7 @@ async function DataEntryContent({ searchParams }: { searchParams: Search }) {
       </EmptyState>
     );
   }
-  return <UploadBox />;
+  // The visible businesses for the pickers; the server checks every pick again.
+  const catalog = await getCatalog(await getStore());
+  return <UploadBox businesses={catalog.businesses.filter((b) => !b.hidden).map(({ slug, name }) => ({ slug, name }))} />;
 }
