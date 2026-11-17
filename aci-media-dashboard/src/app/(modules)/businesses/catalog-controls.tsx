@@ -8,7 +8,7 @@ import type { ActionState } from "@/server/action-state";
 
 type Action = (prev: ActionState, fd: FormData) => Promise<ActionState>;
 
-const Hidden = ({ fields }: { fields: Record<string, string> }) =>
+const HiddenFields = ({ fields }: { fields: Record<string, string> }) =>
   Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
 
 /**
@@ -59,7 +59,7 @@ function DialogForm({
   return (
     <form action={formAction} aria-busy={pending} className="grid gap-5">
       <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-      <Hidden fields={fields} />
+      <HiddenFields fields={fields} />
       <div className="grid gap-4">{children}</div>
       {state.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
       <DialogFooter>
@@ -76,7 +76,7 @@ export function HideToggle({ action, fields, hidden, name }: { action: Action; f
   const verb = hidden ? "Show" : "Hide";
   return (
     <form action={formAction} aria-busy={pending} className="inline-flex flex-col items-end">
-      <Hidden fields={{ ...fields, hidden: String(!hidden) }} />
+      <HiddenFields fields={{ ...fields, hidden: String(!hidden) }} />
       <Button type="submit" size="sm" variant="ghost" disabled={pending} aria-label={`${verb} ${name}`}>{verb}</Button>
       {state.error && <p role="alert" className="max-w-48 text-right text-xs text-red-700">{state.error}</p>}
     </form>

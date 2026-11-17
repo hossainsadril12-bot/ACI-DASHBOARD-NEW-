@@ -307,13 +307,21 @@ export async function setBrandHidden(store: Store, id: number, hidden: boolean):
   if (rows.length === 0) throw noBrand();
 }
 
-/** Moves an ATL category to another business and sets which brands are "ours" in it. */
+/**
+ * Moves an ATL category to another business and sets which brands are "ours" in it.
+ * Moving onto a hidden business is refused; staying on its own hidden business is fine.
+ */
 export async function setAtlCategory(store: Store, slug: string, input: { businessSlug: string; ownBrands: string[] }): Promise<void> {
   const ownBrands = cleanOwnBrands(input.ownBrands);
   await store.transaction(async (tx) => {
-    const [atl] = await tx.select({ slug: atlCategory.slug }).from(atlCategory).where(eq(atlCategory.slug, slug)).limit(1);
+    const [atl] = await tx
+      .select({ slug: atlCategory.slug, businessSlug: atlCategory.businessSlug })
+      .from(atlCategory)
+      .where(eq(atlCategory.slug, slug))
+      .limit(1);
     if (!atl) throw noAtl();
-    await openBusiness(tx, input.businessSlug);
+    if (input.businessSlug !== atl.businessSlug) await openBusiness(tx, input.businessSlug);
+    else if (!(await getBusiness(tx, input.businessSlug))) throw noBusiness();
     await tx.update(atlCategory).set({ businessSlug: input.businessSlug, ownBrands }).where(eq(atlCategory.slug, slug));
   });
 }

@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getCatalog } from "@/store/catalog";
 import { getStore } from "@/store/client";
 import {
-  createBrandAction, renameBrandAction, setAtlCategoryAction, setAtlHiddenAction, setBrandHiddenAction,
+  createBrandAction, renameBrandAction, setAtlCategoryAction, setAtlHiddenAction, setBrandHiddenAction, setBusinessHiddenAction,
 } from "../actions";
 import { FormDialog, HideToggle } from "../catalog-controls";
 import { HiddenTag, NameField } from "../fields";
@@ -49,7 +49,8 @@ async function BusinessContent({ params }: { params: Params }) {
 
   const brands = catalog.brands.filter((b) => b.businessSlug === slug);
   const atl = catalog.atl.filter((a) => a.businessSlug === slug);
-  // Where an ATL category can move: the visible businesses (the store refuses hidden ones).
+  // Where an ATL category can move: the visible businesses, plus this one even when hidden
+  // (the store refuses a move onto a hidden business, but staying put is fine).
   const targets = catalog.businesses.filter((b) => !b.hidden || b.slug === slug);
   const others = biz.names.slice(1);
 
@@ -57,7 +58,14 @@ async function BusinessContent({ params }: { params: Params }) {
     <>
       <PageHeader title={biz.name} subtitle={others.length ? `Also matches: ${others.join(", ")}` : undefined}>
         {biz.hidden && <HiddenTag />}
-        {admin && (
+        {/* A hidden business takes no new brands (the store refuses them), so offer Show instead of Add brand. */}
+        {admin && biz.hidden && (
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-500">This business is hidden. Show it to add brands.</p>
+            <HideToggle action={setBusinessHiddenAction} fields={{ slug }} hidden name={biz.name} />
+          </div>
+        )}
+        {admin && !biz.hidden && (
           <FormDialog trigger="Add brand" primary title="Add brand" submit="Add" action={createBrandAction} fields={{ businessSlug: slug }}>
             <NameField label="Brand name" />
           </FormDialog>

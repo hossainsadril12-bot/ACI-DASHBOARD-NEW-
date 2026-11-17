@@ -9,9 +9,12 @@ import {
 import { ValidationError } from "@/server/errors";
 import { toActionError, type ActionState } from "@/server/action-state";
 
-/** Refreshes the list page and every business page under it. */
+/**
+ * Refreshes the list page and every business page under it.
+ * The pages sit in the (modules) route group, so the group must be in the path.
+ */
 const done = (): ActionState => {
-  revalidatePath("/businesses", "layout");
+  revalidatePath("/(modules)/businesses", "layout");
   return { error: null, ok: true };
 };
 

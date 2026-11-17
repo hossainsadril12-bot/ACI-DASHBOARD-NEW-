@@ -402,4 +402,14 @@ describe("hidden businesses refuse new names", () => {
     await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "hygiene", ownBrands: ["Savlon"] })).rejects.toThrow(hiddenMsg);
     expect((await getCatalog(store)).atlOf("savlon soap")?.businessSlug).toBe("toiletries");
   });
+
+  it("setAtlCategory still changes our brands when the category stays on its own hidden business", async () => {
+    const store = await hiddenStore();
+    await setBusinessHidden(store, "toiletries", true);
+    await setAtlCategory(store, "savlon-soap", { businessSlug: "toiletries", ownBrands: ["Savlon", "Savlon Beauty"] });
+    expect((await getCatalog(store)).atlOf("savlon soap")).toMatchObject({ businessSlug: "toiletries", ownBrands: ["Savlon", "Savlon Beauty"] });
+    await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "hygiene", ownBrands: ["Savlon"] })).rejects.toThrow(hiddenMsg);
+    await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "nope", ownBrands: ["Savlon"] })).rejects.toThrow("That business doesn't exist.");
+    expect((await getCatalog(store)).atlOf("savlon soap")?.businessSlug).toBe("toiletries");
+  });
 });

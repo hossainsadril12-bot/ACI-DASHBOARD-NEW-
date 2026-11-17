@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Store } from "@/store/client";
 import { createTestStore } from "@/store/test-store";
 
-const h = vi.hoisted(() => ({ store: undefined as unknown as Store, jar: new Map<string, string>(), revalidated: [] as string[] }));
+const h = vi.hoisted(() => ({
+  store: undefined as unknown as Store,
+  jar: new Map<string, string>(),
+  revalidated: [] as { path: string; type?: string }[],
+}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: (n: string) => (h.jar.has(n) ? { name: n, value: h.jar.get(n)! } : undefined) }) }));
-vi.mock("next/cache", () => ({ revalidatePath: (p: string) => { h.revalidated.push(p); } }));
+vi.mock("next/cache", () => ({ revalidatePath: (path: string, type?: string) => { h.revalidated.push({ path, type }); } }));
 vi.mock("@/store/client", async (o) => ({ ...(await o<typeof import("@/store/client")>()), getStore: async () => h.store }));
 
 const a = await import("./actions");
@@ -74,23 +78,47 @@ describe("Businesses & Brands actions, called by the admin", () => {
     await a.setBusinessHiddenAction(idle, form({ slug: "seeds", hidden: "false" }));
     seeds = (await snapshot()).businesses.find((b) => b.slug === "seeds");
     expect(seeds?.hidden).toBe(false);
-    expect(h.revalidated).toContain("/businesses");
   });
 
-  it("creates, renames and hides a brand", async () => {
+  it("refreshes the list and every business page under the (modules) route group, once per change", async () => {
+    await a.createBusinessAction(idle, form({ name: "Seeds" }));
+    await a.setBrandHiddenAction(idle, form({ id: String(brandId), hidden: "true" }));
+    expect(h.revalidated).toEqual([
+      { path: "/(modules)/businesses", type: "layout" },
+      { path: "/(modules)/businesses", type: "layout" },
+    ]);
+  });
+
+  it("does not refresh anything when the change is refused", async () => {
+    await a.createBusinessAction(idle, form({ name: "toiletries" }));
+    expect(h.revalidated).toEqual([]);
+  });
+
+  it("creates, renames, hides and shows a brand", async () => {
     expect(await a.createBrandAction(idle, form({ businessSlug: "hygiene", name: "Neem" }))).toEqual({ error: null, ok: true });
     const neem = (await snapshot()).brands.find((b) => b.name === "Neem")!;
     expect(neem.businessSlug).toBe("hygiene");
     expect(await a.renameBrandAction(idle, form({ id: String(neem.id), name: "Neem Soap" }))).toEqual({ error: null, ok: true });
     expect(await a.setBrandHiddenAction(idle, form({ id: String(neem.id), hidden: "true" }))).toEqual({ error: null, ok: true });
     expect((await snapshot()).brands.find((b) => b.id === neem.id)).toMatchObject({ name: "Neem Soap", hidden: true, names: ["Neem Soap", "Neem"] });
+    expect(await a.setBrandHiddenAction(idle, form({ id: String(neem.id), hidden: "false" }))).toEqual({ error: null, ok: true });
+    expect((await snapshot()).brands.find((b) => b.id === neem.id)?.hidden).toBe(false);
   });
 
-  it("moves an ATL category and sets our brands from one name per line, then hides it", async () => {
+  it("moves an ATL category and sets our brands from one name per line, then hides and shows it", async () => {
     const res = await a.setAtlCategoryAction(idle, form({ slug: "savlon-soap", businessSlug: "hygiene", ownBrands: "Savlon\r\n\n  Neem  \n" }));
     expect(res).toEqual({ error: null, ok: true });
     expect(await a.setAtlHiddenAction(idle, form({ slug: "savlon-soap", hidden: "true" }))).toEqual({ error: null, ok: true });
     expect((await snapshot()).atl[0]).toMatchObject({ slug: "savlon-soap", businessSlug: "hygiene", ownBrands: ["Savlon", "Neem"], hidden: true });
+    expect(await a.setAtlHiddenAction(idle, form({ slug: "savlon-soap", hidden: "false" }))).toEqual({ error: null, ok: true });
+    expect((await snapshot()).atl[0]?.hidden).toBe(false);
+  });
+
+  it("changes our brands on a category whose business is hidden, without moving it", async () => {
+    await a.setBusinessHiddenAction(idle, form({ slug: "toiletries", hidden: "true" }));
+    const res = await a.setAtlCategoryAction(idle, form({ slug: "savlon-soap", businessSlug: "toiletries", ownBrands: "Savlon\nSavlon Beauty" }));
+    expect(res).toEqual({ error: null, ok: true });
+    expect((await snapshot()).atl[0]).toMatchObject({ businessSlug: "toiletries", ownBrands: ["Savlon", "Savlon Beauty"] });
   });
 
   it("returns the store's message for a duplicate name and changes nothing", async () => {
