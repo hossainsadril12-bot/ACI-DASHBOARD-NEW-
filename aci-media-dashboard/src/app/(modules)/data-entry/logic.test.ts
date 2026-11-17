@@ -20,6 +20,9 @@ describe("rowStatus", () => {
   it("needs a type when detection was unsure", () => {
     expect(rowStatus(preview({ canPublish: false, type: null, blockReason: "Pick the file type." }))).toBe("needs-type");
   });
+  it("needs a business when the Digital file's business can't be worked out", () => {
+    expect(rowStatus(preview({ type: "digital", canPublish: false, blockReason: "Pick the business.", needsBusiness: true }))).toBe("needs-business");
+  });
   it("is blocked for any other reason", () => {
     expect(rowStatus(preview({ canPublish: false, blockReason: "Fix the read error first.", errors: ["Bad sheet"] }))).toBe("blocked");
   });
@@ -33,6 +36,11 @@ describe("greyReason", () => {
     const r = "This file could not be opened as an Excel workbook.";
     expect(greyReason(preview({ canPublish: false, blockReason: r, errors: [r] }))).toBeNull();
   });
+  it("shows 'Pick the business.' in grey, not in the red list", () => {
+    const p = preview({ type: "digital", canPublish: false, blockReason: "Pick the business.", needsBusiness: true });
+    expect(greyReason(p)).toBe("Pick the business.");
+    expect(p.errors).toEqual([]);
+  });
   it("is empty for a ready row", () => {
     expect(greyReason(preview())).toBeNull();
   });
@@ -42,6 +50,10 @@ describe("canPublishAll", () => {
   it("needs every row ready", () => {
     expect(canPublishAll([preview(), preview({ index: 1 })], 2)).toBe(true);
     expect(canPublishAll([preview(), preview({ index: 1, canPublish: false, blockReason: "Pick the file type." })], 2)).toBe(false);
+  });
+  it("stays false while any row needs a business", () => {
+    const stuck = preview({ index: 1, type: "digital", canPublish: false, blockReason: "Pick the business.", needsBusiness: true });
+    expect(canPublishAll([preview(), stuck], 2)).toBe(false);
   });
   it("needs at least one row and previews for every file", () => {
     expect(canPublishAll([], 0)).toBe(false);
@@ -68,10 +80,20 @@ describe("uploadForm", () => {
   it("sends every file in order and only the chosen types", () => {
     const a = new File(["a"], "a.xlsx");
     const b = new File(["b"], "b.xlsx");
-    const fd = uploadForm([a, b], ["", "calendar"]);
+    const fd = uploadForm([a, b], ["", "calendar"], ["", ""]);
     expect(fd.getAll("files").map((f) => (f as File).name)).toEqual(["a.xlsx", "b.xlsx"]);
     expect(fd.get("type-0")).toBeNull();
     expect(fd.get("type-1")).toBe("calendar");
+  });
+  it("sends business-<i> only where a business is picked", () => {
+    const a = new File(["a"], "a.xlsx");
+    const b = new File(["b"], "b.xlsx");
+    const c = new File(["c"], "c.xlsx");
+    const fd = uploadForm([a, b, c], ["digital", "", "digital"], ["", "Salt", "Hygiene"]);
+    expect(fd.get("business-0")).toBeNull();
+    expect(fd.get("business-1")).toBe("Salt");
+    expect(fd.get("business-2")).toBe("Hygiene");
+    expect([...fd.keys()].filter((k) => k.startsWith("business-"))).toEqual(["business-1", "business-2"]);
   });
 });
 

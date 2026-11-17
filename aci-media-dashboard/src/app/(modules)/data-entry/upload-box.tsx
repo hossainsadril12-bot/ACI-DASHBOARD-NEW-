@@ -7,6 +7,7 @@ import { FileSpreadsheet, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DIGITAL_BUSINESSES, isDigitalBusiness, type DigitalBusiness } from "@/lib/ingest/brands";
 import { FILE_TYPE_LABEL, FILE_TYPES, isFileType, type FileType } from "@/lib/ingest/file-types";
 import { cn } from "@/lib/utils";
 import type { FilePreview } from "@/server/ingest";
@@ -17,10 +18,12 @@ import {
 const CHIP: Record<RowStatus, { label: string; className: string }> = {
   ready: { label: "Ready", className: "bg-emerald-100 text-emerald-800" },
   "needs-type": { label: "Needs a type", className: "bg-amber-100 text-amber-900" },
+  "needs-business": { label: "Needs a business", className: "bg-amber-100 text-amber-900" },
   blocked: { label: "Can't publish", className: "bg-red-100 text-red-800" },
 };
 
 type Choice = FileType | "";
+type BusinessChoice = DigitalBusiness | "";
 
 /** Several of his usual Excel files at once: one preview line per file, a type picker when unsure, then Publish. */
 export function UploadBox() {
@@ -29,6 +32,7 @@ export function UploadBox() {
   const latest = useRef(0); // only the newest preview request may update the rows
   const [files, setFiles] = useState<File[]>([]);
   const [types, setTypes] = useState<Choice[]>([]);
+  const [businesses, setBusinesses] = useState<BusinessChoice[]>([]);
   const [previews, setPreviews] = useState<FilePreview[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -38,15 +42,16 @@ export function UploadBox() {
   const busy = checking || publishing;
 
   /** Previews every current file again, so batch rules (two files for one dataset) stay right. */
-  async function check(nextFiles: File[], nextTypes: Choice[], keepRows: boolean) {
+  async function check(nextFiles: File[], nextTypes: Choice[], nextBusinesses: BusinessChoice[], keepRows: boolean) {
     const id = ++latest.current;
     setFiles(nextFiles);
     setTypes(nextTypes);
+    setBusinesses(nextBusinesses);
     setError(null);
     if (!keepRows) setPreviews(null);
     if (nextFiles.length === 0) return setChecking(false);
     setChecking(true);
-    const res = await postUploads<{ previews: FilePreview[] }>("/api/uploads/preview", uploadForm(nextFiles, nextTypes));
+    const res = await postUploads<{ previews: FilePreview[] }>("/api/uploads/preview", uploadForm(nextFiles, nextTypes, nextBusinesses));
     if (id !== latest.current) return;
     setChecking(false);
     if (res.error) {
@@ -63,13 +68,15 @@ export function UploadBox() {
     setLeftOut(chosen.filter((f) => f.size === 0).map((f) => f.name));
     const usable = chosen.filter((f) => f.size > 0); // the server refuses empty files
     if (usable.length === 0) return;
-    void check([...files, ...usable], [...types, ...usable.map((): Choice => "")], false);
+    const none = usable.map(() => "" as const);
+    void check([...files, ...usable], [...types, ...none], [...businesses, ...none], false);
   }
 
   function clear() {
     latest.current++;
     setFiles([]);
     setTypes([]);
+    setBusinesses([]);
     setPreviews(null);
     setChecking(false);
     setError(null);
@@ -81,7 +88,7 @@ export function UploadBox() {
     setPublishing(true);
     setError(null);
     const res = await postUploads<{ published: { datasetKey: string; label: string; versionId: number }[] }>(
-      "/api/uploads/publish", uploadForm(files, types),
+      "/api/uploads/publish", uploadForm(files, types, businesses),
     );
     setPublishing(false);
     if (res.error) return setError(res.error);
@@ -126,12 +133,14 @@ export function UploadBox() {
                 const p = rowsReady && previews ? previews[i] : null;
                 if (checking && !p) return <SkeletonRow key={i} name={f.name} />;
                 return (
-                  <PreviewRow key={i} name={f.name} preview={p} choice={types[i] ?? ""} disabled={busy}
-                    onType={(t) => void check(files, types.map((x, j) => (j === i ? t : x)), true)}
+                  <PreviewRow key={i} name={f.name} preview={p} choice={types[i] ?? ""} business={businesses[i] ?? ""} disabled={busy}
+                    onType={(t) => void check(files, types.map((x, j) => (j === i ? t : x)),
+                      businesses.map((x, j) => (j === i && t !== "digital" ? "" : x)), true)}
+                    onBusiness={(b) => void check(files, types, businesses.map((x, j) => (j === i ? b : x)), true)}
                     onRemove={() => {
                       const keep = (_: unknown, j: number) => j !== i;
                       if (files.length === 1) clear();
-                      else void check(files.filter(keep), types.filter(keep), false);
+                      else void check(files.filter(keep), types.filter(keep), businesses.filter(keep), false);
                     }} />
                 );
               })}
@@ -166,12 +175,13 @@ function SkeletonRow({ name }: { name: string }) {
   );
 }
 
-function PreviewRow({ name, preview: p, choice, disabled, onType, onRemove }: {
-  name: string; preview: FilePreview | null; choice: Choice; disabled: boolean;
-  onType: (t: Choice) => void; onRemove: () => void;
+function PreviewRow({ name, preview: p, choice, business, disabled, onType, onBusiness, onRemove }: {
+  name: string; preview: FilePreview | null; choice: Choice; business: BusinessChoice; disabled: boolean;
+  onType: (t: Choice) => void; onBusiness: (b: BusinessChoice) => void; onRemove: () => void;
 }) {
   const status = p ? rowStatus(p) : null;
   const grey = p ? greyReason(p) : null;
+  const isDigital = (choice || p?.type) === "digital";
   return (
     <li data-testid="preview-row" className="space-y-2 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -191,6 +201,18 @@ function PreviewRow({ name, preview: p, choice, disabled, onType, onRemove }: {
           <option value="">Pick the file type…</option>
           {FILE_TYPES.map((t) => <option key={t} value={t}>{FILE_TYPE_LABEL[t]}</option>)}
         </select>
+        {isDigital && (
+          <select
+            aria-label={`Business for ${name}`}
+            value={business || p?.business || ""}
+            disabled={disabled}
+            onChange={(e) => onBusiness(isDigitalBusiness(e.target.value) ? e.target.value : "")}
+            className="h-9 w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm md:w-56"
+          >
+            <option value="">Pick the business…</option>
+            {DIGITAL_BUSINESSES.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        )}
         {p?.label && (
           <div className="min-w-0 text-sm">
             <p className="text-gray-900">{p.label}</p>
