@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { clientFile, hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
 
 // Phase 2 Part A user flow, every path. Serial: paths 6 and 7 build on each other.
@@ -7,7 +7,8 @@ test.describe.configure({ mode: "serial" });
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const SAVLON = "atl/1._2026_Dash_Board_-_Savlon_Soap_-_Oct26.xlsx";
 const SEPTEX = "atl/2._2026_Dash_Board_-_Septex_-_Oct26.xlsx";
-const SAVLON_LABEL = "ATL, Savlon Soap, Jul'25 to Oct'26";
+// The category is named from the file's own "Brand Name:" title now that lists start empty.
+const SAVLON_LABEL = "ATL, ACI Savlon Soap, Jul'25 to Oct'26";
 const fileOf = (rel: string) => ({ name: rel.split("/").pop()!, mimeType: XLSX_TYPE, buffer: clientFile(rel) });
 const sheetFile = (name: string, rows: unknown[][], sheetName = "S") => ({ name, mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: sheetName, rows }]) });
 
@@ -21,16 +22,30 @@ const historyRows = async (page: Page) => {
   await page.goto("/data-entry?tab=history");
   return page.getByTestId("history-table").locator("tbody tr");
 };
+const ready = (row: Locator) => row.getByText("Ready", { exact: true });
+
+/**
+ * Lists start empty, and the specs share one store: an ATL file whose category is not on the list yet asks for it.
+ * Add it with the suggested business and brands, so this spec works whether or not the category exists.
+ */
+const addCategoryIfAsked = async (row: Locator) => {
+  const ask = row.getByText(/^New category found: /);
+  await expect(ready(row).or(ask).first()).toBeVisible();
+  if (await ask.isVisible()) await row.getByRole("button", { name: "Add category" }).click();
+  await expect(ready(row)).toBeVisible();
+};
 
 test("1. a read error blocks publishing", async ({ page }) => {
   await openUpload(page);
-  const f = sheetFile("lux.xlsx", [["Brand Name: Lux Soap"], ["Brand Name"]], "GRP");
+  // The "Brand Name:" line is there, but no "Brand Name" / "Brand" header row: a read error, before any category question.
+  const f = sheetFile("noheader.xlsx", [["Brand Name: E2E No Header"], ["Category: Soap"], ["Brands", "Jul'26"], ["Lux", 1]], "GRP");
   await addFiles(page, [f]);
   const row = page.getByTestId("preview-row");
   await expect(row).toHaveCount(1);
-  await page.getByLabel("File type for lux.xlsx").selectOption({ label: "ATL (TV)" });
+  await page.getByLabel("File type for noheader.xlsx").selectOption({ label: "ATL (TV)" });
   await expect(row.getByText("Can't publish")).toBeVisible();
-  await expect(row.getByText(/doesn't match any ATL category/)).toBeVisible();
+  await expect(row.getByText(`The header row with "Brand Name" or "Brand" wasn't found.`)).toBeVisible();
+  await expect(row.getByText(/New category/)).toHaveCount(0);
   await expect(publishBtn(page)).toBeDisabled();
 });
 
@@ -46,13 +61,18 @@ test("2. a plain workbook is refused as not his file", async ({ page }) => {
 
 test("3. unsure file: the admin picks Activity Calendar and it becomes Ready with a warning", async ({ page }) => {
   await openUpload(page);
-  const rows = [["CB Media Activity Nov'26"], ["Business", "Brand", "Media"], [null, null, "TV", "Digital", "Print", "OOH", "Total"], ["Toiletries", "Savlon Soap", 1, 0.5, 0, 0, 1.5]];
+  // A business name only this test uses, so it is new whatever other specs added.
+  const rows = [["CB Media Activity Nov'26"], ["Business", "Brand", "Media"], [null, null, "TV", "Digital", "Print", "OOH", "Total"], ["E2E Care 2a", "Savlon Soap", 1, 0.5, 0, 0, 1.5]];
   await addFiles(page, [sheetFile("cal.xlsx", rows, "Nov'26")]);
   const row = page.getByTestId("preview-row");
   await expect(row.getByText("Needs a type")).toBeVisible();
   await expect(publishBtn(page)).toBeDisabled();
   await page.getByLabel("File type for cal.xlsx").selectOption({ label: "Activity Calendar" });
-  await expect(row.getByText("Ready")).toBeVisible();
+  // The list starts empty: the file's business is new, and must be decided first.
+  await expect(row.getByText("New business", { exact: true })).toBeVisible();
+  await expect(publishBtn(page)).toBeDisabled();
+  await page.getByLabel("Decision for E2E Care 2a").selectOption({ label: "Add as new" });
+  await expect(ready(row)).toBeVisible();
   await expect(row.getByText(`Sheet "Nov'26" has no Grand Total row; read to the last row.`)).toBeVisible();
   await expect(publishBtn(page)).toBeEnabled();
 });
@@ -62,8 +82,8 @@ test("4. real Savlon Soap file previews with its label (16 months from Jul'25)",
   await openUpload(page);
   await addFiles(page, [fileOf(SAVLON)]);
   const row = page.getByTestId("preview-row");
+  await addCategoryIfAsked(row);
   await expect(row.getByText(SAVLON_LABEL)).toBeVisible();
-  await expect(row.getByText("Ready")).toBeVisible();
   await expect(publishBtn(page)).toHaveText("Publish 1 file");
 });
 
@@ -83,7 +103,8 @@ test("6. publish several files: toast and two In use rows", async ({ page }) => 
   await openUpload(page);
   await addFiles(page, [fileOf(SAVLON), fileOf(SEPTEX)]);
   await expect(page.getByTestId("preview-row")).toHaveCount(2);
-  await expect(page.getByTestId("preview-row").getByText("Ready")).toHaveCount(2);
+  for (const f of [SAVLON, SEPTEX]) await addCategoryIfAsked(page.getByTestId("preview-row").filter({ hasText: fileOf(f).name }));
+  await expect(ready(page.getByTestId("preview-row"))).toHaveCount(2);
   await publishBtn(page).click();
   await expect(page.getByText(/^Published 2 files/)).toBeVisible();
   const rows = await historyRows(page);
@@ -136,9 +157,11 @@ test("8. admin can download the original file", async ({ page }) => {
 const seedHistory = async (browser: Browser) => {
   const ctx = await browser.newContext({ storageState: "e2e/.auth/admin.json", baseURL: "http://localhost:3100" });
   const rows = [["CB Media Activity Nov'26"], ["Business", "Brand", "Media"], [null, null, "TV", "Digital", "Print", "OOH", "Total"], ["Toiletries", "Savlon Soap", 1, 0.5, 0, 0, 1.5], ["Grand Total", null, 1, 0.5, 0, 0, 1.5]];
+  // Lists start empty: decide the file's business as new (ignored when it is already on the list).
+  const decisions = JSON.stringify({ businesses: [{ name: "Toiletries", action: "new" }], brands: [] });
   const res = await ctx.request.post("/api/uploads/publish", {
     headers: { Origin: "http://localhost:3100" },
-    multipart: { files: { name: "seed-cal.xlsx", mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: "Nov'26", rows }]) } },
+    multipart: { files: { name: "seed-cal.xlsx", mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: "Nov'26", rows }]) }, "decisions-0": decisions },
   });
   expect(res.status()).toBe(200);
   await ctx.close();
@@ -188,6 +211,7 @@ test.describe("phone width (375 px)", () => {
     await openUpload(page);
     expect(await contentFits(page, "upload-drop")).toBe(true);
     await addFiles(page, [fileOf(SAVLON)]);
+    await addCategoryIfAsked(page.getByTestId("preview-row"));
     await expect(page.getByTestId("preview-row").getByText(SAVLON_LABEL)).toBeVisible();
     await expect(publishBtn(page)).toBeVisible();
     expect(await contentFits(page, "preview-row")).toBe(true);
