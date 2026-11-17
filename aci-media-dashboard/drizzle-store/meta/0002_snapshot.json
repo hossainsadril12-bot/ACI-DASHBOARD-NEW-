@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "197ebf57-2367-4e80-a5c7-8609df2fa6e7",
+  "id": "9bc3bb33-0d3c-41df-9b2b-0a4154c9d16f",
   "prevId": "b0de066f-4d77-40e2-9d8c-adb734ac1bf4",
   "tables": {
     "admin_session": {
@@ -66,8 +66,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "own_brand": {
-          "name": "own_brand",
+        "own_brands": {
+          "name": "own_brands",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -124,9 +124,9 @@
           "name": "atl_category_name_length",
           "value": "length(\"atl_category\".\"name\") BETWEEN 1 AND 120"
         },
-        "atl_category_own_brand_length": {
-          "name": "atl_category_own_brand_length",
-          "value": "length(\"atl_category\".\"own_brand\") BETWEEN 1 AND 120"
+        "atl_category_own_brands_array": {
+          "name": "atl_category_own_brands_array",
+          "value": "json_type(\"atl_category\".\"own_brands\") = 'array'"
         }
       }
     },

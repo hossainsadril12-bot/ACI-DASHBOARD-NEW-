@@ -99,14 +99,15 @@ export const atlCategory = sqliteTable(
     name: text("name").notNull(),
     normName: text("norm_name").notNull().unique(),
     businessSlug: text("business_slug").notNull().references(() => business.slug),
-    ownBrand: text("own_brand").notNull(),
+    /** "Our brand" rows in the file: JSON array of names. */
+    ownBrands: text("own_brands", { mode: "json" }).$type<string[]>().notNull(),
     hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
   },
   (t) => [
     check("atl_category_slug_length", sql`length(${t.slug}) BETWEEN 1 AND 60`),
     check("atl_category_name_length", sql`length(${t.name}) BETWEEN 1 AND 120`),
-    check("atl_category_own_brand_length", sql`length(${t.ownBrand}) BETWEEN 1 AND 120`),
+    check("atl_category_own_brands_array", sql`json_type(${t.ownBrands}) = 'array'`),
   ],
 );
 

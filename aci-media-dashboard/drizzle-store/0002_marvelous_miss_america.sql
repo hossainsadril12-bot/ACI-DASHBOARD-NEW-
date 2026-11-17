@@ -3,13 +3,13 @@ CREATE TABLE `atl_category` (
 	`name` text NOT NULL,
 	`norm_name` text NOT NULL,
 	`business_slug` text NOT NULL,
-	`own_brand` text NOT NULL,
+	`own_brands` text NOT NULL,
 	`hidden` integer DEFAULT false NOT NULL,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`business_slug`) REFERENCES `business`(`slug`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "atl_category_slug_length" CHECK(length("atl_category"."slug") BETWEEN 1 AND 60),
 	CONSTRAINT "atl_category_name_length" CHECK(length("atl_category"."name") BETWEEN 1 AND 120),
-	CONSTRAINT "atl_category_own_brand_length" CHECK(length("atl_category"."own_brand") BETWEEN 1 AND 120)
+	CONSTRAINT "atl_category_own_brands_array" CHECK(json_type("atl_category"."own_brands") = 'array')
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `atl_category_norm_name_unique` ON `atl_category` (`norm_name`);--> statement-breakpoint

@@ -6,7 +6,7 @@ import type { Store, StoreTx } from "./client";
 
 export type CatalogBusiness = { slug: string; name: string; hidden: boolean; names: string[] };
 export type CatalogBrand = { id: number; name: string; businessSlug: string; hidden: boolean; names: string[] };
-export type CatalogAtl = { slug: string; name: string; businessSlug: string; ownBrand: string; hidden: boolean };
+export type CatalogAtl = { slug: string; name: string; businessSlug: string; ownBrands: string[]; hidden: boolean };
 export type Catalog = {
   businesses: CatalogBusiness[];
   brands: CatalogBrand[];
@@ -23,12 +23,13 @@ export type CatalogChange =
   | { op: "addBusiness"; name: string }
   | { op: "businessSameAs"; name: string; slug: string }
   | { op: "addBrand"; name: string; businessSlug: string; alsoMatches?: string[] }
-  | { op: "addAtl"; name: string; businessSlug: string; ownBrand: string };
+  | { op: "addAtl"; name: string; businessSlug: string; ownBrands: string[] };
 
 type MatchKind = "business" | "brand";
 
 const MAX_NAME = 120;
 const MAX_SLUG = 60;
+const MAX_OWN_BRANDS = 50;
 
 export { normName };
 
@@ -37,6 +38,19 @@ export function cleanName(s: string): string {
   const name = s.trim().replace(/\s+/g, " ");
   if (!name || name.length > MAX_NAME) throw new ValidationError("Names must be 1 to 120 characters.");
   return name;
+}
+
+/** An ATL category's "our brands": 1 to 50 names, each cleaned, duplicates (by normName) dropped, order kept. */
+function cleanOwnBrands(list: string[]): string[] {
+  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_OWN_BRANDS) throw new ValidationError("Pick at least one of our brands.");
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of list) {
+    const name = cleanName(raw);
+    const norm = normName(name);
+    if (!seen.has(norm)) { seen.add(norm); out.push(name); }
+  }
+  return out;
 }
 
 /**
@@ -100,10 +114,10 @@ async function insertBusiness(db: StoreTx, name: string): Promise<string> {
   return slug;
 }
 
-async function insertAtl(db: StoreTx, name: string, businessSlug: string, ownBrand: string): Promise<string> {
+async function insertAtl(db: StoreTx, name: string, businessSlug: string, ownBrands: string[]): Promise<string> {
   const taken = new Set((await db.select({ slug: atlCategory.slug }).from(atlCategory)).map((r) => r.slug));
   const slug = makeSlug(name, (s) => taken.has(s), "atl");
-  await db.insert(atlCategory).values({ slug, name, normName: normName(name), businessSlug, ownBrand });
+  await db.insert(atlCategory).values({ slug, name, normName: normName(name), businessSlug, ownBrands });
   return slug;
 }
 
@@ -154,10 +168,10 @@ export async function applyCatalogChanges(tx: StoreTx, changes: CatalogChange[])
       }
       case "addAtl": {
         await openBusiness(tx, change.businessSlug);
-        const ownBrand = cleanName(change.ownBrand);
+        const ownBrands = cleanOwnBrands(change.ownBrands);
         const norm = normName(name);
         const [existing] = await tx.select({ slug: atlCategory.slug }).from(atlCategory).where(eq(atlCategory.normName, norm)).limit(1);
-        if (!existing) result.atlSlugs[norm] = await insertAtl(tx, name, change.businessSlug, ownBrand);
+        if (!existing) result.atlSlugs[norm] = await insertAtl(tx, name, change.businessSlug, ownBrands);
         break;
       }
     }
@@ -216,7 +230,7 @@ export async function getCatalog(store: Store | StoreTx): Promise<Catalog> {
   const atlByName = new Map<string, CatalogAtl>();
   const atl: CatalogAtl[] = atlRows
     .map((a) => {
-      const item: CatalogAtl = { slug: a.slug, name: a.name, businessSlug: a.businessSlug, ownBrand: a.ownBrand, hidden: a.hidden };
+      const item: CatalogAtl = { slug: a.slug, name: a.name, businessSlug: a.businessSlug, ownBrands: a.ownBrands, hidden: a.hidden };
       atlByName.set(a.normName, item);
       return item;
     })
@@ -287,14 +301,14 @@ export async function setBrandHidden(store: Store, id: number, hidden: boolean):
   if (rows.length === 0) throw noBrand();
 }
 
-/** Moves an ATL category to another business and sets which brand is "ours" in it. */
-export async function setAtlCategory(store: Store, slug: string, input: { businessSlug: string; ownBrand: string }): Promise<void> {
-  const ownBrand = cleanName(input.ownBrand);
+/** Moves an ATL category to another business and sets which brands are "ours" in it. */
+export async function setAtlCategory(store: Store, slug: string, input: { businessSlug: string; ownBrands: string[] }): Promise<void> {
+  const ownBrands = cleanOwnBrands(input.ownBrands);
   await store.transaction(async (tx) => {
     const [atl] = await tx.select({ slug: atlCategory.slug }).from(atlCategory).where(eq(atlCategory.slug, slug)).limit(1);
     if (!atl) throw noAtl();
     await openBusiness(tx, input.businessSlug);
-    await tx.update(atlCategory).set({ businessSlug: input.businessSlug, ownBrand }).where(eq(atlCategory.slug, slug));
+    await tx.update(atlCategory).set({ businessSlug: input.businessSlug, ownBrands }).where(eq(atlCategory.slug, slug));
   });
 }
 

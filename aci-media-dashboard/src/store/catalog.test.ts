@@ -16,6 +16,7 @@ import {
   setAtlHidden,
   setBrandHidden,
   setBusinessHidden,
+  type CatalogChange,
 } from "./catalog";
 
 describe("normName and cleanName", () => {
@@ -121,14 +122,14 @@ describe("catalog", () => {
         { op: "addBusiness", name: "SCJ" },
         { op: "businessSameAs", name: "ACI Salt", slug: "salt" },
         { op: "addBrand", name: "Savlon Handwash", businessSlug: "toiletries", alsoMatches: ["Savlon HW"] },
-        { op: "addAtl", name: "Savlon Soap", businessSlug: "toiletries", ownBrand: "Savlon Soap" },
+        { op: "addAtl", name: "Savlon Soap", businessSlug: "toiletries", ownBrands: ["Savlon Soap"] },
       ]),
     );
     const c = await getCatalog(store);
     expect(c.businessOf("scj")).toEqual({ slug: "scj", name: "SCJ", hidden: false, names: ["SCJ"] });
     expect(c.businessOf("aci salt")).toMatchObject({ slug: "salt", names: ["Salt", "ACI Salt"] });
     expect(c.brandOf("savlon hw")).toMatchObject({ name: "Savlon Handwash", businessSlug: "toiletries", names: ["Savlon Handwash", "Savlon HW"] });
-    expect(c.atlOf("SAVLON SOAP")).toEqual({ slug: "savlon-soap", name: "Savlon Soap", businessSlug: "toiletries", ownBrand: "Savlon Soap", hidden: false });
+    expect(c.atlOf("SAVLON SOAP")).toEqual({ slug: "savlon-soap", name: "Savlon Soap", businessSlug: "toiletries", ownBrands: ["Savlon Soap"], hidden: false });
   });
 
   it("rolls back the whole batch when one change fails", async () => {
@@ -149,35 +150,65 @@ describe("catalog", () => {
   it("skips a change whose name already matches", async () => {
     const store = await createTestStore();
     await createBusiness(store, "Toiletries");
-    const batch = [
+    const batch: CatalogChange[] = [
       { op: "addBusiness", name: "SCJ" },
       { op: "addBusiness", name: "scj " },
       { op: "businessSameAs", name: "SCJ", slug: "toiletries" },
       { op: "addBrand", name: "Raid", businessSlug: "scj" },
       { op: "addBrand", name: "RAID", businessSlug: "toiletries" },
-      { op: "addAtl", name: "Raid Spray", businessSlug: "scj", ownBrand: "Raid" },
-      { op: "addAtl", name: "raid spray", businessSlug: "toiletries", ownBrand: "X" },
-    ] as const;
-    await store.transaction((tx) => applyCatalogChanges(tx, [...batch]));
+      { op: "addAtl", name: "Raid Spray", businessSlug: "scj", ownBrands: ["Raid"] },
+      { op: "addAtl", name: "raid spray", businessSlug: "toiletries", ownBrands: ["X"] },
+    ];
+    await store.transaction((tx) => applyCatalogChanges(tx, batch));
     const c = await getCatalog(store);
     expect(c.businesses.map((b) => b.slug)).toEqual(["scj", "toiletries"]);
     expect(c.businessOf("scj")?.slug).toBe("scj");
     expect(c.brands).toHaveLength(1);
     expect(c.brandOf("raid")?.businessSlug).toBe("scj");
-    expect(c.atl).toEqual([{ slug: "raid-spray", name: "Raid Spray", businessSlug: "scj", ownBrand: "Raid", hidden: false }]);
+    expect(c.atl).toEqual([{ slug: "raid-spray", name: "Raid Spray", businessSlug: "scj", ownBrands: ["Raid"], hidden: false }]);
   });
 
   it("changes and hides an ATL category", async () => {
     const store = await createTestStore();
     await createBusiness(store, "Toiletries");
     await createBusiness(store, "Hygiene");
-    await store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Savlon Soap", businessSlug: "toiletries", ownBrand: "Savlon" }]));
-    await setAtlCategory(store, "savlon-soap", { businessSlug: "hygiene", ownBrand: " Savlon  Soap " });
+    await store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Savlon Soap", businessSlug: "toiletries", ownBrands: ["Savlon"] }]));
+    await setAtlCategory(store, "savlon-soap", { businessSlug: "hygiene", ownBrands: [" Savlon  Soap ", "Savlon Beauty"] });
     await setAtlHidden(store, "savlon-soap", true);
-    expect((await getCatalog(store)).atlOf("savlon soap")).toEqual({ slug: "savlon-soap", name: "Savlon Soap", businessSlug: "hygiene", ownBrand: "Savlon Soap", hidden: true });
-    await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "nope", ownBrand: "X" })).rejects.toThrow("That business doesn't exist.");
-    await expect(setAtlCategory(store, "nope", { businessSlug: "hygiene", ownBrand: "X" })).rejects.toThrow("That ATL category doesn't exist.");
+    expect((await getCatalog(store)).atlOf("savlon soap")).toEqual({ slug: "savlon-soap", name: "Savlon Soap", businessSlug: "hygiene", ownBrands: ["Savlon Soap", "Savlon Beauty"], hidden: true });
+    await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "nope", ownBrands: ["X"] })).rejects.toThrow("That business doesn't exist.");
+    await expect(setAtlCategory(store, "nope", { businessSlug: "hygiene", ownBrands: ["X"] })).rejects.toThrow("That ATL category doesn't exist.");
     await expect(setAtlHidden(store, "nope", true)).rejects.toThrow("That ATL category doesn't exist.");
+  });
+
+  it("our brands: 1 to 50, each cleaned, duplicates dropped in order", async () => {
+    const store = await createTestStore();
+    await createBusiness(store, "Others");
+    const add = (ownBrands: string[]) =>
+      store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "ACI Pure Spices", businessSlug: "others", ownBrands }]));
+    const pick = "Pick at least one of our brands.";
+    await expect(add([])).rejects.toThrow(new ValidationError(pick));
+    await expect(add(Array.from({ length: 51 }, (_, i) => `Brand ${i}`))).rejects.toThrow(new ValidationError(pick));
+    await expect(add(["ACI Pure Masala", "   "])).rejects.toThrow("Names must be 1 to 120 characters.");
+    await expect(add(["x".repeat(121)])).rejects.toThrow(ValidationError);
+    expect((await getCatalog(store)).atl).toEqual([]);
+    await add(["ACI Pure Masala", " aci  pure MASALA ", "ACI Pure Halim Mix"]);
+    expect((await getCatalog(store)).atlOf("aci pure spices")?.ownBrands).toEqual(["ACI Pure Masala", "ACI Pure Halim Mix"]);
+    await expect(setAtlCategory(store, "aci-pure-spices", { businessSlug: "others", ownBrands: [] })).rejects.toThrow(new ValidationError(pick));
+    await setAtlCategory(store, "aci-pure-spices", { businessSlug: "others", ownBrands: Array.from({ length: 50 }, (_, i) => `Brand ${i}`) });
+    expect((await getCatalog(store)).atlOf("aci pure spices")?.ownBrands).toHaveLength(50);
+  });
+
+  it("the database refuses our brands that are not a JSON array", async () => {
+    const store = await createTestStore();
+    await createBusiness(store, "Others");
+    const insert = (slug: string, own: string) =>
+      store.run(sql`INSERT INTO atl_category (slug, name, norm_name, business_slug, own_brands, created_at) VALUES (${slug}, ${slug}, ${slug}, 'others', ${own}, 0)`);
+    await expect(insert("a", '"ACI Pure Masala"')).rejects.toThrow();
+    await expect(insert("b", '{"x":1}')).rejects.toThrow();
+    await expect(insert("c", "not json")).rejects.toThrow();
+    await insert("ok", '["ACI Pure Masala"]'); // positive control
+    expect((await getCatalog(store)).atlOf("ok")?.ownBrands).toEqual(["ACI Pure Masala"]);
   });
 
   it("the database refuses a name match that points at both or neither", async () => {
@@ -225,7 +256,7 @@ describe("makeSlug", () => {
   it("predicts exactly the slugs applyCatalogChanges stores", async () => {
     const store = await createTestStore();
     await createBusiness(store, "Hygiene");
-    await store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Savlon Soap", businessSlug: "hygiene", ownBrand: "Savlon" }]));
+    await store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Savlon Soap", businessSlug: "hygiene", ownBrands: ["Savlon"] }]));
     const before = await getCatalog(store);
     const bizTaken = new Set(before.businesses.map((b) => b.slug));
     const atlTaken = new Set(before.atl.map((a) => a.slug));
@@ -251,7 +282,7 @@ describe("makeSlug", () => {
         { op: "addBusiness", name: "Food & Beverage" },
         { op: "addBusiness", name: "Food Beverage" },
         { op: "addBusiness", name: "Hygiene!" },
-        { op: "addAtl", name: "Savlon Soap!", businessSlug: "hygiene", ownBrand: "Savlon" },
+        { op: "addAtl", name: "Savlon Soap!", businessSlug: "hygiene", ownBrands: ["Savlon"] },
       ]),
     );
     expect(result).toEqual(expected);
@@ -323,7 +354,7 @@ describe("hidden businesses refuse new names", () => {
     const store = await createTestStore();
     await createBusiness(store, "Hygiene");
     await createBusiness(store, "Toiletries");
-    await store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Savlon Soap", businessSlug: "toiletries", ownBrand: "Savlon" }]));
+    await store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Savlon Soap", businessSlug: "toiletries", ownBrands: ["Savlon"] }]));
     await setBusinessHidden(store, "hygiene", true);
     return store;
   };
@@ -344,14 +375,14 @@ describe("hidden businesses refuse new names", () => {
   it("addAtl", async () => {
     const store = await hiddenStore();
     await expect(
-      store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Mortein", businessSlug: "hygiene", ownBrand: "Mortein" }])),
+      store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "Mortein", businessSlug: "hygiene", ownBrands: ["Mortein"] }])),
     ).rejects.toThrow(hiddenMsg);
     expect((await getCatalog(store)).atlOf("mortein")).toBeNull();
   });
 
   it("setAtlCategory", async () => {
     const store = await hiddenStore();
-    await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "hygiene", ownBrand: "Savlon" })).rejects.toThrow(hiddenMsg);
+    await expect(setAtlCategory(store, "savlon-soap", { businessSlug: "hygiene", ownBrands: ["Savlon"] })).rejects.toThrow(hiddenMsg);
     expect((await getCatalog(store)).atlOf("savlon soap")?.businessSlug).toBe("toiletries");
   });
 });
