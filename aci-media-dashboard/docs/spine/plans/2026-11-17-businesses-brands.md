@@ -212,7 +212,7 @@ Digital behaviour:
 export const DecisionsSchema = z.object({
   business: z.string().max(120).nullish(),                                   // file business pick (Digital, ATL): an existing slug, or "new:<name>"
   businesses: z.array(z.object({ name: z.string().max(120), action: z.enum(["new", "same"]), slug: z.string().max(60).nullish() })).max(200).default([]),
-  atl: z.object({ business: z.string().max(120), ownBrand: z.string().max(120) }).nullish(),   // business: slug or "new:<name>"
+  atl: z.object({ business: z.string().max(120), ownBrands: z.array(z.string().max(120)).min(1).max(50) }).nullish(),   // business: slug or "new:<name>"
   brands: z.array(z.object({ name: z.string().max(120), fullName: z.string().max(120), business: z.string().max(120) })).max(500).default([]), // business: slug or "new:<name>"
 });
 export type Decisions = z.infer<typeof DecisionsSchema>;
@@ -224,7 +224,7 @@ export type FilePreview = {
   businessSource: BusinessSource | null;
   needsBusiness: boolean;                                             // Digital / ATL with no business yet
   newBusinesses: NewName[];                                           // undecided business names from the file
-  newCategory: { title: string; suggestion: { business: string | null; ownBrand: string | null }; brands: string[] } | null; // ATL, undecided; brands = rows to pick "Our brand" from
+  newCategory: { title: string; suggestion: { business: string | null; ownBrands: string[] }; brands: string[] } | null; // ATL, undecided; brands = rows to tick "Our brands" from
   newBrands: { name: string; business: string | null; suggestion: string | null }[]; // not on the list; never blocks
   pendingChanges: CatalogChange[];                                    // what Publish will add for this file, after valid decisions
 };
@@ -235,7 +235,7 @@ export async function publishVersionsTx(tx: StoreTx, inputs: PublishInput[]): Pr
 
 Service rules (in `prepareAll`, which now loads `getCatalog(store)` once per batch):
 - **File business (Digital, ATL):** decided in this order: a valid `decisions.business` (an existing, not hidden slug, or `new:<name>` with a valid name), else every brand in the file matching one business in the catalog (`source: "brands"`), else exactly one catalog business name found in the file name (`source: "file name"`, warning "Business taken from the file name."). None → `needsBusiness: true`, block "Pick the business." (grey, no error). For `new:<name>`, `pendingChanges` gets `addBusiness`, and the reader gets `{ slug: makeSlug(name, taken), name }`.
-- **ATL category:** `readAtlTitle`; `catalog.atlOf(title)` found → pass it. Not found: with valid `decisions.atl` (business resolvable as above; ownBrand one of the file's brand rows by `normName`) → `pendingChanges` gets `addAtl` (+ `addBusiness` when new) and the reader gets the category; else `newCategory` is set (suggestion from `suggestAtlCategory`; ownBrand suggestion = the brand row whose `normName` equals the suggested name or the title), block "Add the new ATL category." (grey).
+- **ATL category:** `readAtlTitle`; `catalog.atlOf(title)` found → pass it. Not found: with valid `decisions.atl` (business resolvable as above; `ownBrands` = the entries that are among the file's brand rows by `normName`, at least one left) → `pendingChanges` gets `addAtl` (+ `addBusiness` when new) and the reader gets the category; else `newCategory` is set (suggestion from `suggestAtlCategory`; `ownBrands` suggestion = the brand rows his own-brand rule in `ATL_CATEGORIES` matches for that title, else the row whose `normName` equals the title), block "Add the new ATL category." (grey).
 - **Business names (files with a business column):** every name from `namesIn` not found by `catalog.businessOf`:
   - a valid decision `{ action: "new" }` → `addBusiness`;
   - `{ action: "same", slug }` where `slug` is an existing not-hidden business, or the slug a name decided "new" in this same file will get → `businessSameAs` (ordered after that `addBusiness`);
@@ -257,7 +257,7 @@ Service rules (in `prepareAll`, which now loads `getCatalog(store)` once per bat
   - publish of that file → catalog has Hygiene, history has the version; a forced failure in `publishVersionsTx` (spy throwing) leaves the catalog empty (one transaction);
   - real Billing file, empty catalog → `newBusinesses` has the 13 names, blocked "Decide the new businesses."; decisions "new" for all → Ready; decision `{ name: "ACI Salt", action: "same", slug: "salt" }` when Salt exists → `businessSameAs`;
   - a decision for a name not in the file is ignored; `same` to a hidden or unknown slug is ignored;
-  - ATL file "Brand Name: Lux Soap" with empty catalog → `newCategory.title === "Lux Soap"`, blocked "Add the new ATL category."; with `decisions.atl: { business: "new:Toiletries", ownBrand: "Lux" }` → Ready, key `atl:lux-soap`, own `["Lux"]`; `ownBrand` not among the rows → ignored;
+  - ATL file "Brand Name: Lux Soap" with empty catalog → `newCategory.title === "Lux Soap"`, blocked "Add the new ATL category."; with `decisions.atl: { business: "new:Toiletries", ownBrands: ["Lux"] }` → Ready, key `atl:lux-soap`, own `["Lux"]`; `ownBrands` with no entry among the rows → ignored;
   - brands: Billing with businesses decided but no brand decisions → Ready with warning "N brands not on your list."; one brand decision with fullName → `addBrand` with `alsoMatches`;
   - an existing catalog business is matched case-insensitively and adds no change.
   - `upload-routes.test.ts`: `decisions-0` JSON reaches the service; malformed JSON is ignored; the admin/Origin/size order is unchanged.
@@ -281,7 +281,7 @@ Service rules (in `prepareAll`, which now loads `getCatalog(store)` once per bat
 UI (exact strings):
 - **Business select** on Digital and ATL rows: aria-label `Business for <file name>`, empty option `Pick the business…`, the visible businesses, then `New business…` which shows a text box (aria-label `New business name for <file name>`) and sends `new:<name>`.
 - **New businesses** block on a row with `newBusinesses`: chip `New business` (amber, `bg-amber-100 text-amber-900`); one line per name: the name, a select (aria-label `Decision for <name>`) with options `Add as new` and `Same as <business>` for each visible business and each business being added in this row; button `Add all as new` when 2 or more names.
-- **New ATL category:** chip `New category` (amber); text `New category found: <title>`; `Business` select (as above, pre-filled from the suggestion when it names a visible business, else `New business…` pre-filled with the suggested name); `Our brand` select of `newCategory.brands`, pre-filled from the suggestion; button `Add category`.
+- **New ATL category:** chip `New category` (amber); text `New category found: <title>`; `Business` select (as above, pre-filled from the suggestion when it names a visible business, else `New business…` pre-filled with the suggested name); `Our brands`: one tick box per entry in `newCategory.brands` (aria-label `Our brand <name>`), pre-ticked from the suggestion; button `Add category` (disabled until a business and at least one brand are set).
 - **New brands:** the warning line comes from the server. A button `Review and add` opens a panel: one line per brand: tick box (aria-label `Add <name>`), full name text box pre-filled with the suggestion or the name (aria-label `Full name for <name>`), business (read-only when known from the row or file; a select when null, e.g. OOH). Buttons `Tick all` and `Done`.
 - Any decision change re-runs the preview for all files, like a type change.
 - `rowStatus` adds `"new-business"` and `"new-category"` (amber chips above); they block `canPublishAll`.
@@ -309,7 +309,7 @@ UI (exact strings):
 - List page title `Businesses & Brands`, subtitle `The businesses and brands your uploads are matched against.`
 - Table columns: `Business`, `Brands`, `ATL categories`, and a status tag `Hidden`. Admin: button `Add business` (dialog: `Business name`, `Add`), per row `Rename`, `Hide` / `Show`.
 - Empty state: `No businesses yet. Add one here, or upload a file and add the businesses it contains.`
-- Business page title = business name, with `Also matches: <names>` when it has more than its own name. Brand table: `Brand`, `Also matches`, status `Hidden`; admin: `Add brand` (dialog `Brand name`), `Rename`, `Hide` / `Show`. ATL table: `Category`, `Our brand`; admin `Change` (dialog `Business`, `Our brand` text), `Hide` / `Show`.
+- Business page title = business name, with `Also matches: <names>` when it has more than its own name. Brand table: `Brand`, `Also matches`, status `Hidden`; admin: `Add brand` (dialog `Brand name`), `Rename`, `Hide` / `Show`. ATL table: `Category`, `Our brands` (comma list); admin `Change` (dialog `Business`, `Our brands` as one name per line), `Hide` / `Show`.
 - Viewers see everything with no buttons and no dialogs.
 - Errors from the store show as the form error (the store's plain messages).
 
@@ -331,7 +331,7 @@ UI (exact strings):
 **Paths (phase2c):**
 1. Empty list: `/businesses` shows the empty state.
 2. Real Billing file: row shows `New business` with 13 names; `Add all as new`; then set `ACI Salt` to `Same as Salt` (after Salt exists, i.e. re-preview) ; row Ready with the brands warning; Publish; `/businesses` lists the businesses, and Salt shows `Also matches: ACI Salt`.
-3. Lux Soap ATL synthetic file: `New category found: Lux Soap`; pick business `Toiletries`, Our brand `Lux`; `Add category`; Ready; Publish; Toiletries page lists category Lux Soap.
+3. Lux Soap ATL synthetic file: `New category found: Lux Soap`; pick business `Toiletries`, tick Our brand `Lux`; `Add category`; Ready; Publish; Toiletries page lists category Lux Soap.
 4. Review and add: an Activity Calendar synthetic file (built like phase2a path 3, with a Grand Total row) whose row is business "Toiletries", brand "Savlon HW". (Not Digital: his Digital reader turns every Savlon name into "Savlon Soap", so a short Savlon name never reaches the preview.) Decide Toiletries as new; `Review and add` suggests `Savlon Handwash`; tick and Publish; the brand appears with `Also matches: Savlon HW`; uploading the same file again shows no brand warning and no new business.
 5. Cancel changes nothing: decide a new business, then Clear; `/businesses` unchanged.
 6. Viewer sees `/businesses` with no buttons.

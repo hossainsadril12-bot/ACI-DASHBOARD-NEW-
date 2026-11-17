@@ -21,7 +21,7 @@ The client wants the admin to create businesses and brands (meeting notes, 5 Nov
 3. The client keeps his **usual Excel layouts**. No new file type, no column mapping.
 4. A **new business** in an upload needs the admin's decision before the file can publish. For each new name: **Add as new** or **Same as [an existing business]**. An **Add all as new** button decides every new business at once.
 5. A **new brand** never blocks. The preview shows one warning, "N brands not on your list", with **Review and add**.
-6. A **new ATL category** shows "New category found: X". Add it asks for **Business** and **Our brand**, both pre-filled. All other brand rows in an ATL file are competitors and are never added to the brand list.
+6. A **new ATL category** shows "New category found: X". Add it asks for **Business** and **Our brands**, both pre-filled. "Our brands" is a list, because one category can hold several ACI products (his Spices file has 4); the admin ticks them among the file's brand rows. All other brand rows in an ATL file are competitors and are never added to the brand list. (Changed from one "Our brand" on 17 Nov 2026 during the build, to keep his Spices data identical.)
 7. Files with no business column (Digital, ATL) get the business from the admin's pick in the preview. New brands in such a file go under that business.
 8. Short names in his files (e.g. "Savlon HW") get a one-click full-name suggestion from his old short-name list (e.g. "Savlon Handwash"). Nothing is added without the admin.
 
@@ -37,7 +37,7 @@ Rejected: one saved JSON document for the whole list (no unique names, edits can
 
 - New route `/businesses`, sidebar label "Businesses & Brands", in the Data group, after Uploads & History.
 - **Business list:** name, number of brands, a "Hidden" tag when hidden. Admin buttons: Add business, Rename, Hide / Show.
-- **Business page** (`/businesses/<id>`): its brands, each with full name and its other names ("Also matches: Savlon HW, Savlon Hand Wash"). Admin buttons: Add brand, Rename, Hide / Show. Its ATL categories, each with "Our brand" and a Change button.
+- **Business page** (`/businesses/<id>`): its brands, each with full name and its other names ("Also matches: Savlon HW, Savlon Hand Wash"). Admin buttons: Add brand, Rename, Hide / Show. Its ATL categories, each with "Our brands" and a Change button.
 - **Empty state:** "No businesses yet. Add one here, or upload a file and add the businesses it contains."
 - **Viewers:** see the same lists with no buttons.
 - Follows the Wix / Mixpanel reference styles and the existing shared components, desktop and phone.
@@ -51,7 +51,7 @@ Rejected: one saved JSON document for the whole list (no unique names, edits can
   - the row is Ready once every new business is decided.
 - **New ATL category:**
   - amber chip "New category";
-  - "New category found: Savlon Soap", with **Business** (select of businesses, plus any business being added in this preview, plus "New business…") and **Our brand** (select of the brand rows in this file, pre-picked by name match);
+  - "New category found: Savlon Soap", with **Business** (select of businesses, plus any business being added in this preview, plus "New business…") and **Our brands** (tick boxes over the brand rows in this file, pre-ticked by his old own-brand rule);
   - the row is Ready once both are set.
 - **New brands:**
   - a normal warning "12 brands not on your list", which never blocks;
@@ -77,12 +77,12 @@ Rejected: one saved JSON document for the whole list (no unique names, edits can
 - New tables in `src/store/schema.ts`, one migration:
   - `business`: id, name, hidden, created_at;
   - `brand`: id, business_id, name, hidden, created_at;
-  - `atl_category`: id, name, business_id, own_brand_id, hidden, created_at;
+  - `atl_category`: slug, name, business, own_brands (a list of names), hidden, created_at;
   - `name_match`: kind (`business` | `brand`), normalised name, target id. Every business and brand has a match row for its own name; "Same as" and renames add more rows. Unique on (kind, normalised name).
 - Uploaded data keeps every name exactly as in the file (fidelity with his readers; answer-key tests unchanged).
 - A small read API in `src/store/` (for example `getCatalog()`, `resolveBusiness(name)`, `resolveBrand(name)`) so the Phase 3 pages read names through the lists.
 - **Digital and ATL dataset keys** use a fixed slug made from the business or category name when it is created (`digital:<business slug>`, `atl:<category slug>`). A rename never changes the slug, so a rename doesn't split the data. The label keeps the name at publish time. Existing dev data under the old keys is dev-only and can be re-uploaded.
-- **ATL:** the category is matched by the file's "Brand Name:" title against `atl_category` names, normalised. Own vs competitor brands come from the category's "Our brand". His 13 category rules become suggestions only.
+- **ATL:** the category is matched by the file's "Brand Name:" title against `atl_category` names, normalised. Own vs competitor brands come from the category's "Our brands". His 13 category rules become suggestions only.
 - Catalog changes are not versions in Upload History. A short "who changed what, when" log is out of scope.
 
 ## 6. Changes to today's behaviour
