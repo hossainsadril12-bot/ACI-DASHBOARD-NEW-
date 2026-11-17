@@ -10,8 +10,17 @@ export const NEWER_BACKUP = "This backup was made by a newer version of Media Mi
 
 /** The `when` of the newest migration this app ships. Drizzle stores it as created_at in __drizzle_migrations. */
 async function appNewestMigration(): Promise<number> {
-  const journal = JSON.parse(await fs.readFile(path.join(process.cwd(), "drizzle-store", "meta", "_journal.json"), "utf8")) as { entries: { when: number }[] };
-  return Math.max(...journal.entries.map((e) => e.when));
+  return newestMigration(JSON.parse(await fs.readFile(path.join(process.cwd(), "drizzle-store", "meta", "_journal.json"), "utf8")));
+}
+
+/** The newest `when` in a Drizzle journal. Throws on an empty or broken journal, which would otherwise make every backup look newer. */
+export function newestMigration(journal: unknown): number {
+  const entries = (journal as { entries?: unknown } | null)?.entries;
+  const whens = Array.isArray(entries) ? entries.map((e) => (e as { when?: unknown } | null)?.when) : [];
+  if (whens.length === 0 || !whens.every((w): w is number => typeof w === "number" && Number.isFinite(w) && w > 0)) {
+    throw new Error("The app's migration list is missing or broken.");
+  }
+  return Math.max(...whens);
 }
 
 /** Replaces the store file with a backup. Run only while the app is stopped. */
@@ -37,6 +46,8 @@ export async function restoreBackupFile(dataDir: string, backupPath: string, now
   } finally {
     check.close();
   }
+  // An empty migrations table gives 0 and a text value gives NaN; neither is a real backup.
+  if (!Number.isFinite(backupNewest) || backupNewest <= 0) throw new Error(NOT_BACKUP);
   if (backupNewest > (await appNewestMigration())) throw new Error(NEWER_BACKUP);
 
   const target = path.join(dataDir, STORE_FILE);

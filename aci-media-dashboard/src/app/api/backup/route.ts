@@ -12,7 +12,13 @@ function streamThenCleanup(file: BackupFile): ReadableStream<Uint8Array> {
   const finish = async () => {
     source.destroy();
     await closed;
-    await file.cleanup();
+    try {
+      await file.cleanup();
+    } catch (e) {
+      // A finished download stays finished. Log the code only: the error message holds the temp file path.
+      const err = e as NodeJS.ErrnoException;
+      console.error("Backup temp file could not be removed:", err?.code ?? err?.name ?? "unknown");
+    }
   };
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -35,18 +41,29 @@ function streamThenCleanup(file: BackupFile): ReadableStream<Uint8Array> {
   });
 }
 
+const FORBIDDEN = "Only the admin can download a backup. Please sign in.";
+
+function downloadHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "application/vnd.sqlite3",
+    "Content-Disposition": `attachment; filename="${backupFileName()}"`,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  };
+}
+
 export async function GET(): Promise<Response> {
   if (!(await isAdmin())) {
-    return new Response("Only the admin can download a backup. Please sign in.", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    return new Response(FORBIDDEN, { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
   const file = await createBackupFile(await getStore());
-  return new Response(streamThenCleanup(file), {
-    headers: {
-      "Content-Type": "application/vnd.sqlite3",
-      "Content-Disposition": `attachment; filename="${backupFileName()}"`,
-      "Content-Length": String(file.size),
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+  return new Response(streamThenCleanup(file), { headers: { ...downloadHeaders(), "Content-Length": String(file.size) } });
+}
+
+/** Without this, Next answers HEAD by running GET and never reads the body, so the temp copy would stay on disk. */
+export async function HEAD(): Promise<Response> {
+  if (!(await isAdmin())) {
+    return new Response(null, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
+  return new Response(null, { status: 200, headers: downloadHeaders() });
 }

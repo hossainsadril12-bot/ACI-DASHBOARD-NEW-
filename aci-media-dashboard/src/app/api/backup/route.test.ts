@@ -11,10 +11,15 @@ vi.mock("@/store/backup", async (o) => {
   return { ...real, createBackupFile: vi.fn(real.createBackupFile) };
 });
 
-const { GET } = await import("./route");
+const route = await import("./route");
+const { GET } = route;
+// What Next 16 really runs for HEAD: the route's own HEAD, or GET when the route has none.
+const { autoImplementMethods } = await import("next/dist/server/route-modules/app-route/helpers/auto-implement-methods");
+const HEAD = autoImplementMethods(route as Parameters<typeof autoImplementMethods>[0]).HEAD as () => Promise<Response>;
 const { SESSION_COOKIE, createSession } = await import("@/auth/session");
 const { createBackupFile } = await import("@/store/backup");
 const spy = vi.mocked(createBackupFile);
+const realBackup = await vi.importActual<typeof import("@/store/backup")>("@/store/backup");
 
 async function signInAdmin() {
   h.jar.set(SESSION_COOKIE, (await createSession(h.store)).token);
@@ -62,5 +67,53 @@ describe("GET /api/backup", () => {
     const file = await tempPath();
     await res.body!.cancel();
     await gone(file);
+  });
+
+  it("finishes the download when removing the temp file fails, and logs no path", async () => {
+    await signInAdmin();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    let temp = "";
+    spy.mockImplementationOnce(async (store) => {
+      const f = await realBackup.createBackupFile(store);
+      temp = f.path;
+      return {
+        ...f,
+        cleanup: async () => {
+          await f.cleanup();
+          throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${f.path}'`), { code: "EPERM" });
+        },
+      };
+    });
+    try {
+      const res = await GET();
+      const bytes = Buffer.from(await res.arrayBuffer());
+      expect(bytes.subarray(0, 16).toString("latin1")).toBe("SQLite format 3\u0000");
+      expect(errors).toHaveBeenCalled();
+      expect(JSON.stringify(errors.mock.calls)).not.toContain(temp);
+      expect(JSON.stringify(errors.mock.calls)).toContain("EPERM");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+});
+
+describe("HEAD /api/backup", () => {
+  it("refuses viewers with 403 and makes no temp file", async () => {
+    const res = await HEAD();
+    expect(res.status).toBe(403);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("answers the admin with headers only and makes no temp file", async () => {
+    await signInAdmin();
+    const res = await HEAD();
+    try {
+      expect(res.status).toBe(200);
+      expect(res.body).toBeNull();
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      await res.body?.cancel(); // only if a body was wrongly made, so the test leaves no temp file
+    }
   });
 });

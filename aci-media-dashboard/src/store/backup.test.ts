@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@libsql/client";
 import { eq } from "drizzle-orm";
 import { meta } from "./schema";
@@ -9,7 +10,7 @@ import { createTestStore } from "./test-store";
 import { openStore, toFileUrl, STORE_FILE } from "./client";
 import { publishVersion, getActiveData } from "./datasets";
 import { backupFileName, createBackup, createBackupFile } from "./backup";
-import { NEWER_BACKUP, restoreBackupFile } from "./restore";
+import { NEWER_BACKUP, newestMigration, restoreBackupFile } from "./restore";
 
 const dirs: string[] = [];
 async function tempDir() {
@@ -69,6 +70,26 @@ describe("backup", () => {
       expect((await createBackup(store)).equals(await fs.readFile(file.path))).toBe(true);
     } finally {
       await file.cleanup();
+    }
+  });
+
+  it("createBackupFile first removes its own temp files older than an hour, and nothing else", async () => {
+    const id = randomUUID();
+    const old = path.join(os.tmpdir(), `media-mind-backup-${id}.db`);
+    const fresh = path.join(os.tmpdir(), `media-mind-backup-${randomUUID()}.db`);
+    const unrelated = path.join(os.tmpdir(), `mm-unrelated-${id}.db`);
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    for (const f of [old, fresh, unrelated]) await fs.writeFile(f, "x");
+    await fs.utimes(old, twoHoursAgo, twoHoursAgo);
+    await fs.utimes(unrelated, twoHoursAgo, twoHoursAgo);
+    try {
+      const file = await createBackupFile(await createTestStore());
+      await file.cleanup();
+      await expect(fs.stat(old)).rejects.toMatchObject({ code: "ENOENT" });
+      await fs.stat(fresh);
+      await fs.stat(unrelated);
+    } finally {
+      for (const f of [old, fresh, unrelated]) await fs.rm(f, { force: true });
     }
   });
 
@@ -192,6 +213,26 @@ describe("restoreBackupFile", () => {
     await expectUntouched(dataDir);
   });
 
+  it("refuses a backup whose migrations table is empty as not a backup", async () => {
+    const dataDir = await liveDirWithFile();
+    const file = await backupCopy(await createTestStore());
+    const c = createClient({ url: toFileUrl(file) });
+    await c.execute("DELETE FROM __drizzle_migrations");
+    c.close();
+    await expect(restoreBackupFile(dataDir, file)).rejects.toThrow(/not a Media Mind backup/);
+    await expectUntouched(dataDir);
+  });
+
+  it("refuses a backup whose newest migration time is not a number as not a backup", async () => {
+    const dataDir = await liveDirWithFile();
+    const file = await backupCopy(await createTestStore());
+    const c = createClient({ url: toFileUrl(file) });
+    await c.execute("UPDATE __drizzle_migrations SET created_at = 'abc'");
+    c.close();
+    await expect(restoreBackupFile(dataDir, file)).rejects.toThrow(/not a Media Mind backup/);
+    await expectUntouched(dataDir);
+  });
+
   it("restores into an empty data folder", async () => {
     const dataDir = await tempDir();
     const source = await createTestStore();
@@ -200,5 +241,17 @@ describe("restoreBackupFile", () => {
     await fs.writeFile(backupPath, await createBackup(source));
     expect(await restoreBackupFile(dataDir, backupPath)).toEqual({ previous: null });
     await fs.stat(path.join(dataDir, STORE_FILE));
+  });
+});
+
+describe("newestMigration", () => {
+  it("is the largest when in the journal", () => {
+    expect(newestMigration({ entries: [{ when: 5 }, { when: 9 }, { when: 7 }] })).toBe(9);
+  });
+
+  it("throws a plain error on an empty or invalid journal instead of refusing every backup", () => {
+    for (const bad of [{ entries: [] }, {}, null, { entries: [{ when: "x" }] }, { entries: [{}] }]) {
+      expect(() => newestMigration(bad)).toThrow("The app's migration list is missing or broken.");
+    }
   });
 });
