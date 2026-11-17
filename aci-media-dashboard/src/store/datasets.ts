@@ -66,8 +66,7 @@ export async function publishVersionsTx(tx: StoreTx, inputs: PublishInput[]): Pr
 
 /** Saves new versions (with their original files) and makes them the ones the pages show. All of them or none. */
 export async function publishVersions(store: Store, inputs: PublishInput[]): Promise<{ versionIds: number[] }> {
-  if (inputs.length === 0) throw new ValidationError("Nothing to publish.");
-  inputs.forEach(checkInput); // refuse before opening a transaction
+  // publishVersionsTx checks every input before it writes anything, so a refusal rolls back an empty transaction.
   return { versionIds: await store.transaction((tx) => publishVersionsTx(tx, inputs)) };
 }
 

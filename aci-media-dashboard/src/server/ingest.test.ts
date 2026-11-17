@@ -3,7 +3,8 @@ import { READERS } from "@/lib/ingest/readers";
 import { createTestStore } from "@/store/test-store";
 import * as datasets from "@/store/datasets";
 import { getActiveData, listHistory } from "@/store/datasets";
-import { applyCatalogChanges, createBrand, createBusiness, getCatalog, setBusinessHidden, type CatalogChange } from "@/store/catalog";
+import { applyCatalogChanges, createBrand, createBusiness, getCatalog, setAtlHidden, setBusinessHidden, type CatalogChange } from "@/store/catalog";
+import { ValidationError } from "./errors";
 import { makeXlsx, clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { NOT_USUAL_FILE } from "@/lib/ingest/detect";
 import type { AtlCategory } from "@/lib/ingest/readers/atl";
@@ -33,6 +34,15 @@ const calStore = () => storeWith("Toiletries");
 const addAll = (store: Store, changes: CatalogChange[]) => store.transaction((tx) => applyCatalogChanges(tx, changes));
 /** Decides every new business in a preview as "new". */
 const allNew = (p: FilePreview) => p.newBusinesses.map((n) => ({ name: n.name, action: "new" as const }));
+/** Runs `change` once, just before Publish opens its transaction: the lists change after Publish has re-read the files. */
+function changeBeforePublish(store: Store, change: () => Promise<unknown>) {
+  const original = store.transaction.bind(store);
+  (store as { transaction: Store["transaction"] }).transaction = (async (fn: Parameters<Store["transaction"]>[0]) => {
+    (store as { transaction: Store["transaction"] }).transaction = original;
+    await change();
+    return original(fn);
+  }) as Store["transaction"];
+}
 
 describe("previewUploads", () => {
   it("previews a sure, readable file as publishable", async () => {
@@ -279,6 +289,43 @@ describe("file business (Digital)", () => {
     expect(res.published.map((p) => p.datasetKey)).toEqual(["digital:hygiene", "digital:hygiene-2"]);
     expect((await getCatalog(store)).businesses.map((b) => b.slug).sort()).toEqual(["hygiene", "hygiene-2"]);
   });
+  describe("when the list changes between the re-read and the Publish transaction", () => {
+    const hygieneFile = () => decide(file("d.xlsx", digitalBook("Mystery")), {
+      business: "new:Hygiene", brands: [{ name: "Mystery", fullName: "Mystery", business: "new:Hygiene" }],
+    });
+    it("publishes under the real slug when another name took the predicted one", async () => {
+      const store = await createTestStore();
+      changeBeforePublish(store, () => createBusiness(store, "Hygiene!"));
+      const res = await publishUploads(store, [hygieneFile()]);
+      expect(res.published.map((p) => p.datasetKey)).toEqual(["digital:hygiene-2"]);
+      const c = await getCatalog(store);
+      expect(c.businesses.map((b) => [b.slug, b.name]).sort()).toEqual([["hygiene", "Hygiene!"], ["hygiene-2", "Hygiene"]]);
+      expect(c.brandOf("Mystery")?.businessSlug).toBe("hygiene-2");
+      expect((await listHistory(store)).map((h) => h.datasetKey)).toEqual(["digital:hygiene-2"]);
+    });
+    it("uses the business that now has the name, with its own spelling, and adds no duplicate", async () => {
+      const store = await createTestStore();
+      changeBeforePublish(store, () => createBusiness(store, "HYGIENE"));
+      const res = await publishUploads(store, [hygieneFile()]);
+      expect(res.published).toEqual([{ datasetKey: "digital:hygiene", label: "Digital, HYGIENE, Jul'26 to Jul'26", versionId: expect.any(Number) }]);
+      const c = await getCatalog(store);
+      expect(c.businesses.map((b) => [b.slug, b.name])).toEqual([["hygiene", "HYGIENE"]]);
+      expect(c.brandOf("Mystery")?.businessSlug).toBe("hygiene");
+      const data = (await getActiveData<{ dig: { bz: string }[] }>(store, "digital:hygiene"))?.data;
+      expect(data?.dig.map((x) => x.bz)).toEqual(["HYGIENE"]);
+    });
+    it("refuses when the business it now lands on is hidden, and saves nothing", async () => {
+      const store = await createTestStore();
+      changeBeforePublish(store, async () => { await createBusiness(store, "HYGIENE"); await setBusinessHidden(store, "hygiene", true); });
+      await expect(publishUploads(store, [hygieneFile()])).rejects.toThrow(
+        new ValidationError('d.xlsx: the business "HYGIENE" was hidden while you were uploading. Preview again.'),
+      );
+      const c = await getCatalog(store);
+      expect(c.businesses.map((b) => b.slug)).toEqual(["hygiene"]);
+      expect(c.brands).toEqual([]);
+      expect(await listHistory(store)).toEqual([]);
+    });
+  });
   it("leaves the business fields empty for a file that has a business column", async () => {
     const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook())]);
     expect(p).toMatchObject({ business: null, businessSource: null, needsBusiness: false, newCategory: null });
@@ -321,6 +368,28 @@ describe("business names in a file", () => {
     })]);
     expect(p.canPublish).toBe(true);
     expect(p.pendingChanges.filter((c) => c.op !== "addBrand")).toEqual([{ op: "addBusiness", name: "Salt" }, { op: "businessSameAs", name: "ACI Salt", slug: "salt" }]);
+  });
+  it("takes 'same as' new:<name>, the business this file adds as that name", async () => {
+    const store = await createTestStore();
+    const input = decide(file("billing.xlsx", calBook([["CB", "A"], ["CB Core", "B"]])), {
+      businesses: [{ name: "CB", action: "new" }, { name: "CB Core", action: "same", slug: "new:CB" }],
+    });
+    const [p] = await previewUploads(store, [input]);
+    expect(p).toMatchObject({ canPublish: true, newBusinesses: [] });
+    expect(p.pendingChanges.filter((c) => c.op !== "addBrand")).toEqual([{ op: "addBusiness", name: "CB" }, { op: "businessSameAs", name: "CB Core", slug: "cb" }]);
+    await publishUploads(store, [input]);
+    expect((await getCatalog(store)).businesses.map((b) => [b.slug, b.name, b.names])).toEqual([["cb", "CB", ["CB", "CB Core"]]]);
+  });
+  it("lets a 'same as' slug carry new: and a full 120-character name, no more", () => {
+    const same = (slug: string) => DecisionsSchema.safeParse({ businesses: [{ name: "CB Core", action: "same", slug }] }).success;
+    expect(same(`new:${"x".repeat(120)}`)).toBe(true);
+    expect(same(`new:${"x".repeat(121)}`)).toBe(false);
+  });
+  it("ignores 'same as' new:<name> when that name is hidden on the list", async () => {
+    const store = await storeWith("CB");
+    await setBusinessHidden(store, "cb", true);
+    const [p] = await previewUploads(store, [decide(file("cal.xlsx", calBook([["CB Core", "A"]])), { businesses: [{ name: "CB Core", action: "same", slug: "new:CB" }] })]);
+    expect(p).toMatchObject({ canPublish: false, blockReason: "Decide the new businesses.", pendingChanges: [] });
   });
   it("ignores 'same as' a hidden or unknown business", async () => {
     const store = await storeWith("Salt");
@@ -479,6 +548,53 @@ describe("ATL categories", () => {
       const [p] = await previewUploads(store, [decide(luxFile(), { atl })]);
       expect(p, JSON.stringify(atl)).toMatchObject({ canPublish: false, blockReason: "Add the new ATL category.", pendingChanges: [] });
     }
+  });
+  it("shows a read error, not the category question, for a file with no brand rows or no header row", async () => {
+    const store = await createTestStore();
+    const noRows = makeXlsx([{ name: "GRP", rows: [["Brand Name: Lux Soap"], ["Brand Name"]] }]);
+    const noHeader = makeXlsx([{ name: "GRP", rows: [["Brand Name: Lux Soap"], ["Something else"]] }]);
+    const cases: [Buffer, string][] = [
+      [noRows, "No brand rows were found under the header row."],
+      [noHeader, 'The header row with "Brand Name" or "Brand" wasn\'t found.'],
+    ];
+    for (const [b, error] of cases) {
+      for (const decisions of [null, { atl: { business: "new:Toiletries", ownBrands: ["Lux"] } }]) {
+        const input = decisions ? decide(file("a.xlsx", b, "atl"), decisions) : file("a.xlsx", b, "atl");
+        const [p] = await previewUploads(store, [input]);
+        expect(p, error).toMatchObject({ canPublish: false, blockReason: "Fix the read error first.", errors: [error], newCategory: null, pendingChanges: [] });
+      }
+    }
+  });
+  describe("when the list changes between the re-read and the Publish transaction", () => {
+    const decided = () => decide(luxFile(), { atl: { business: "new:Toiletries", ownBrands: ["Lux"] } });
+    it("publishes a new category under its real slug when another category took the predicted one", async () => {
+      const store = await createTestStore();
+      changeBeforePublish(store, () => addAll(store, [{ op: "addBusiness", name: "Salt" }, { op: "addAtl", name: "Lux Soap!", businessSlug: "salt", ownBrands: ["Dove"] }]));
+      const res = await publishUploads(store, [decided()]);
+      expect(res.published.map((p) => p.datasetKey)).toEqual(["atl:lux-soap-2"]);
+      expect((await getCatalog(store)).atlOf("Lux Soap")).toMatchObject({ slug: "lux-soap-2", businessSlug: "toiletries", ownBrands: ["Lux"] });
+      expect((await getActiveData<AtlCategory>(store, "atl:lux-soap-2"))?.data).toMatchObject({ name: "Lux Soap", biz: "Toiletries", own: ["Lux"] });
+    });
+    it("refuses when the category it now lands on is hidden, and saves nothing", async () => {
+      const store = await createTestStore();
+      changeBeforePublish(store, async () => {
+        await addAll(store, [{ op: "addBusiness", name: "Salt" }, { op: "addAtl", name: "LUX SOAP", businessSlug: "salt", ownBrands: ["Dove"] }]);
+        await setAtlHidden(store, "lux-soap", true);
+      });
+      await expect(publishUploads(store, [decided()])).rejects.toThrow(
+        new ValidationError('lux.xlsx: the ATL category "LUX SOAP" was hidden while you were uploading. Preview again.'),
+      );
+      expect((await getCatalog(store)).businesses.map((b) => b.slug)).toEqual(["salt"]);
+      expect(await listHistory(store)).toEqual([]);
+    });
+    it("uses the business that now has the name, with its own spelling", async () => {
+      const store = await createTestStore();
+      changeBeforePublish(store, () => createBusiness(store, "TOILETRIES"));
+      const res = await publishUploads(store, [decided()]);
+      expect(res.published.map((p) => p.datasetKey)).toEqual(["atl:lux-soap"]);
+      expect((await getCatalog(store)).businesses.map((b) => [b.slug, b.name])).toEqual([["toiletries", "TOILETRIES"]]);
+      expect((await getActiveData<AtlCategory>(store, "atl:lux-soap"))?.data).toMatchObject({ name: "Lux Soap", biz: "TOILETRIES", own: ["Lux"] });
+    });
   });
   it("reads a file for a category on the list with no decision", async () => {
     const store = await storeWith("Toiletries");

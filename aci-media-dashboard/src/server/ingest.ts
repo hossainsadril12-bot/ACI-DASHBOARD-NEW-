@@ -22,7 +22,8 @@ export const MAX_FILES = 30;
 /** The admin's answers for one file. Untrusted: every value is checked against the lists and the re-read file before it counts. */
 export const DecisionsSchema = z.object({
   business: z.string().max(120).nullish(), // file business pick (Digital): an existing slug, or "new:<name>"
-  businesses: z.array(z.object({ name: z.string().max(120), action: z.enum(["new", "same"]), slug: z.string().max(60).nullish() })).max(200).default([]),
+  // slug for "same": an existing slug, or "new:<name>" for the business this file adds as <name>
+  businesses: z.array(z.object({ name: z.string().max(120), action: z.enum(["new", "same"]), slug: z.string().max(124).nullish() })).max(200).default([]),
   atl: z.object({ business: z.string().max(120), ownBrands: z.array(z.string().max(120)).min(1).max(50) }).nullish(), // business: slug or "new:<name>"
   brands: z.array(z.object({ name: z.string().max(120), fullName: z.string().max(120), business: z.string().max(120) })).max(500).default([]), // business: slug or "new:<name>"
 });
@@ -47,11 +48,23 @@ export type FilePreview = {
   newCategory: { title: string; suggestion: { business: string | null; ownBrands: string[] }; brands: string[] } | null;
   /** Brands not on the list. Never blocks. */
   newBrands: { name: string; business: string | null; suggestion: string | null }[];
-  /** What Publish will add to the lists for this file, after valid decisions. */
+  /**
+   * What Publish will add to the lists for this file, after valid decisions. A blocked preview may list only part
+   * of its changes (the check stopped early); Publish re-reads every file and works all of them out again.
+   */
   pendingChanges: CatalogChange[];
 };
-/** rekey: the dataset key uses a slug predicted for a business or category Publish adds; Publish swaps in the real one. */
-type Prepared = { preview: FilePreview; result: ReadResult<unknown> | null; rekey: { kind: "business" | "atl"; slug: string } | null };
+/**
+ * rekey: the file was read with a slug predicted for a business or category Publish adds. Publish looks up the real
+ * one and, if it differs (or has another spelling), reads the file again with it through `reread`.
+ */
+type Prepared = {
+  preview: FilePreview;
+  result: ReadResult<unknown> | null;
+  rekey: { kind: "business" | "atl"; slug: string } | null;
+  ctx: ReaderContext | null;
+  reread: ((ctx: ReaderContext) => ReadResult<unknown>) | null;
+};
 
 const NOT_OPENABLE = "This file could not be opened as an Excel workbook.";
 const PICK_BUSINESS = "Pick the business.";
@@ -165,7 +178,7 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
     if (error !== null) preview.errors = [error];
     preview.blockReason = reason;
     preview.canPublish = false;
-    return { preview, result: null, rekey: null };
+    return { preview, result: null, rekey: null, ctx: null, reread: null };
   };
   // Re-checked here too: the service never trusts its caller's decisions.
   const parsed = input.decisions ? DecisionsSchema.safeParse(input.decisions) : null;
@@ -219,8 +232,8 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   let result: ReadResult<unknown>;
   let rekey: Prepared["rekey"] = null;
   let atlRows: string[] = [];
+  const ctx: ReaderContext = { fileName: preview.fileName };
   try {
-    const ctx: ReaderContext = { fileName: preview.fileName };
     if (type === "digital") {
       const found = digitalBusiness(fc, decisions, digitalBrands(wb), preview.fileName);
       ctx.business = found ? { slug: found.biz.slug, name: found.biz.name } : null; // never a business that isn't on the list or decided
@@ -239,7 +252,8 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
         preview.business = { slug: known.businessSlug, name: bizName };
         preview.businessSource = "category";
       } else {
-        atlRows = atlBrands(wb);
+        atlRows = atlBrands(wb); // a missing header row is a read error, before any category question
+        if (!atlRows.length) throw new ReadError("No brand rows were found under the header row.");
         const name = tidy(title);
         // Our brands must be rows of this file; the business is checked only once the brands are valid, so an ignored decision adds nothing.
         const wanted = new Set((decisions?.atl?.ownBrands ?? []).map(normName));
@@ -299,8 +313,9 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   }
   for (const [key, d] of bizDecisions) {
     if (d.action !== "same") continue;
-    const target = fc.resolve(d.slug && !d.slug.startsWith("new:") ? d.slug : null);
-    if (!target) continue; // hidden or unknown: ignored
+    // A visible slug, a business this file adds, or "new:<name>" (added first, once). Hidden or unknown: ignored.
+    const target = fc.resolve(d.slug);
+    if (!target) continue;
     fc.changes.push({ op: "businessSameAs", name: unknownBiz.get(key)!, slug: target.slug });
     decidedBiz.add(key);
   }
@@ -328,7 +343,8 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
 
   if (preview.newBusinesses.length) return block(DECIDE_BUSINESSES, null);
   preview.canPublish = true;
-  return { preview, result, rekey };
+  const book = wb;
+  return { preview, result, rekey, ctx, reread: (c) => reader(book, c) };
 }
 
 function checkBatch(inputs: UploadInput[]) {
@@ -370,44 +386,84 @@ export async function previewUploads(store: Store, inputs: UploadInput[]): Promi
   return (await prepareAll(store, inputs)).prepared.map((p) => p.preview);
 }
 
+const changedWhileUploading = (fileName: string, what: string) => new ValidationError(`${fileName}: ${what} while you were uploading. Preview again.`);
+
 /**
- * Applies the batch's list changes in order, inside the publish transaction, and returns predicted slug -> real slug.
- * They differ only if the lists changed after the snapshot; later changes and dataset keys then use the real slug.
+ * Applies each file's list changes in order, inside the publish transaction, and returns predicted slug -> real slug.
+ * They differ only if the lists changed after the snapshot; later changes then use the real slug. A name that now
+ * matches a hidden business or ATL category refuses the whole Publish.
  */
-async function applyChanges(tx: StoreTx, changes: CatalogChange[], plan: SlugPlan) {
+async function applyChanges(tx: StoreTx, prepared: Prepared[], plan: SlugPlan) {
   const real = { business: new Map<string, string>(), atl: new Map<string, string>() };
   const biz = (slug: string) => real.business.get(slug) ?? slug;
-  for (const change of changes) {
-    switch (change.op) {
-      case "addBusiness": {
-        const key = normName(change.name);
-        const predicted = plan.business.get(key);
-        const made = await applyCatalogChanges(tx, [change]);
-        if (predicted && !real.business.has(predicted)) {
-          const slug = made.businessSlugs[key] ?? (await getCatalog(tx)).businessOf(change.name)?.slug;
-          if (slug) real.business.set(predicted, slug);
+  for (const { preview } of prepared) {
+    for (const change of preview.pendingChanges) {
+      switch (change.op) {
+        case "addBusiness": {
+          const key = normName(change.name);
+          const predicted = plan.business.get(key);
+          const made = await applyCatalogChanges(tx, [change]);
+          if (predicted && !real.business.has(predicted)) {
+            let slug = made.businessSlugs[key];
+            if (!slug) {
+              const found = (await getCatalog(tx)).businessOf(change.name); // the name matched a business added since the snapshot
+              if (found?.hidden) throw changedWhileUploading(preview.fileName, `the business "${found.name}" was hidden`);
+              slug = found?.slug ?? predicted;
+            }
+            real.business.set(predicted, slug);
+          }
+          break;
         }
-        break;
-      }
-      case "businessSameAs":
-        await applyCatalogChanges(tx, [{ ...change, slug: biz(change.slug) }]);
-        break;
-      case "addBrand":
-        await applyCatalogChanges(tx, [{ ...change, businessSlug: biz(change.businessSlug) }]);
-        break;
-      case "addAtl": {
-        const key = normName(change.name);
-        const predicted = plan.atl.get(key);
-        const made = await applyCatalogChanges(tx, [{ ...change, businessSlug: biz(change.businessSlug) }]);
-        if (predicted && !real.atl.has(predicted)) {
-          const slug = made.atlSlugs[key] ?? (await getCatalog(tx)).atlOf(change.name)?.slug;
-          if (slug) real.atl.set(predicted, slug);
+        case "businessSameAs":
+          await applyCatalogChanges(tx, [{ ...change, slug: biz(change.slug) }]);
+          break;
+        case "addBrand":
+          await applyCatalogChanges(tx, [{ ...change, businessSlug: biz(change.businessSlug) }]);
+          break;
+        case "addAtl": {
+          const key = normName(change.name);
+          const predicted = plan.atl.get(key);
+          const made = await applyCatalogChanges(tx, [{ ...change, businessSlug: biz(change.businessSlug) }]);
+          if (predicted && !real.atl.has(predicted)) {
+            let slug = made.atlSlugs[key];
+            if (!slug) {
+              const found = (await getCatalog(tx)).atlOf(change.name);
+              if (found?.hidden) throw changedWhileUploading(preview.fileName, `the ATL category "${found.name}" was hidden`);
+              slug = found?.slug ?? predicted;
+            }
+            real.atl.set(predicted, slug);
+          }
+          break;
         }
-        break;
       }
     }
   }
   return real;
+}
+
+/**
+ * A file read with a predicted business or category: read it again with the one now on the list (real slug, its own
+ * spelling, and for a category its business and our brands) when that differs from what the preview used.
+ */
+function readWithReal(p: Prepared, result: ReadResult<unknown>, real: Awaited<ReturnType<typeof applyChanges>>, after: Catalog): { result: ReadResult<unknown>; warnings: string[] } {
+  const { rekey, ctx, reread, preview } = p;
+  if (!rekey || !ctx || !reread) return { result, warnings: preview.warnings };
+  const next: ReaderContext = { ...ctx };
+  if (rekey.kind === "business") {
+    const slug = real.business.get(rekey.slug) ?? rekey.slug;
+    const b = after.businesses.find((x) => x.slug === slug);
+    if (!b) throw changedWhileUploading(preview.fileName, "the lists changed");
+    next.business = { slug: b.slug, name: b.name };
+  } else {
+    const slug = real.atl.get(rekey.slug) ?? rekey.slug;
+    const a = after.atl.find((x) => x.slug === slug);
+    const b = a && after.businesses.find((x) => x.slug === a.businessSlug);
+    if (!a || !b) throw changedWhileUploading(preview.fileName, "the lists changed");
+    next.atlCategory = { slug: a.slug, name: a.name, business: b.name, ownBrands: a.ownBrands };
+  }
+  if (JSON.stringify(next) === JSON.stringify(ctx)) return { result, warnings: preview.warnings };
+  const again = reread(next);
+  return { result: again, warnings: [...preview.warnings.filter((w) => !result.warnings.includes(w)), ...again.warnings] };
 }
 
 export async function publishUploads(store: Store, inputs: UploadInput[]) {
@@ -418,19 +474,18 @@ export async function publishUploads(store: Store, inputs: UploadInput[]) {
 
   // The list changes and the versions commit together, or neither does.
   return store.transaction(async (tx) => {
-    const real = await applyChanges(tx, prepared.flatMap((p) => p.preview.pendingChanges), plan);
-    const publishInputs: PublishInput[] = prepared.map(({ preview, result, rekey }, i) => {
-      if (!result) throw new ValidationError(`${preview.fileName}: ${preview.blockReason}`);
-      const r = result;
-      const datasetKey = !rekey ? r.datasetKey
-        : rekey.kind === "business" ? `digital:${real.business.get(rekey.slug) ?? rekey.slug}`
-        : `atl:${real.atl.get(rekey.slug) ?? rekey.slug}`;
+    const real = await applyChanges(tx, prepared, plan);
+    const after = prepared.some((p) => p.rekey) ? await getCatalog(tx) : null;
+    const publishInputs: PublishInput[] = prepared.map((p, i) => {
+      const { preview } = p;
+      if (!p.result) throw new ValidationError(`${preview.fileName}: ${preview.blockReason}`);
+      const { result: r, warnings } = after ? readWithReal(p, p.result, real, after) : { result: p.result, warnings: preview.warnings };
       return {
-        datasetKey,
+        datasetKey: r.datasetKey,
         kind: r.type,
         label: r.label,
         source: "upload",
-        summary: { summary: r.summary, months: r.months, rowCount: r.rowCount, warnings: preview.warnings, sha256: preview.sha256, fileName: preview.fileName },
+        summary: { summary: r.summary, months: r.months, rowCount: r.rowCount, warnings, sha256: preview.sha256, fileName: preview.fileName },
         data: r.data,
         file: { name: preview.fileName, bytes: Buffer.from(inputs[i].bytes) },
       };
