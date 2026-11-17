@@ -1,59 +1,156 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { checkXlsxBytes } from "@/lib/ingest/xlsx-check";
 import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
 import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
 import { READERS, READER_NEEDS_STYLES } from "@/lib/ingest/readers";
-import { NeedsBusinessError, ReadError, type ReaderContext, type ReadResult } from "@/lib/ingest/read-result";
-import { isDigitalBusiness, resolveDigitalBusiness, type BusinessSource, type DigitalBusiness } from "@/lib/ingest/brands";
-import { readAtl, readAtlTitle } from "@/lib/ingest/readers/atl";
+import { NeedsBusinessError, NeedsCategoryError, ReadError, type ReaderContext, type ReadResult } from "@/lib/ingest/read-result";
+import type { BusinessSource } from "@/lib/ingest/brands";
+import { namesIn } from "@/lib/ingest/names";
+import { atlBrands, readAtlTitle } from "@/lib/ingest/readers/atl";
 import { digitalBrands } from "@/lib/ingest/readers/digital";
-import { matchAtlCategory, suggestOwnBrands } from "@/lib/ingest/suggestions";
-import { makeSlug } from "@/store/catalog";
-import { getActiveFileHashes, publishVersions, type PublishInput } from "@/store/datasets";
-import type { Store } from "@/store/client";
+import { FY_STANDARD_ORDER } from "@/lib/ingest/readers/fy";
+import { suggestAtlCategory, suggestBusiness, suggestFullName, suggestOwnBrands } from "@/lib/ingest/suggestions";
+import { applyCatalogChanges, getCatalog, makeSlug, normName, type Catalog, type CatalogChange } from "@/store/catalog";
+import { getActiveFileHashes, publishVersionsTx, type PublishInput } from "@/store/datasets";
+import type { Store, StoreTx } from "@/store/client";
 import { ValidationError } from "./errors";
 
 export const MAX_FILES = 30;
 
-export type UploadInput = { name: string; bytes: Uint8Array; chosenType?: FileType | null; chosenBusiness?: DigitalBusiness | null };
+/** The admin's answers for one file. Untrusted: every value is checked against the lists and the re-read file before it counts. */
+export const DecisionsSchema = z.object({
+  business: z.string().max(120).nullish(), // file business pick (Digital): an existing slug, or "new:<name>"
+  businesses: z.array(z.object({ name: z.string().max(120), action: z.enum(["new", "same"]), slug: z.string().max(60).nullish() })).max(200).default([]),
+  atl: z.object({ business: z.string().max(120), ownBrands: z.array(z.string().max(120)).min(1).max(50) }).nullish(), // business: slug or "new:<name>"
+  brands: z.array(z.object({ name: z.string().max(120), fullName: z.string().max(120), business: z.string().max(120) })).max(500).default([]), // business: slug or "new:<name>"
+});
+export type Decisions = z.infer<typeof DecisionsSchema>;
+
+export type UploadInput = { name: string; bytes: Uint8Array; chosenType?: FileType | null; decisions?: Decisions | null };
+export type NewName = { name: string; suggestion: string | null };
 export type FilePreview = {
   index: number; fileName: string; sizeBytes: number; sha256: string;
   detection: Detection | null; type: FileType | null;
   label: string | null; summary: string | null; datasetKey: string | null;
   rowCount: number; warnings: string[]; errors: string[];
   canPublish: boolean; blockReason: string | null;
-  business: DigitalBusiness | null; businessSource: BusinessSource | null; needsBusiness: boolean;
+  /** The file's business when it has one (Digital, ATL). slug is null for a business Publish will add. */
+  business: { slug: string | null; name: string } | null;
+  businessSource: BusinessSource | null;
+  /** Digital with no business yet. */
+  needsBusiness: boolean;
+  /** Undecided business names from the file. */
+  newBusinesses: NewName[];
+  /** ATL, undecided. brands = the file's rows to tick "Our brands" from. */
+  newCategory: { title: string; suggestion: { business: string | null; ownBrands: string[] }; brands: string[] } | null;
+  /** Brands not on the list. Never blocks. */
+  newBrands: { name: string; business: string | null; suggestion: string | null }[];
+  /** What Publish will add to the lists for this file, after valid decisions. */
+  pendingChanges: CatalogChange[];
 };
-type Prepared = { preview: FilePreview; result: ReadResult<unknown> | null };
+/** rekey: the dataset key uses a slug predicted for a business or category Publish adds; Publish swaps in the real one. */
+type Prepared = { preview: FilePreview; result: ReadResult<unknown> | null; rekey: { kind: "business" | "atl"; slug: string } | null };
 
 const NOT_OPENABLE = "This file could not be opened as an Excel workbook.";
+const PICK_BUSINESS = "Pick the business.";
+const ADD_CATEGORY = "Add the new ATL category.";
+const DECIDE_BUSINESSES = "Decide the new businesses.";
 
-type OldBusiness = { name: DigitalBusiness; source: BusinessSource };
-
-/**
- * Bridge until Task 4 reads the admin's lists: builds the reader's context from his old fixed lists,
- * so dataset keys, labels and data stay as they were (Digital keys now use the business slug).
- */
-function oldListContext(type: FileType, wb: Workbook, fileName: string, chosen: DigitalBusiness | null): { ctx: ReaderContext; business: OldBusiness | null } {
-  if (type === "digital") {
-    const r = resolveDigitalBusiness({ brands: digitalBrands(wb), fileName, chosen });
-    if (!r) return { ctx: { fileName, business: null }, business: null };
-    return { ctx: { fileName, business: { slug: makeSlug(r.business, () => false, "business"), name: r.business } }, business: { name: r.business, source: r.source } };
-  }
-  if (type === "atl") {
-    const title = readAtlTitle(wb);
-    const c = matchAtlCategory(title);
-    if (!c) throw new ReadError(`"${title}" doesn't match any ATL category on the dashboard (Savlon Soap, Septex, Hand Wash, Antiseptic Liquid, Baby Soft, Savlon/Twinkle Baby Wipes, Freedom, Diaper, Salt, Mustard Oil, Rice, Spices).`);
-    const base = { slug: c[0], name: c[1], business: c[2] };
-    const brands = readAtl(wb, { fileName, atlCategory: { ...base, ownBrands: [] } }).data.brands;
-    return { ctx: { fileName, atlCategory: { ...base, ownBrands: suggestOwnBrands(title, brands) } }, business: null };
-  }
-  return { ctx: { fileName }, business: null };
+/** Trimmed, inner spaces collapsed, 1 to 120 characters; else null. */
+function tidy(s: string): string | null {
+  const t = s.trim().replace(/\s+/g, " ");
+  return t && t.length <= 120 ? t : null;
 }
 
-/** Reads one file: byte check, detection, reader. Pure: no store, no network. */
-function prepareFile(input: UploadInput, index: number): Prepared {
+/** Lower-case words, for finding a business name in a file name. */
+const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Slugs Publish will give new businesses and ATL categories, keyed by normName, shared by the whole batch.
+ * Predicted with the store's own rule against the catalog's slugs plus those already predicted, so two new names
+ * with one slug base get "-2", and two files adding the same name share one slug.
+ */
+type SlugPlan = { business: Map<string, string>; atl: Map<string, string> };
+
+function predict(plan: Map<string, string>, existing: string[], name: string, fallback: "business" | "atl"): string {
+  const key = normName(name);
+  const known = plan.get(key);
+  if (known) return known;
+  const taken = new Set([...existing, ...plan.values()]);
+  const slug = makeSlug(name, (s) => taken.has(s), fallback);
+  plan.set(key, slug);
+  return slug;
+}
+
+type Biz = { slug: string; name: string; isNew: boolean };
+
+/** One file's list decisions: the catalog snapshot, the batch's slug plan, and the changes this file adds. */
+class FileChanges {
+  readonly changes: CatalogChange[] = [];
+  private readonly added = new Map<string, Biz>(); // businesses this file adds, by slug
+
+  constructor(readonly catalog: Catalog, private readonly plan: SlugPlan) {}
+
+  /** A business this file adds (once). A name already on the list gives that business, or null when it is hidden. */
+  addBusiness(raw: string): Biz | null {
+    const name = tidy(raw);
+    if (!name) return null;
+    const existing = this.catalog.businessOf(name);
+    if (existing) return existing.hidden ? null : { slug: existing.slug, name: existing.name, isNew: false };
+    const slug = predict(this.plan.business, this.catalog.businesses.map((b) => b.slug), name, "business");
+    if (!this.added.has(slug)) {
+      this.changes.push({ op: "addBusiness", name });
+      this.added.set(slug, { slug, name, isNew: true });
+    }
+    return this.added.get(slug)!;
+  }
+
+  /** A business pick: "new:<name>", a slug on the list that is not hidden, or a slug this file adds. Anything else is null. */
+  resolve(value: string | null | undefined): Biz | null {
+    if (!value) return null;
+    if (value.startsWith("new:")) return this.addBusiness(value.slice(4));
+    const b = this.catalog.businesses.find((x) => x.slug === value && !x.hidden);
+    if (b) return { slug: b.slug, name: b.name, isNew: false };
+    return this.added.get(value) ?? null;
+  }
+
+  /** The slug Publish will give a new ATL category. */
+  atlSlug(title: string): string {
+    return predict(this.plan.atl, this.catalog.atl.map((a) => a.slug), title, "atl");
+  }
+}
+
+/** Digital: the admin's valid pick, else the one business all known brands belong to, else exactly one business named in the file name. */
+function digitalBusiness(fc: FileChanges, decisions: Decisions | null, brands: string[], fileName: string): { biz: Biz; source: BusinessSource } | null {
+  const picked = fc.resolve(decisions?.business);
+  if (picked) return { biz: picked, source: "admin" };
+  const { catalog } = fc;
+  const visible = (slug: string) => catalog.businesses.find((b) => b.slug === slug && !b.hidden);
+  const owners = new Set(brands.map((b) => catalog.brandOf(b)?.businessSlug).filter((s): s is string => !!s));
+  if (owners.size === 1) {
+    const b = visible([...owners][0]);
+    if (b) return { biz: { slug: b.slug, name: b.name, isNew: false }, source: "brands" };
+  }
+  const inName = ` ${words(fileName)} `;
+  const hits = catalog.businesses.filter((b) => !b.hidden && b.names.some((n) => { const w = words(n); return !!w && inName.includes(` ${w} `); }));
+  if (hits.length === 1) return { biz: { slug: hits[0].slug, name: hits[0].name, isNew: false }, source: "file name" };
+  return null;
+}
+
+/** The suggestion for a new ATL category: his business for the title, his own-brand rule, else the row named like the title. */
+function categorySuggestion(title: string, rows: string[]) {
+  const ruled = suggestOwnBrands(title, rows);
+  return {
+    business: suggestAtlCategory(title)?.business ?? null,
+    ownBrands: ruled.length ? ruled : rows.filter((r) => normName(r) === normName(title)),
+  };
+}
+
+/** Reads one file and checks its names against the catalog snapshot. No store, no network; only the batch's slug plan is shared. */
+function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: SlugPlan): Prepared {
+  const fc = new FileChanges(catalog, plan);
   const preview: FilePreview = {
     index,
     fileName: input.name.trim().slice(0, 255) || "upload.xlsx",
@@ -62,13 +159,17 @@ function prepareFile(input: UploadInput, index: number): Prepared {
     detection: null, type: null, label: null, summary: null, datasetKey: null,
     rowCount: 0, warnings: [], errors: [], canPublish: false, blockReason: null,
     business: null, businessSource: null, needsBusiness: false,
+    newBusinesses: [], newCategory: null, newBrands: [], pendingChanges: fc.changes,
   };
   const block = (reason: string, error: string | null = reason): Prepared => {
     if (error !== null) preview.errors = [error];
     preview.blockReason = reason;
     preview.canPublish = false;
-    return { preview, result: null };
+    return { preview, result: null, rekey: null };
   };
+  // Re-checked here too: the service never trusts its caller's decisions.
+  const parsed = input.decisions ? DecisionsSchema.safeParse(input.decisions) : null;
+  const decisions = parsed?.success ? parsed.data : null;
 
   const check = checkXlsxBytes(input.bytes);
   if (!check.ok) return block(check.reason);
@@ -116,17 +217,55 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   }
 
   let result: ReadResult<unknown>;
-  let business: OldBusiness | null = null;
+  let rekey: Prepared["rekey"] = null;
+  let atlRows: string[] = [];
   try {
-    // An unknown business override is ignored, the same as an unknown type.
-    const chosen = isDigitalBusiness(input.chosenBusiness) ? input.chosenBusiness : null;
-    const old = oldListContext(type, wb, preview.fileName, chosen);
-    business = old.business;
-    result = reader(wb, old.ctx);
+    const ctx: ReaderContext = { fileName: preview.fileName };
+    if (type === "digital") {
+      const found = digitalBusiness(fc, decisions, digitalBrands(wb), preview.fileName);
+      ctx.business = found ? { slug: found.biz.slug, name: found.biz.name } : null; // never a business that isn't on the list or decided
+      if (found) {
+        preview.business = { slug: found.biz.isNew ? null : found.biz.slug, name: found.biz.name };
+        preview.businessSource = found.source;
+        if (found.source === "file name") preview.warnings.push("Business taken from the file name.");
+        if (found.biz.isNew) rekey = { kind: "business", slug: found.biz.slug };
+      }
+    } else if (type === "atl") {
+      const title = readAtlTitle(wb);
+      const known = catalog.atlOf(title);
+      if (known) {
+        const bizName = catalog.businesses.find((b) => b.slug === known.businessSlug)?.name ?? known.businessSlug;
+        ctx.atlCategory = { slug: known.slug, name: known.name, business: bizName, ownBrands: known.ownBrands };
+        preview.business = { slug: known.businessSlug, name: bizName };
+        preview.businessSource = "category";
+      } else {
+        atlRows = atlBrands(wb);
+        const name = tidy(title);
+        // Our brands must be rows of this file; the business is checked only once the brands are valid, so an ignored decision adds nothing.
+        const wanted = new Set((decisions?.atl?.ownBrands ?? []).map(normName));
+        const own = atlRows.filter((r) => wanted.has(normName(r)));
+        const biz = name && own.length ? fc.resolve(decisions?.atl?.business) : null;
+        if (name && biz) {
+          const slug = fc.atlSlug(name);
+          fc.changes.push({ op: "addAtl", name, businessSlug: biz.slug, ownBrands: own });
+          ctx.atlCategory = { slug, name, business: biz.name, ownBrands: own };
+          preview.business = { slug: biz.isNew ? null : biz.slug, name: biz.name };
+          preview.businessSource = "admin";
+          rekey = { kind: "atl", slug };
+        } else {
+          ctx.atlCategory = null; // the reader asks for the category
+        }
+      }
+    }
+    result = reader(wb, ctx);
   } catch (e) {
     if (e instanceof NeedsBusinessError) {
       preview.needsBusiness = true;
-      return block("Pick the business.", null);
+      return block(PICK_BUSINESS, null);
+    }
+    if (e instanceof NeedsCategoryError) {
+      preview.newCategory = { title: e.title, suggestion: categorySuggestion(e.title, atlRows), brands: atlRows };
+      return block(ADD_CATEGORY, null);
     }
     if (e instanceof ReadError) return block("Fix the read error first.", e.message);
     console.error("reader failed", e);
@@ -139,13 +278,57 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   preview.datasetKey = result.datasetKey;
   preview.rowCount = result.rowCount;
   preview.warnings.push(...result.warnings);
-  if (business) {
-    preview.business = business.name;
-    preview.businessSource = business.source;
-    if (business.source === "file name") preview.warnings.push("Business taken from the file name.");
+
+  const names = namesIn(result);
+  // FY without its business table: the reader filled his standard order, which is not the file's own names.
+  const noBusinessColumn = result.type === "fy" && result.warnings.includes(FY_STANDARD_ORDER);
+  const fileBusinesses = noBusinessColumn ? [] : names.businesses;
+  const fileBrands = noBusinessColumn ? names.brands.map((b) => ({ ...b, business: null })) : names.brands;
+
+  // Business names: "new" first, so a "same as" a business added here comes after it.
+  const unknownBiz = new Map(fileBusinesses.filter((n) => !catalog.businessOf(n)).map((n) => [normName(n), n] as const));
+  const bizDecisions = new Map<string, Decisions["businesses"][number]>();
+  for (const d of decisions?.businesses ?? []) {
+    const found = unknownBiz.get(normName(d.name));
+    if (!found) continue; // a decision about a name the server did not find in this file is ignored
+    if (!bizDecisions.has(normName(found))) bizDecisions.set(normName(found), d);
   }
+  const decidedBiz = new Set<string>();
+  for (const [key, d] of bizDecisions) {
+    if (d.action === "new" && fc.addBusiness(unknownBiz.get(key)!)) decidedBiz.add(key);
+  }
+  for (const [key, d] of bizDecisions) {
+    if (d.action !== "same") continue;
+    const target = fc.resolve(d.slug && !d.slug.startsWith("new:") ? d.slug : null);
+    if (!target) continue; // hidden or unknown: ignored
+    fc.changes.push({ op: "businessSameAs", name: unknownBiz.get(key)!, slug: target.slug });
+    decidedBiz.add(key);
+  }
+  preview.newBusinesses = [...unknownBiz].filter(([key]) => !decidedBiz.has(key)).map(([, name]) => ({ name, suggestion: suggestBusiness(name) }));
+
+  // Brands: never block. A decided brand is added under its full name, matching the file's name too.
+  const unknownBrands = new Map(fileBrands.filter((b) => !catalog.brandOf(b.name)).map((b) => [normName(b.name), b] as const));
+  const decidedBrands = new Set<string>();
+  for (const d of decisions?.brands ?? []) {
+    const key = normName(d.name);
+    const found = unknownBrands.get(key);
+    if (!found || decidedBrands.has(key)) continue; // only names the server found in this file, once each
+    const fullName = tidy(d.fullName);
+    const biz = fullName ? fc.resolve(d.business) : null;
+    if (!fullName || !biz) continue;
+    fc.changes.push({ op: "addBrand", name: fullName, businessSlug: biz.slug, ...(normName(fullName) !== key ? { alsoMatches: [found.name] } : {}) });
+    decidedBrands.add(key);
+  }
+  const fileBizName = preview.business?.name ?? null;
+  preview.newBrands = [...unknownBrands]
+    .filter(([key]) => !decidedBrands.has(key))
+    .map(([, b]) => ({ name: b.name, business: b.business ?? fileBizName, suggestion: suggestFullName(b.name) }));
+  const n = preview.newBrands.length;
+  if (n) preview.warnings.push(`${n} ${n === 1 ? "brand" : "brands"} not on your list.`);
+
+  if (preview.newBusinesses.length) return block(DECIDE_BUSINESSES, null);
   preview.canPublish = true;
-  return { preview, result };
+  return { preview, result, rekey };
 }
 
 function checkBatch(inputs: UploadInput[]) {
@@ -153,9 +336,11 @@ function checkBatch(inputs: UploadInput[]) {
   if (inputs.length > MAX_FILES) throw new ValidationError("Upload at most 30 files at a time.");
 }
 
-/** Batch rules that need every file: two files for one dataset, same file as the one in use. */
-async function prepareAll(store: Store, inputs: UploadInput[]): Promise<Prepared[]> {
-  const prepared = inputs.map((input, i) => prepareFile(input, i));
+/** Batch rules that need every file: one catalog snapshot and slug plan, two files for one dataset, same file as the one in use. */
+async function prepareAll(store: Store, inputs: UploadInput[]): Promise<{ prepared: Prepared[]; plan: SlugPlan }> {
+  const catalog = await getCatalog(store);
+  const plan: SlugPlan = { business: new Map(), atl: new Map() };
+  const prepared = inputs.map((input, i) => prepareFile(input, i, catalog, plan));
 
   const counts = new Map<string, number>();
   for (const p of prepared) {
@@ -177,33 +362,80 @@ async function prepareAll(store: Store, inputs: UploadInput[]): Promise<Prepared
       if (p.preview.canPublish && key && active.get(key) === p.preview.sha256) p.preview.warnings.push("This is the same file as the one in use.");
     }
   }
-  return prepared;
+  return { prepared, plan };
 }
 
 export async function previewUploads(store: Store, inputs: UploadInput[]): Promise<FilePreview[]> {
   checkBatch(inputs);
-  return (await prepareAll(store, inputs)).map((p) => p.preview);
+  return (await prepareAll(store, inputs)).prepared.map((p) => p.preview);
+}
+
+/**
+ * Applies the batch's list changes in order, inside the publish transaction, and returns predicted slug -> real slug.
+ * They differ only if the lists changed after the snapshot; later changes and dataset keys then use the real slug.
+ */
+async function applyChanges(tx: StoreTx, changes: CatalogChange[], plan: SlugPlan) {
+  const real = { business: new Map<string, string>(), atl: new Map<string, string>() };
+  const biz = (slug: string) => real.business.get(slug) ?? slug;
+  for (const change of changes) {
+    switch (change.op) {
+      case "addBusiness": {
+        const key = normName(change.name);
+        const predicted = plan.business.get(key);
+        const made = await applyCatalogChanges(tx, [change]);
+        if (predicted && !real.business.has(predicted)) {
+          const slug = made.businessSlugs[key] ?? (await getCatalog(tx)).businessOf(change.name)?.slug;
+          if (slug) real.business.set(predicted, slug);
+        }
+        break;
+      }
+      case "businessSameAs":
+        await applyCatalogChanges(tx, [{ ...change, slug: biz(change.slug) }]);
+        break;
+      case "addBrand":
+        await applyCatalogChanges(tx, [{ ...change, businessSlug: biz(change.businessSlug) }]);
+        break;
+      case "addAtl": {
+        const key = normName(change.name);
+        const predicted = plan.atl.get(key);
+        const made = await applyCatalogChanges(tx, [{ ...change, businessSlug: biz(change.businessSlug) }]);
+        if (predicted && !real.atl.has(predicted)) {
+          const slug = made.atlSlugs[key] ?? (await getCatalog(tx)).atlOf(change.name)?.slug;
+          if (slug) real.atl.set(predicted, slug);
+        }
+        break;
+      }
+    }
+  }
+  return real;
 }
 
 export async function publishUploads(store: Store, inputs: UploadInput[]) {
   checkBatch(inputs);
-  const prepared = await prepareAll(store, inputs); // re-read from the bytes; a preview is never trusted
+  const { prepared, plan } = await prepareAll(store, inputs); // re-read from the bytes; a preview is never trusted
   const blocked = prepared.find((p) => !p.preview.canPublish || !p.result);
   if (blocked) throw new ValidationError(`${blocked.preview.fileName}: ${blocked.preview.blockReason}`);
 
-  const publishInputs: PublishInput[] = prepared.map(({ preview, result }, i) => {
-    if (!result) throw new ValidationError(`${preview.fileName}: ${preview.blockReason}`);
-    const r = result;
-    return {
-      datasetKey: r.datasetKey,
-      kind: r.type,
-      label: r.label,
-      source: "upload",
-      summary: { summary: r.summary, months: r.months, rowCount: r.rowCount, warnings: preview.warnings, sha256: preview.sha256, fileName: preview.fileName },
-      data: r.data,
-      file: { name: preview.fileName, bytes: Buffer.from(inputs[i].bytes) },
-    };
+  // The list changes and the versions commit together, or neither does.
+  return store.transaction(async (tx) => {
+    const real = await applyChanges(tx, prepared.flatMap((p) => p.preview.pendingChanges), plan);
+    const publishInputs: PublishInput[] = prepared.map(({ preview, result, rekey }, i) => {
+      if (!result) throw new ValidationError(`${preview.fileName}: ${preview.blockReason}`);
+      const r = result;
+      const datasetKey = !rekey ? r.datasetKey
+        : rekey.kind === "business" ? `digital:${real.business.get(rekey.slug) ?? rekey.slug}`
+        : `atl:${real.atl.get(rekey.slug) ?? rekey.slug}`;
+      return {
+        datasetKey,
+        kind: r.type,
+        label: r.label,
+        source: "upload",
+        summary: { summary: r.summary, months: r.months, rowCount: r.rowCount, warnings: preview.warnings, sha256: preview.sha256, fileName: preview.fileName },
+        data: r.data,
+        file: { name: preview.fileName, bytes: Buffer.from(inputs[i].bytes) },
+      };
+    });
+    const versionIds = await publishVersionsTx(tx, publishInputs);
+    return { published: publishInputs.map((p, i) => ({ datasetKey: p.datasetKey, label: p.label, versionId: versionIds[i] })) };
   });
-  const { versionIds } = await publishVersions(store, publishInputs);
-  return { published: publishInputs.map((p, i) => ({ datasetKey: p.datasetKey, label: p.label, versionId: versionIds[i] })) };
 }

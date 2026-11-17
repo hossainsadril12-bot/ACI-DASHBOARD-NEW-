@@ -10,7 +10,8 @@ const preview = (over: Partial<FilePreview> = {}): FilePreview => ({
   detection: { status: "sure", type: "atl" }, type: "atl",
   label: "ATL, Savlon Soap, Jul'26 to Oct'26", summary: "4 months", datasetKey: "atl:soap",
   rowCount: 12, warnings: [], errors: [], canPublish: true, blockReason: null,
-  business: null, businessSource: null, needsBusiness: false, ...over,
+  business: null, businessSource: null, needsBusiness: false,
+  newBusinesses: [], newCategory: null, newBrands: [], pendingChanges: [], ...over,
 });
 
 describe("rowStatus", () => {
@@ -85,15 +86,16 @@ describe("uploadForm", () => {
     expect(fd.get("type-0")).toBeNull();
     expect(fd.get("type-1")).toBe("calendar");
   });
-  it("sends business-<i> only where a business is picked", () => {
+  it("sends decisions-<i> only where a business is picked", () => {
     const a = new File(["a"], "a.xlsx");
     const b = new File(["b"], "b.xlsx");
     const c = new File(["c"], "c.xlsx");
-    const fd = uploadForm([a, b, c], ["digital", "", "digital"], ["", "Salt", "Hygiene"]);
-    expect(fd.get("business-0")).toBeNull();
-    expect(fd.get("business-1")).toBe("Salt");
-    expect(fd.get("business-2")).toBe("Hygiene");
-    expect([...fd.keys()].filter((k) => k.startsWith("business-"))).toEqual(["business-1", "business-2"]);
+    const fd = uploadForm([a, b, c], ["digital", "", "digital"], ["", "salt", "new:Hygiene"]);
+    expect(fd.get("decisions-0")).toBeNull();
+    expect(JSON.parse(fd.get("decisions-1") as string)).toEqual({ business: "salt" });
+    expect(JSON.parse(fd.get("decisions-2") as string)).toEqual({ business: "new:Hygiene" });
+    expect([...fd.keys()].filter((k) => k.startsWith("decisions-"))).toEqual(["decisions-1", "decisions-2"]);
+    expect([...fd.keys()].some((k) => k.startsWith("business-"))).toBe(false);
   });
 });
 

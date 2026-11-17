@@ -1,10 +1,7 @@
-/** The client's brand list and aliases (template.html 658-667), and working out a Digital file's business. */
+/** The client's brand list and aliases (template.html 658-667). Only suggestions read them. */
 
-// Old fixed list; removed when the upload service reads the admin's businesses (Task 4/5).
-export const DIGITAL_BUSINESSES = ["Toiletries", "Hygiene", "Salt"] as const;
-export type DigitalBusiness = (typeof DIGITAL_BUSINESSES)[number];
-export const isDigitalBusiness = (v: unknown): v is DigitalBusiness => (DIGITAL_BUSINESSES as readonly unknown[]).includes(v);
-export type BusinessSource = "brands" | "file name" | "admin";
+/** Where a Digital or ATL file's business came from: the admin's pick, the file's brands, the file name, or its ATL category. */
+export type BusinessSource = "brands" | "file name" | "admin" | "category";
 
 /** His BRANDLIST: official brand names by business. */
 export const BRANDLIST: Readonly<Record<string, readonly string[]>> = {
@@ -33,16 +30,4 @@ const BUSINESS_OF = new Map(Object.entries(BRANDLIST).flatMap(([biz, bs]) => bs.
 /** His BRANDLIST business for a brand name (via his BALIAS / fullB), or null when unknown. */
 export function businessOfBrand(name: string): string | null {
   return BUSINESS_OF.get(fullB(name).toLowerCase()) ?? null;
-}
-
-const NAME_HINTS: readonly [RegExp, DigitalBusiness][] = [[/toiletries/i, "Toiletries"], [/hygiene/i, "Hygiene"], [/salt/i, "Salt"]];
-
-// Old fixed list; removed when the upload service reads the admin's businesses (Task 4/5).
-export function resolveDigitalBusiness(input: { brands: string[]; fileName: string; chosen: DigitalBusiness | null }):
-  { business: DigitalBusiness; source: BusinessSource } | null {
-  if (isDigitalBusiness(input.chosen)) return { business: input.chosen, source: "admin" };
-  const found = new Set(input.brands.map(businessOfBrand).filter((b): b is string => b != null));
-  if (found.size === 1) { const [only] = found; if (isDigitalBusiness(only)) return { business: only, source: "brands" }; }
-  const hits = NAME_HINTS.filter(([re]) => re.test(input.fileName));
-  return hits.length === 1 ? { business: hits[0][1], source: "file name" } : null;
 }

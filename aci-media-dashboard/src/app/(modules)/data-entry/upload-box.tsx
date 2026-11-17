@@ -7,7 +7,6 @@ import { FileSpreadsheet, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { DIGITAL_BUSINESSES, isDigitalBusiness, type DigitalBusiness } from "@/lib/ingest/brands";
 import { FILE_TYPE_LABEL, FILE_TYPES, isFileType, type FileType } from "@/lib/ingest/file-types";
 import { cn } from "@/lib/utils";
 import type { FilePreview } from "@/server/ingest";
@@ -23,7 +22,7 @@ const CHIP: Record<RowStatus, { label: string; className: string }> = {
 };
 
 type Choice = FileType | "";
-type BusinessChoice = DigitalBusiness | "";
+type BusinessChoice = string; // a business slug, or "" for none
 
 /** Several of his usual Excel files at once: one preview line per file, a type picker when unsure, then Publish. */
 export function UploadBox() {
@@ -204,13 +203,13 @@ function PreviewRow({ name, preview: p, choice, business, disabled, onType, onBu
         {isDigital && (
           <select
             aria-label={`Business for ${name}`}
-            value={business || p?.business || ""}
+            value={business || p?.business?.slug || ""}
             disabled={disabled}
-            onChange={(e) => onBusiness(isDigitalBusiness(e.target.value) ? e.target.value : "")}
+            onChange={(e) => onBusiness(e.target.value)} // the server checks it against the list
             className="h-9 w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm md:w-56"
           >
             <option value="">Pick the business…</option>
-            {DIGITAL_BUSINESSES.map((b) => <option key={b} value={b}>{b}</option>)}
+            {p?.business?.slug && <option value={p.business.slug}>{p.business.name}</option>}
           </select>
         )}
         {p?.label && (

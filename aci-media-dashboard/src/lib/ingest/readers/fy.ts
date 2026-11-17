@@ -6,7 +6,9 @@ import type { Workbook } from "../workbook";
 
 export type FyRow = { biz: string; b: string; med: string; m: number[]; py: number };
 
-const FYM = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+/** The warning when the file has no business summary table: the businesses are his standard order, not the file's. */
+export const FY_STANDARD_ORDER = "Business summary table not found; used the standard business order";
+const FYM =["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 const f2 = (n: number): string => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function readFy(wb: Workbook): ReadResult<FyRow[]> {
@@ -63,6 +65,6 @@ export function readFy(wb: Workbook): ReadResult<FyRow[]> {
     months,
     rowCount: rows.length,
     data: rows,
-    warnings: names.length ? [] : ["Business summary table not found; used the standard business order"],
+    warnings: names.length ? [] : [FY_STANDARD_ORDER],
   };
 }

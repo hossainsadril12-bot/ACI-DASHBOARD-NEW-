@@ -1,20 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { readAtl, readAtlTitle, type AtlCategory } from "./atl";
+import { ATL_CATEGORIES, atlBrands, readAtl, readAtlTitle, type AtlCategory } from "./atl";
 import { NeedsCategoryError, ReadError, type ReaderContext } from "../read-result";
-import { matchAtlCategory, suggestOwnBrands } from "../suggestions";
+import { suggestAtlCategory, suggestOwnBrands } from "../suggestions";
 import { openWorkbook, type Workbook } from "../workbook";
 import { answerKey, clientFiles, hasClientFiles, makeXlsx } from "../test-workbooks";
 
 const open = (b: Buffer) => openWorkbook(new Uint8Array(b));
 const SOAP: ReaderContext = { fileName: "soap.xlsx", atlCategory: { slug: "soap", name: "Savlon Soap", business: "Toiletries", ownBrands: ["Savlon Soap"] } };
 
-/** The context his app implied: his category for the title, and his own-brand rule over the file's brand rows. */
+/** The context his app implied: his category for the title (his key and business), and his own-brand rule over the file's brand rows. */
 function hisContext(wb: Workbook): ReaderContext {
   const title = readAtlTitle(wb);
-  const c = matchAtlCategory(title)!;
-  const base = { slug: c[0], name: c[1], business: c[2] };
-  const brands = readAtl(wb, { fileName: "x.xlsx", atlCategory: { ...base, ownBrands: [] } }).data.brands;
-  return { fileName: "x.xlsx", atlCategory: { ...base, ownBrands: suggestOwnBrands(title, brands) } };
+  const c = ATL_CATEGORIES.find((x) => x[1] === suggestAtlCategory(title)!.name)!;
+  return { fileName: "x.xlsx", atlCategory: { slug: c[0], name: c[1], business: c[2], ownBrands: suggestOwnBrands(title, atlBrands(wb)) } };
 }
 
 describe.skipIf(!hasClientFiles)("ATL: all 13 real files match his built-in data", () => {
@@ -65,6 +63,11 @@ describe("ATL category from the caller", () => {
     expect(() => readAtlTitle(open(makeXlsx([{ name: "GRP", rows: [["Client : ACI"]] }])))).toThrow(
       new ReadError('Couldn\'t find the "Brand Name:" line at the top of sheet "GRP".'),
     );
+  });
+  it("lists the brand rows without a category, the same as the reader's brands", () => {
+    expect(atlBrands(open(luxBook()))).toEqual(["Lux", "Dove", "Sunsilk"]);
+    expect(atlBrands(open(luxBook()))).toEqual(readAtl(open(luxBook()), lux([])).data.brands);
+    expect(() => atlBrands(open(makeXlsx([{ name: "GRP", rows: [["Brand Name: Lux Soap"]] }])))).toThrow(/header row/i);
   });
   it("asks for the category when the caller has none", () => {
     for (const ctx of [{ fileName: "lux.xlsx" }, { fileName: "lux.xlsx", atlCategory: null }]) {

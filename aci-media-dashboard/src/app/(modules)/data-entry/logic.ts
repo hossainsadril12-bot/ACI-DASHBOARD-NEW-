@@ -1,4 +1,3 @@
-import type { DigitalBusiness } from "@/lib/ingest/brands";
 import type { FileType } from "@/lib/ingest/file-types";
 import type { FilePreview } from "@/server/ingest";
 
@@ -31,13 +30,16 @@ export const publishedMessage = (published: { label: string }[]) =>
 export const whenDhaka = (d: Date) =>
   d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Dhaka" });
 
-/** Repeated `files`, plus `type-<i>` / `business-<i>` only for the rows where the admin picked one. The server re-checks both. */
-export function uploadForm(list: File[], types: (FileType | "")[], businesses: (DigitalBusiness | "")[]): FormData {
+/**
+ * Repeated `files`, plus `type-<i>` only where the admin picked a type and `decisions-<i>` (JSON) only where he picked a business
+ * (a business slug, or "new:<name>"). The server re-checks both.
+ */
+export function uploadForm(list: File[], types: (FileType | "")[], businesses: string[]): FormData {
   const fd = new FormData();
   list.forEach((f, i) => {
     fd.append("files", f);
     if (types[i]) fd.set(`type-${i}`, types[i]);
-    if (businesses[i]) fd.set(`business-${i}`, businesses[i]);
+    if (businesses[i]) fd.set(`decisions-${i}`, JSON.stringify({ business: businesses[i] }));
   });
   return fd;
 }

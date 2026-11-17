@@ -1,7 +1,7 @@
 import { monthLabel, pad2, round, sum, xstr } from "../cells";
 import { normName } from "@/lib/names-normal";
 import { NeedsCategoryError, ReadError, type ReaderContext, type ReadResult } from "../read-result";
-import type { Workbook } from "../workbook";
+import type { Sheet, Workbook } from "../workbook";
 
 export type AtlRow = { b: string; grp: number; acd: number; ngrp: number; sp: number; sov: number; soe: number; reach: number; spots: number; cprp: number };
 export type AtlCategory = { name: string; biz: string; title: string; category: string; tg: string; pop: number; own: string[]; brands: string[]; months: Record<string, AtlRow[]> };
@@ -46,6 +46,35 @@ export function readAtlTitle(wb: Workbook): string {
   return readTop(wb).title;
 }
 
+/** Header row: "Brand Name" in column A (dashboard format) or "Brand" in column B (category format). */
+function findHeader(ws: Sheet) {
+  let hr = 0, bc = 1, mr = 0;
+  for (let r = 1; r <= 15 && !hr; r++) {
+    if (/^brand name$/i.test(xstr(ws.v(r, 1)))) { hr = r + 1; bc = 1; mr = r; }
+    else if (/^brand$/i.test(xstr(ws.v(r, 2)))) { hr = r; bc = 2; mr = r - 1; }
+  }
+  if (!hr) throw new ReadError('The header row with "Brand Name" or "Brand" wasn\'t found.');
+  return { hr, bc, mr };
+}
+
+/** Every brand row under the header, in row order, until Total / Note / Source. */
+function brandRows(ws: Sheet, hr: number, bc: number): string[] {
+  const allB: string[] = [];
+  for (let r = hr + 1; r <= ws.maxRow; r++) {
+    const b = xstr(ws.v(r, bc)).replace(/\s+/g, " ").trim();
+    if (/^(total|note|source)/i.test(b)) break;
+    if (b && !allB.includes(b)) allB.push(b);
+  }
+  return allB;
+}
+
+/** The file's brand rows (ours and competitors), the same list the reader stores as `brands`. No category needed. */
+export function atlBrands(wb: Workbook): string[] {
+  const { ws } = readTop(wb);
+  const { hr, bc } = findHeader(ws);
+  return brandRows(ws, hr, bc);
+}
+
 /** Reads one ATL dashboard file. The category (key, name, business, our brands) comes from the caller. */
 export function readAtl(wb: Workbook, ctx: ReaderContext): ReadResult<AtlCategory> {
   const { ws, title, category, tg, pop } = readTop(wb);
@@ -53,13 +82,7 @@ export function readAtl(wb: Workbook, ctx: ReaderContext): ReadResult<AtlCategor
   if (!C) throw new NeedsCategoryError(title);
   const warnings: string[] = [];
 
-  // Header row: "Brand Name" in column A (dashboard format) or "Brand" in column B (category format).
-  let hr = 0, bc = 1, mr = 0;
-  for (let r = 1; r <= 15 && !hr; r++) {
-    if (/^brand name$/i.test(xstr(ws.v(r, 1)))) { hr = r + 1; bc = 1; mr = r; }
-    else if (/^brand$/i.test(xstr(ws.v(r, 2)))) { hr = r; bc = 2; mr = r - 1; }
-  }
-  if (!hr) throw new ReadError('The header row with "Brand Name" or "Brand" wasn\'t found.');
+  const { hr, bc, mr } = findHeader(ws);
 
   const blocks: { c: number; m: string }[] = [];
   let yr: number | null = null;
@@ -119,12 +142,7 @@ export function readAtl(wb: Workbook, ctx: ReaderContext): ReadResult<AtlCategor
   const ms = Object.keys(months).sort();
   if (!ms.length) throw new ReadError(`No months with TV activity were found for ${title}.`);
 
-  const allB: string[] = [];
-  for (let r = hr + 1; r <= ws.maxRow; r++) {
-    const b = xstr(ws.v(r, bc)).replace(/\s+/g, " ").trim();
-    if (/^(total|note|source)/i.test(b)) break;
-    if (b && !allB.includes(b)) allB.push(b);
-  }
+  const allB = brandRows(ws, hr, bc);
   const ours = new Set(C.ownBrands.map(normName));
   const own = allB.filter((b) => ours.has(normName(b)));
   if (!own.length) warnings.push(`Couldn't find ${C.name}'s own row in the brand list; every brand is treated as a competitor.`);

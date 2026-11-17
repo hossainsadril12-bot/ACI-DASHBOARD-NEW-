@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchAtlCategory, suggestAtlCategory, suggestBusinessForBrand, suggestFullName, suggestOwnBrands } from "./suggestions";
+import { suggestAtlCategory, suggestBusiness, suggestBusinessForBrand, suggestFullName, suggestOwnBrands } from "./suggestions";
 
 describe("suggestFullName", () => {
   it("gives his official name for a short name", () => {
@@ -31,9 +31,9 @@ describe("suggestBusinessForBrand", () => {
 });
 
 describe("suggestAtlCategory", () => {
-  it("gives his category name and business; the own brand is left to the file's rows", () => {
-    expect(suggestAtlCategory("Savlon Soap")).toEqual({ name: "Savlon Soap", business: "Toiletries", ownBrand: null });
-    expect(suggestAtlCategory("Freedom Sanitary Napkin")).toEqual({ name: "Freedom Sanitary Napkin", business: "Hygiene", ownBrand: null });
+  it("gives his category name and business; his own brands come from suggestOwnBrands", () => {
+    expect(suggestAtlCategory("Savlon Soap")).toEqual({ name: "Savlon Soap", business: "Toiletries" });
+    expect(suggestAtlCategory("Freedom Sanitary Napkin")).toEqual({ name: "Freedom Sanitary Napkin", business: "Hygiene" });
   });
 
   it("keeps his Septex rule: a Septex antiseptic title is Septex, not Antiseptic Liquid", () => {
@@ -42,9 +42,9 @@ describe("suggestAtlCategory", () => {
   });
 
   it("never suggests Others as a business: Mustard Oil, Rice and Spices give business null", () => {
-    expect(suggestAtlCategory("ACI Pure Spice")).toEqual({ name: "ACI Pure Spices", business: null, ownBrand: null });
-    expect(suggestAtlCategory("ACI Pure Mustard Oil")).toEqual({ name: "ACI Pure Mustard Oil", business: null, ownBrand: null });
-    expect(suggestAtlCategory("ACI Pure Fortified Rice")).toEqual({ name: "ACI Pure Fortified Rice", business: null, ownBrand: null });
+    expect(suggestAtlCategory("ACI Pure Spice")).toEqual({ name: "ACI Pure Spices", business: null });
+    expect(suggestAtlCategory("ACI Pure Mustard Oil")).toEqual({ name: "ACI Pure Mustard Oil", business: null });
+    expect(suggestAtlCategory("ACI Pure Fortified Rice")).toEqual({ name: "ACI Pure Fortified Rice", business: null });
   });
 
   it("is null for an unknown or blank title", () => {
@@ -53,13 +53,19 @@ describe("suggestAtlCategory", () => {
   });
 });
 
-describe("matchAtlCategory", () => {
-  it("gives his whole category row, Others included, with his key", () => {
-    expect(matchAtlCategory("ACI Savlon Soap")?.slice(0, 3)).toEqual(["soap", "Savlon Soap", "Toiletries"]);
-    expect(matchAtlCategory("ACI Pure Spice")?.slice(0, 3)).toEqual(["spice", "ACI Pure Spices", "Others"]);
-    expect(matchAtlCategory("ACI Septex Antiseptic Bar")?.[0]).toBe("septex");
-    expect(matchAtlCategory("Lux Soap")).toBeNull();
-    expect(matchAtlCategory("  ")).toBeNull();
+describe("suggestBusiness", () => {
+  it("maps his file names to the 4 demo businesses", () => {
+    expect(suggestBusiness("ACI Salt")).toBe("Salt");
+    expect(suggestBusiness("aci  salt")).toBe("Salt");
+    for (const n of ["Foods", "Food", "beverage"]) expect(suggestBusiness(n), n).toBe("Food & Beverage");
+  });
+  it("gives a demo business back in its own spelling", () => {
+    expect(suggestBusiness(" toiletries ")).toBe("Toiletries");
+    expect(suggestBusiness("HYGIENE")).toBe("Hygiene");
+    expect(suggestBusiness("food & beverage")).toBe("Food & Beverage");
+  });
+  it("is null for anything else", () => {
+    for (const n of ["CB Core", "SCJ", "", "constructor", "__proto__"]) expect(suggestBusiness(n), n).toBeNull();
   });
 });
 

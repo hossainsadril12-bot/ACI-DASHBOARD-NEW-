@@ -1,4 +1,3 @@
-import type { BusinessSource } from "./brands";
 import type { FileType } from "./file-types";
 import type { Workbook } from "./workbook";
 
@@ -26,7 +25,6 @@ export type ReadResult<T> = {
   rowCount: number;
   data: T;              // stored as the version's data; same shape as his built-in data
   warnings: string[];   // never block
-  business?: { name: string; source: BusinessSource };
 };
 
 export type ReaderContext = {

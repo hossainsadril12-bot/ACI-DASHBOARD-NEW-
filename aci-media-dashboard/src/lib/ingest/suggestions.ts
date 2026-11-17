@@ -19,18 +19,29 @@ export function suggestBusinessForBrand(brand: string): string | null {
   return businessOfBrand(brand);
 }
 
+/** The 4 demo businesses (his BRANDLIST), by normalised name, plus the names his files use for them. */
+const DEMO_BUSINESS = new Map<string, string>([
+  ...Object.keys(BRANDLIST).map((b) => [normName(b), b] as const),
+  ["aci salt", "Salt"], ["foods", "Food & Beverage"], ["food", "Food & Beverage"], ["beverage", "Food & Beverage"],
+]);
+
+/** One of the 4 demo businesses for a business name in a file, or null. */
+export function suggestBusiness(name: string): string | null {
+  return DEMO_BUSINESS.get(normName(name)) ?? null;
+}
+
 /**
- * His ATL category for a file's title, matched the way his reader matches it. The own brand is picked from the file's rows by the caller.
+ * His ATL category for a file's title, matched the way his reader matches it. His own brands come from suggestOwnBrands.
  * "Others" is never suggested as a business (the admin decides): those categories give business null.
  */
-export function suggestAtlCategory(title: string): { name: string; business: string | null; ownBrand: string | null } | null {
+export function suggestAtlCategory(title: string): { name: string; business: string | null } | null {
   const c = matchAtlCategory(title);
   if (!c) return null;
-  return { name: c[1], business: normName(c[2]) === "others" ? null : c[2], ownBrand: null };
+  return { name: c[1], business: normName(c[2]) === "others" ? null : c[2] };
 }
 
 /** His whole ATLCATS row for a title (his key and his business, "Others" included), matched the way his reader matched it. */
-export function matchAtlCategory(title: string): (typeof ATL_CATEGORIES)[number] | null {
+function matchAtlCategory(title: string): (typeof ATL_CATEGORIES)[number] | null {
   if (!title.trim()) return null;
   return ATL_CATEGORIES.find((c) => c[3].test(title) && !(c[0] === "antiseptic" && /septex/i.test(title))) ?? null;
 }
