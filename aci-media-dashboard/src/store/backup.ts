@@ -5,14 +5,29 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Store } from "./client";
 
-/** A consistent copy of the whole store as one SQLite file. Safe while the app runs. */
-export async function createBackup(store: Store): Promise<Buffer> {
+export type BackupFile = { path: string; size: number; cleanup: () => Promise<void> };
+
+/** A consistent copy of the whole store as one SQLite file in the OS temp folder. Safe while the app runs. The caller must call cleanup(). */
+export async function createBackupFile(store: Store): Promise<BackupFile> {
   const file = path.join(os.tmpdir(), `media-mind-backup-${randomUUID()}.db`);
+  const cleanup = () => fs.rm(file, { force: true });
   try {
     await store.run(sql`VACUUM INTO ${file}`);
-    return await fs.readFile(file);
+    const { size } = await fs.stat(file);
+    return { path: file, size, cleanup };
+  } catch (e) {
+    await cleanup();
+    throw e;
+  }
+}
+
+/** The same backup as bytes in memory. */
+export async function createBackup(store: Store): Promise<Buffer> {
+  const file = await createBackupFile(store);
+  try {
+    return await fs.readFile(file.path);
   } finally {
-    await fs.rm(file, { force: true });
+    await file.cleanup();
   }
 }
 

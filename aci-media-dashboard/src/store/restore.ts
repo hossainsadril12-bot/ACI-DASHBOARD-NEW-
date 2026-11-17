@@ -6,6 +6,13 @@ import { APP_ID, STORE_FILE, toFileUrl } from "./client";
 import { fileStamp } from "./backup";
 
 const NOT_BACKUP = "This is not a Media Mind backup file.";
+export const NEWER_BACKUP = "This backup was made by a newer version of Media Mind. Update the app first, then restore.";
+
+/** The `when` of the newest migration this app ships. Drizzle stores it as created_at in __drizzle_migrations. */
+async function appNewestMigration(): Promise<number> {
+  const journal = JSON.parse(await fs.readFile(path.join(process.cwd(), "drizzle-store", "meta", "_journal.json"), "utf8")) as { entries: { when: number }[] };
+  return Math.max(...journal.entries.map((e) => e.when));
+}
 
 /** Replaces the store file with a backup. Run only while the app is stopped. */
 export async function restoreBackupFile(dataDir: string, backupPath: string, now: Date = new Date()): Promise<{ previous: string | null }> {
@@ -19,14 +26,18 @@ export async function restoreBackupFile(dataDir: string, backupPath: string, now
   if (head.toString("latin1") !== "SQLite format 3\u0000") throw new Error(NOT_BACKUP);
 
   const check = createClient({ url: toFileUrl(backupPath) });
+  let backupNewest: number;
   try {
     const r = await check.execute("SELECT value FROM meta WHERE key = 'app'");
     if (r.rows[0]?.value !== APP_ID) throw new Error(NOT_BACKUP);
+    const m = await check.execute("SELECT max(created_at) AS t FROM __drizzle_migrations");
+    backupNewest = Number(m.rows[0]?.t);
   } catch {
     throw new Error(NOT_BACKUP);
   } finally {
     check.close();
   }
+  if (backupNewest > (await appNewestMigration())) throw new Error(NEWER_BACKUP);
 
   const target = path.join(dataDir, STORE_FILE);
   let previous: string | null = null;
