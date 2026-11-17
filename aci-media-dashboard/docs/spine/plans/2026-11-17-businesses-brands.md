@@ -245,6 +245,12 @@ Service rules (in `prepareAll`, which now loads `getCatalog(store)` once per bat
 - **Brands:** every brand from `namesIn` not found by `catalog.brandOf` and not covered by a valid `decisions.brands` entry → `newBrands` (suggestion = `suggestFullName`). Warning (never blocks): `"<n> brand(s) not on your list."` — singular "brand" for 1. A valid brand decision → `addBrand` with `alsoMatches: [name]` when `fullName` differs, under its business (an existing not-hidden slug, a business added in this same file, or `new:<name>`).
 - **Batch:** two files adding the same new business are fine (Task 1 skips duplicates). Two files for one dataset still block, as today.
 - **Publish:** re-read everything (as today), refuse if any file is blocked, then in **one** `store.transaction`: `applyCatalogChanges(tx, allPendingChanges)` then `publishVersionsTx(tx, inputs)`. Return as today.
+- **Notes from Tasks 1 and 2 (binding):**
+  - The real signature is `makeSlug(name, taken: (slug) => boolean, fallback: "business" | "atl")` (exported from `src/store/catalog.ts`). Predict slugs with it against the catalog's slugs plus the slugs already predicted in this batch, so two new names with the same slug base get `-2`.
+  - `applyCatalogChanges` returns `{ businessSlugs, atlSlugs }` (keyed by `normName`) only for rows it **created**. If a predicted slug is missing there because the name already matched (the list changed between preview and Publish), look the slug up with `getCatalog(tx)` inside the same transaction; if it differs from the predicted one, rebuild that file's `datasetKey` with the real slug before `publishVersionsTx`.
+  - The store already refuses a hidden business for `businessSameAs`, `addAtl`, `addBrand` and `setAtlCategory`; the service must still filter hidden targets out first, so a hidden target is ignored, not an error.
+  - `normName` lives in `src/lib/names-normal.ts` (re-exported by `catalog.ts`). `suggestAtlCategory(...).business` is `string | null` and never "Others".
+  - The FY reader fills a fixed business list when the file has no business summary table (its warning "Business summary table not found; used the standard business order"). When that warning is present, do not offer those business names as new businesses; treat the FY rows as having no business (brands then need a business in Review and add).
 
 - [ ] **Step 1: Write the failing tests** in `src/server/ingest.test.ts` (in-memory store, synthetic workbooks via `makeXlsx`, plus `skipIf(!hasClientFiles)` real files):
   - empty catalog + Digital file → `needsBusiness`, blocked "Pick the business."; with `decisions.business: "new:Hygiene"` → Ready, key `digital:hygiene`, `pendingChanges` has `addBusiness Hygiene`; preview wrote nothing (`getCatalog` still empty);
@@ -326,7 +332,7 @@ UI (exact strings):
 1. Empty list: `/businesses` shows the empty state.
 2. Real Billing file: row shows `New business` with 13 names; `Add all as new`; then set `ACI Salt` to `Same as Salt` (after Salt exists, i.e. re-preview) ; row Ready with the brands warning; Publish; `/businesses` lists the businesses, and Salt shows `Also matches: ACI Salt`.
 3. Lux Soap ATL synthetic file: `New category found: Lux Soap`; pick business `Toiletries`, Our brand `Lux`; `Add category`; Ready; Publish; Toiletries page lists category Lux Soap.
-4. Review and add: a Digital synthetic file with brand "Savlon HW" under Toiletries: `Review and add` suggests `Savlon Handwash`; tick and Publish; brand appears with `Also matches: Savlon HW`; uploading again shows no brand warning.
+4. Review and add: an Activity Calendar synthetic file (built like phase2a path 3, with a Grand Total row) whose row is business "Toiletries", brand "Savlon HW". (Not Digital: his Digital reader turns every Savlon name into "Savlon Soap", so a short Savlon name never reaches the preview.) Decide Toiletries as new; `Review and add` suggests `Savlon Handwash`; tick and Publish; the brand appears with `Also matches: Savlon HW`; uploading the same file again shows no brand warning and no new business.
 5. Cancel changes nothing: decide a new business, then Clear; `/businesses` unchanged.
 6. Viewer sees `/businesses` with no buttons.
 7. Phone 375 px: the new-business block and `/businesses` fit with no side scroll.
