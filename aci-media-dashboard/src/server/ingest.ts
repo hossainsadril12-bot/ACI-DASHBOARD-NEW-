@@ -21,11 +21,12 @@ export const MAX_FILES = 30;
 
 /** The admin's answers for one file. Untrusted: every value is checked against the lists and the re-read file before it counts. */
 export const DecisionsSchema = z.object({
-  business: z.string().max(120).nullish(), // file business pick (Digital): an existing slug, or "new:<name>"
+  // Every business value is an existing slug, or "new:<name>" with a name of up to 120 characters (124 in all).
+  business: z.string().max(124).nullish(), // file business pick (Digital)
   // slug for "same": an existing slug, or "new:<name>" for the business this file adds as <name>
   businesses: z.array(z.object({ name: z.string().max(120), action: z.enum(["new", "same"]), slug: z.string().max(124).nullish() })).max(200).default([]),
-  atl: z.object({ business: z.string().max(120), ownBrands: z.array(z.string().max(120)).min(1).max(50) }).nullish(), // business: slug or "new:<name>"
-  brands: z.array(z.object({ name: z.string().max(120), fullName: z.string().max(120), business: z.string().max(120) })).max(500).default([]), // business: slug or "new:<name>"
+  atl: z.object({ business: z.string().max(124), ownBrands: z.array(z.string().max(120)).min(1).max(50) }).nullish(),
+  brands: z.array(z.object({ name: z.string().max(120), fullName: z.string().max(120), business: z.string().max(124) })).max(500).default([]),
 });
 export type Decisions = z.infer<typeof DecisionsSchema>;
 

@@ -12,9 +12,10 @@ import { FILE_TYPE_LABEL, FILE_TYPES, isFileType, type FileType } from "@/lib/in
 import { cn } from "@/lib/utils";
 import type { FilePreview } from "@/server/ingest";
 import {
-  MAX_NEW_BUSINESS_NAME, MAX_OWN_BRANDS, NEW_BUSINESS, addAllAsNew, canPublishAll, categoryDefaults, decisionValue, emptyDraft,
-  greyReason, postUploads, publishButtonLabel, publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision,
-  toDecisions, uploadForm, type BrandDraft, type BusinessOption, type BusinessPick, type RowDraft, type RowStatus,
+  MAX_NEW_BUSINESS_NAME, MAX_OWN_BRANDS, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll,
+  categoryDefaults, decisionValue, emptyDraft, greyReason, postUploads, publishButtonLabel, publishedMessage, rowStatus, sameAsOptions,
+  setBusinessDecision, tickShown, toDecisions, underFileBusiness, uploadForm, type BrandDraft, type BusinessOption, type BusinessPick,
+  type RowDraft, type RowStatus,
 } from "./logic";
 
 const AMBER = "bg-amber-100 text-amber-900";
@@ -68,6 +69,7 @@ export function UploadBox({ businesses }: { businesses: BusinessOption[] }) {
     if (id !== latest.current) return;
     setChecking(false);
     if (res.error) {
+      sent.current = ""; // nothing was previewed: the same decisions can be sent again
       setError(res.error);
       setPreviews(null);
       return;
@@ -75,7 +77,7 @@ export function UploadBox({ businesses }: { businesses: BusinessOption[] }) {
     const list = res.previews ?? [];
     setPreviews(list);
     // Names the server no longer asks about (decided) stay on screen so the admin can change them.
-    setDrafts(nextDrafts.map((d, i) => (list[i] ? { ...d, bizNames: seenNames(d.bizNames, list[i]), brands: seenBrands(d.brands, list[i]) } : d)));
+    setDrafts(nextDrafts.map((d, i) => (list[i] ? afterPreview(d, list[i]) : d)));
   }
 
   /** Keeps a row's draft; previews again when what would be sent changed. */
@@ -211,6 +213,11 @@ type RowProps = {
 
 function PreviewRow({ name, preview: p, choice, draft, businesses, disabled, onType, onDraft, onTyping, onCommit, onRemove }: RowProps) {
   const [lastCategory, setLastCategory] = useState<RowDraft["atl"]>(null); // the picks before Change, to start the block from
+  const [reviewing, setReviewing] = useState(false); // the Review and add panel is open
+  const brandLine = p ? brandWarning(p) : null;
+  const reviewButton = (
+    <Button variant="outline" size="xs" disabled={disabled} className="ml-2 align-middle" onClick={() => setReviewing(true)}>Review and add</Button>
+  );
   const status = p ? rowStatus(p) : null;
   const grey = p ? greyReason(p) : null;
   const type = choice || p?.type;
@@ -229,7 +236,7 @@ function PreviewRow({ name, preview: p, choice, draft, businesses, disabled, onT
           aria-label={`File type for ${name}`}
           value={choice || p?.type || ""}
           disabled={disabled || p?.detection?.status === "none"} // not one of his files: no type makes it publishable
-          onChange={(e) => onType(isFileType(e.target.value) ? e.target.value : "")}
+          onChange={(e) => { setReviewing(false); onType(isFileType(e.target.value) ? e.target.value : ""); }}
           className={SELECT}
         >
           <option value="">Pick the file type…</option>
@@ -252,9 +259,19 @@ function PreviewRow({ name, preview: p, choice, draft, businesses, disabled, onT
       {p && (p.errors.length > 0 || p.warnings.length > 0 || grey) && (
         <div className="space-y-1 text-sm md:pl-7">
           {p.errors.length > 0 && <ul className="list-disc space-y-0.5 pl-5 text-red-700">{p.errors.map((m, k) => <li key={k}>{m}</li>)}</ul>}
-          {p.warnings.length > 0 && <ul className="list-disc space-y-0.5 pl-5 text-amber-800">{p.warnings.map((m, k) => <li key={k}>{m}</li>)}</ul>}
+          {p.warnings.length > 0 && (
+            <ul className="list-disc space-y-0.5 pl-5 text-amber-800">
+              {p.warnings.map((m, k) => <li key={k}>{m}{m === brandLine && !reviewing && reviewButton}</li>)}
+            </ul>
+          )}
           {grey && <p className="text-gray-500">{grey}</p>}
         </div>
+      )}
+      {brandLine && !reviewing && !p?.warnings.includes(brandLine) && <div className="md:pl-7">{reviewButton}</div>}
+      {p && reviewing && (
+        <NewBrands draft={draft} businesses={businesses} disabled={disabled}
+          fileBusiness={underFileBusiness(draft) ? (p.business?.name ?? null) : null}
+          onDone={(brands) => { setReviewing(false); onDraft({ ...draft, brands }); }} />
       )}
       {p && draft.bizNames.length > 0 && (
         <NewBusinesses preview={p} draft={draft} businesses={businesses} disabled={disabled} onDraft={onDraft} />
@@ -274,9 +291,6 @@ function PreviewRow({ name, preview: p, choice, draft, businesses, disabled, onT
               onClick={() => { setLastCategory(draft.atl); onDraft({ ...draft, atl: null }); }}>Change</Button>
           </div>
         </Panel>
-      )}
-      {p && draft.brands.length > 0 && (
-        <NewBrands draft={draft} businesses={businesses} disabled={disabled} onDraft={onDraft} />
       )}
     </li>
   );
@@ -324,7 +338,7 @@ function NewBusinesses({ preview: p, draft, businesses, disabled, onDraft }: {
       </div>
       <ul className="space-y-2">
         {draft.bizNames.map((n) => (
-          <li key={n} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+          <li key={n} className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
             <p className="min-w-0 flex-1 truncate text-sm text-gray-900" title={n}>{n}</p>
             <select aria-label={`Decision for ${n}`} value={decisionValue(draft.businesses, n)} disabled={disabled} className={SELECT}
               onChange={(e) => onDraft({ ...draft, businesses: setBusinessDecision(draft.businesses, draft.bizNames, n, e.target.value) })}>
@@ -353,7 +367,7 @@ function NewCategory({ category, businesses, start, disabled, onAdd }: {
       <p className="text-sm font-medium text-gray-900">New category found: {category.title}</p>
       <div className="space-y-1">
         <p className="text-xs font-medium text-gray-500">Business</p>
-        <BusinessSelect label="Business" newLabel={`New business name for ${category.title}`} pick={picks.business} businesses={businesses}
+        <BusinessSelect label={`Business for category ${category.title}`} newLabel={`New business name for ${category.title}`} pick={picks.business} businesses={businesses}
           disabled={disabled}
           onPick={(b) => setPicks({ ...picks, business: b })}
           onTyping={(b) => setPicks({ ...picks, business: b })}
@@ -377,50 +391,61 @@ function NewCategory({ category, businesses, start, disabled, onAdd }: {
   );
 }
 
-function NewBrands({ draft, businesses, disabled, onDraft }: {
-  draft: RowDraft; businesses: BusinessOption[]; disabled: boolean; onDraft: (d: RowDraft) => void;
+/**
+ * Review and add: a copy of the row's brands, saved by Done. fileBusiness: the row's business now (Digital, ATL),
+ * shown instead of the name an earlier preview gave.
+ */
+function NewBrands({ draft, businesses, disabled, fileBusiness, onDone }: {
+  draft: RowDraft; businesses: BusinessOption[]; disabled: boolean; fileBusiness: string | null; onDone: (brands: BrandDraft[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<BrandDraft[]>([]);
+  const [rows, setRows] = useState<BrandDraft[]>(draft.brands);
+  const [query, setQuery] = useState("");
   // A brand with no business on its row (OOH) picks one: visible businesses, or one this row adds.
   const adding = draft.bizNames.filter((n) => decisionValue(draft.businesses, n) === "add");
   const set = (k: number, b: Partial<BrandDraft>) => setRows(rows.map((x, j) => (j === k ? { ...x, ...b } : x)));
-  if (!open) {
-    return (
-      <div className="md:pl-7">
-        <Button variant="outline" size="sm" disabled={disabled} onClick={() => { setRows(draft.brands); setOpen(true); }}>Review and add</Button>
-      </div>
-    );
-  }
+  const shown = rows.filter((b) => brandMatches(b, query)).length;
+  const actions = (
+    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      <Button variant="outline" size="sm" disabled={disabled || shown === 0} onClick={() => setRows(tickShown(rows, query))}>Tick all</Button>
+      <Button size="sm" disabled={disabled} onClick={() => onDone(rows)}>Done</Button>
+    </div>
+  );
   return (
     <Panel>
-      <ul className="space-y-3">
-        {rows.map((b, k) => (
-          <li key={b.name} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <label className="flex min-w-0 items-center gap-2 text-sm text-gray-900 sm:w-40">
-              <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
-                onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />
-              <span className="min-w-0 truncate" title={b.name}>{b.name}</span>
-            </label>
-            <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="sm:flex-1"
-              onChange={(e) => set(k, { fullName: e.target.value })} />
-            {b.business !== null ? (
-              <p className="min-w-0 truncate text-sm text-gray-500 sm:w-56" title={b.business}>{b.business}</p>
-            ) : (
-              <select aria-label={`Business for ${b.name}`} value={b.pick} disabled={disabled} className={SELECT}
-                onChange={(e) => set(k, { pick: e.target.value })}>
-                <option value="">Pick the business…</option>
-                {businesses.map((x) => <option key={x.slug} value={x.slug}>{x.name}</option>)}
-                {adding.map((n) => <option key={n} value={`new:${n}`}>{n}</option>)}
-              </select>
-            )}
-          </li>
-        ))}
-      </ul>
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" size="sm" disabled={disabled} onClick={() => setRows(rows.map((x) => ({ ...x, ticked: true })))}>Tick all</Button>
-        <Button size="sm" disabled={disabled} onClick={() => { setOpen(false); onDraft({ ...draft, brands: rows }); }}>Done</Button>
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <Input type="search" aria-label="Search brands" placeholder="Search brands" value={query} className="md:w-64"
+          onChange={(e) => setQuery(e.target.value)} />
+        {actions}
       </div>
+      {shown === 0 && <p className="text-sm text-gray-500">No brand matches the search.</p>}
+      <ul className="space-y-3">
+        {rows.map((b, k) => {
+          if (!brandMatches(b, query)) return null;
+          const business = b.business !== null ? (fileBusiness ?? b.business) : null;
+          return (
+            <li key={b.name} className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+              <label className="flex min-w-0 items-center gap-2 text-sm text-gray-900 md:w-40">
+                <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
+                  onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />
+                <span className="min-w-0 truncate" title={b.name}>{b.name}</span>
+              </label>
+              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="md:flex-1"
+                onChange={(e) => set(k, { fullName: e.target.value })} />
+              {business !== null ? (
+                <p className="min-w-0 truncate text-sm text-gray-500 md:w-56" title={business}>{business}</p>
+              ) : (
+                <select aria-label={`Business for ${b.name}`} value={brandPickValue(b.pick, draft)} disabled={disabled} className={SELECT}
+                  onChange={(e) => set(k, { pick: e.target.value })}>
+                  <option value="">Pick the business…</option>
+                  {businesses.map((x) => <option key={x.slug} value={x.slug}>{x.name}</option>)}
+                  {adding.map((n) => <option key={n} value={`new:${n}`}>{n}</option>)}
+                </select>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {shown > 0 && actions}
     </Panel>
   );
 }

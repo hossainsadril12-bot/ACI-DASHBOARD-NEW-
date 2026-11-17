@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionsSchema, type FilePreview } from "@/server/ingest";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import {
-  NEW_BUSINESS, addAllAsNew, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads, publishButtonLabel,
-  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, toDecisions, uploadForm, whenDhaka,
+  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads, publishButtonLabel,
+  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, tickShown, toDecisions, uploadForm, whenDhaka,
   type RowDraft,
 } from "./logic";
 
@@ -147,10 +147,21 @@ describe("toDecisions", () => {
       { name: "Billboard Z", fullName: "Billboard Z", business: "salt" },
     ]);
   });
+  it("sends a 120-character new business name in the file pick, the ATL business and a brand's business", () => {
+    const name = "y".repeat(MAX_NEW_BUSINESS_NAME);
+    expect(MAX_NEW_BUSINESS_NAME).toBe(120);
+    const picked = toDecisions(draft({ business: { value: NEW_BUSINESS, newName: name } }), [])!;
+    expect(picked.business).toBe(`new:${name}`);
+    const atl = toDecisions(draft({ atl: { title: "Lux Soap", business: { value: NEW_BUSINESS, newName: name }, ownBrands: ["Lux"] } }), [])!;
+    expect(atl.atl!.business).toBe(`new:${name}`);
+    const brand = toDecisions(draft({ brands: [{ name: "Coil", business: name, suggestion: null, ticked: true, fullName: "Coil", pick: "" }] }), [])!;
+    expect(brand.brands[0].business).toBe(`new:${name}`);
+    for (const out of [picked, atl, brand]) expect(DecisionsSchema.safeParse(out).success).toBe(true);
+  });
   it("keeps every payload inside the server's schema", () => {
     const long = "x".repeat(121);
     const d = draft({
-      business: { value: NEW_BUSINESS, newName: "y".repeat(118) }, // new:<118> is over 120: left out
+      business: { value: NEW_BUSINESS, newName: "y".repeat(121) }, // new:<121> is over 124: left out
       bizNames: Array.from({ length: 250 }, (_, i) => `Biz ${i}`),
       businesses: [...Array.from({ length: 250 }, (_, i) => ({ name: `Biz ${i}`, action: "new" as const })), { name: long, action: "new" }],
       brands: [
@@ -174,6 +185,104 @@ describe("toDecisions", () => {
     ]);
     const ticked = first.map((b) => ({ ...b, ticked: true }));
     expect(seenBrands(ticked, preview({ newBrands: [{ name: "coil", business: null, suggestion: null }] }))).toEqual(ticked);
+  });
+  it("takes the business and suggestion of a brand from the newest preview, keeping the admin's choices", () => {
+    const first = seenBrands([], preview({ newBrands: [{ name: "Freedom", business: "Hygiene", suggestion: null }] }))
+      .map((b) => ({ ...b, ticked: true, fullName: "Freedom Pads" }));
+    expect(seenBrands(first, preview({ newBrands: [{ name: "freedom", business: "Toiletries", suggestion: "Freedom Sanitary" }] }))).toEqual([
+      { name: "Freedom", business: "Toiletries", suggestion: "Freedom Sanitary", ticked: true, fullName: "Freedom Pads", pick: "" },
+    ]);
+  });
+});
+
+describe("brands under the file's business (Digital, ATL)", () => {
+  const brand = (name: string, business: string) => ({ name, business, suggestion: null });
+  const tickAll = (d: RowDraft): RowDraft => ({ ...d, brands: d.brands.map((b) => ({ ...b, ticked: true })) });
+  const sentBusinesses = (d: RowDraft) => JSON.stringify(toDecisions(d, [TOILETRIES]));
+
+  it("sends a Digital file's brands under the business picked now, never an earlier pick", () => {
+    const digital = preview({ type: "digital", business: { slug: null, name: "Hygiene" }, businessSource: "admin", newBrands: [brand("Freedom", "Hygiene")] });
+    const d = tickAll(afterPreview(draft({ business: { value: NEW_BUSINESS, newName: "Hygiene" } }), digital));
+    expect(toDecisions(d, [TOILETRIES])!.brands).toEqual([{ name: "Freedom", fullName: "Freedom", business: "new:Hygiene" }]);
+
+    const toToiletries = { ...d, business: { value: "toiletries", newName: "" } };
+    expect(toDecisions(toToiletries, [TOILETRIES])).toEqual({ business: "toiletries", businesses: [], brands: [{ name: "Freedom", fullName: "Freedom", business: "toiletries" }] });
+    const renamed = { ...d, business: { value: NEW_BUSINESS, newName: "Personal Care" } };
+    expect(toDecisions(renamed, [TOILETRIES])!.brands[0].business).toBe("new:Personal Care");
+    const cleared = { ...d, business: { value: "", newName: "" } };
+    expect(toDecisions(cleared, [TOILETRIES])).toBeNull();
+    for (const x of [toToiletries, renamed, cleared]) expect(sentBusinesses(x)).not.toContain("Hygiene");
+  });
+  it("sends a Digital file's brands under the business the server found itself while nothing is picked", () => {
+    const found = preview({ type: "digital", business: { slug: "toiletries", name: "Toiletries" }, businessSource: "brands", newBrands: [brand("Freedom", "Toiletries")] });
+    let d = tickAll(afterPreview(draft(), found));
+    expect(toDecisions(d, [TOILETRIES])!.brands[0].business).toBe("toiletries");
+    // A later pick wins; clearing it again goes back to what the server found.
+    d = afterPreview({ ...d, business: { value: NEW_BUSINESS, newName: "Hygiene" } },
+      preview({ type: "digital", business: { slug: null, name: "Hygiene" }, businessSource: "admin", newBrands: [] }));
+    expect(toDecisions(d, [TOILETRIES])!.brands[0].business).toBe("new:Hygiene");
+    expect(toDecisions({ ...d, business: { value: "", newName: "" } }, [TOILETRIES])!.brands[0].business).toBe("toiletries");
+  });
+  it("sends a new ATL category's brands under the category's business now, and none after Change", () => {
+    const atl = { title: "Lux Soap", business: { value: NEW_BUSINESS, newName: "Hygiene" }, ownBrands: ["Lux"] };
+    const added = preview({ type: "atl", business: { slug: null, name: "Hygiene" }, businessSource: "admin", newBrands: [brand("Lux", "Hygiene")] });
+    const d = tickAll(afterPreview(draft({ atl }), added));
+    expect(toDecisions(d, [TOILETRIES])!.brands).toEqual([{ name: "Lux", fullName: "Lux", business: "new:Hygiene" }]);
+
+    const moved = { ...d, atl: { ...atl, business: { value: "toiletries", newName: "" } } };
+    expect(toDecisions(moved, [TOILETRIES])!.brands).toEqual([{ name: "Lux", fullName: "Lux", business: "toiletries" }]);
+    const changed = { ...d, atl: null };
+    expect(toDecisions(changed, [TOILETRIES])).toBeNull();
+    for (const x of [moved, changed]) expect(sentBusinesses(x)).not.toContain("Hygiene");
+  });
+  it("sends a known ATL category's brands under that category's business", () => {
+    const known = preview({ type: "atl", business: { slug: "toiletries", name: "Toiletries" }, businessSource: "category", newBrands: [brand("Lux", "Toiletries")] });
+    expect(toDecisions(tickAll(afterPreview(draft(), known)), [TOILETRIES])!.brands[0].business).toBe("toiletries");
+  });
+  it("keeps the names and brands seen, as before", () => {
+    const d = afterPreview(draft({ bizNames: ["CB Core"] }), preview({ type: "calendar", newBusinesses: [{ name: "Hygiene", suggestion: null }], newBrands: [brand("Coil", "CB Core")] }));
+    expect(d.bizNames).toEqual(["CB Core", "Hygiene"]);
+    expect(d.brands.map((b) => b.name)).toEqual(["Coil"]);
+  });
+});
+
+describe("a brand's business pick (no business on its row)", () => {
+  const d = draft({ bizNames: ["CB Core", "ACI Salt", "Mosquito"] });
+  it("shows a slug as it is", () => {
+    expect(brandPickValue("salt", d)).toBe("salt");
+    expect(brandPickValue("", d)).toBe("");
+  });
+  it("shows the business a name of this row now goes to", () => {
+    expect(brandPickValue("new:CB Core", { ...d, businesses: [{ name: "CB Core", action: "new" }] })).toBe("new:CB Core");
+    expect(brandPickValue("new:ACI Salt", { ...d, businesses: [{ name: "ACI Salt", action: "same", slug: "salt" }] })).toBe("salt");
+    const both = setBusinessDecision([], d.bizNames, "ACI Salt", "same:new:CB Core");
+    expect(brandPickValue("new:ACI Salt", { ...d, businesses: both })).toBe("new:CB Core");
+    expect(brandPickValue("new:aci salt", { ...d, businesses: both })).toBe("new:CB Core");
+  });
+  it("shows nothing picked when that name is undecided", () => {
+    expect(brandPickValue("new:Mosquito", d)).toBe("");
+  });
+});
+
+describe("brandWarning", () => {
+  const b = (name: string) => ({ name, business: null, suggestion: null });
+  it("is the server's warning line for the brands not on the list, or null when there are none", () => {
+    expect(brandWarning(preview({ newBrands: [b("Neem")] }))).toBe("1 brand not on your list.");
+    expect(brandWarning(preview({ newBrands: [b("Neem"), b("Coil")] }))).toBe("2 brands not on your list.");
+    expect(brandWarning(preview())).toBeNull();
+  });
+});
+
+describe("Review and add search", () => {
+  const rows = ["Savlon Soap", "Savlon HW", "Neem", "Freedom"].map((name) => ({ name, business: null, suggestion: null, ticked: false, fullName: name, pick: "" }));
+  it("finds brands by any part of the name, ignoring case and spaces", () => {
+    expect(rows.filter((b) => brandMatches(b, "savlon")).map((b) => b.name)).toEqual(["Savlon Soap", "Savlon HW"]);
+    expect(rows.filter((b) => brandMatches(b, "  SAVLON   hw ")).map((b) => b.name)).toEqual(["Savlon HW"]);
+    expect(rows.filter((b) => brandMatches(b, " ")).length).toBe(4);
+  });
+  it("Tick all ticks only the brands the search shows", () => {
+    expect(tickShown(rows, "savlon").map((b) => b.ticked)).toEqual([true, true, false, false]);
+    expect(tickShown(rows, "").every((b) => b.ticked)).toBe(true);
   });
 });
 

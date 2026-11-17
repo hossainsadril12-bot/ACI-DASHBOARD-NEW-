@@ -18,12 +18,12 @@ export function rowStatus(p: FilePreview): RowStatus {
 // ---- List decisions -------------------------------------------------------------------------------------------
 // The server's DecisionsSchema limits. One entry out of range makes it ignore the file's whole decisions object.
 const MAX_NAME = 120;
-const MAX_SAME_SLUG = 124; // "new:" + a name
+const MAX_BUSINESS_VALUE = 124; // a slug, or "new:" + a name
 const MAX_BUSINESS_ENTRIES = 200;
 const MAX_BRAND_ENTRIES = 500;
 export const MAX_OWN_BRANDS = 50;
-/** The longest name a "New business…" box takes: "new:<name>" must fit in 120 characters. */
-export const MAX_NEW_BUSINESS_NAME = MAX_NAME - "new:".length;
+/** The longest name a "New business…" box takes. */
+export const MAX_NEW_BUSINESS_NAME = MAX_NAME;
 
 /** The "New business…" option of a Business select. Slugs never contain "_". */
 export const NEW_BUSINESS = "__new__";
@@ -32,7 +32,10 @@ export type BusinessOption = { slug: string; name: string };
 export type BusinessDecision = Decisions["businesses"][number];
 /** A Business select: "" (none), a business slug, or NEW_BUSINESS with the typed name. */
 export type BusinessPick = { value: string; newName: string };
-/** A brand from the preview with the admin's choices. business: the business name from the file, or null (pick: "" | slug | "new:<name>"). */
+/**
+ * A brand from the preview with the admin's choices. business: the business name from the newest preview that listed
+ * it, or null (pick: "" | slug | "new:<name>"). Digital and ATL brands are always sent under the row's current business.
+ */
 export type BrandDraft = { name: string; business: string | null; suggestion: string | null; ticked: boolean; fullName: string; pick: string };
 /** Everything the admin decided for one row. Dropped when the row is removed, cleared or its type changes. */
 export type RowDraft = {
@@ -41,9 +44,14 @@ export type RowDraft = {
   businesses: BusinessDecision[];
   atl: { title: string; business: BusinessPick; ownBrands: string[] } | null; // set by Add category
   brands: BrandDraft[]; // every new brand seen, ticked or not
+  type: FileType | null; // the type of the newest preview
+  /** The slug the server found on its own (Digital: from the brands or file name; ATL: a known category's business). */
+  foundBusiness: string | null;
 };
 
-export const emptyDraft = (): RowDraft => ({ business: { value: "", newName: "" }, bizNames: [], businesses: [], atl: null, brands: [] });
+export const emptyDraft = (): RowDraft => ({
+  business: { value: "", newName: "" }, bizNames: [], businesses: [], atl: null, brands: [], type: null, foundBusiness: null,
+});
 
 const tidy = (s: string) => s.trim().replace(/\s+/g, " ");
 const same = (a: string, b: string) => normName(a) === normName(b);
@@ -73,14 +81,34 @@ export function seenNames(prev: string[], preview: FilePreview): string[] {
   return out;
 }
 
-/** The brands seen before (with their choices), then the new ones, pre-filled with the suggestion or the name. */
+/**
+ * The brands seen before (with their choices), then the new ones, pre-filled with the suggestion or the name. A brand
+ * the preview still lists takes its business and suggestion from it.
+ */
 export function seenBrands(prev: BrandDraft[], preview: FilePreview): BrandDraft[] {
   const out = [...prev];
   for (const b of preview.newBrands) {
-    if (out.some((x) => same(x.name, b.name))) continue;
-    out.push({ name: b.name, business: b.business, suggestion: b.suggestion, ticked: false, fullName: b.suggestion ?? b.name, pick: "" });
+    const k = out.findIndex((x) => same(x.name, b.name));
+    if (k >= 0) out[k] = { ...out[k], business: b.business, suggestion: b.suggestion };
+    else out.push({ name: b.name, business: b.business, suggestion: b.suggestion, ticked: false, fullName: b.suggestion ?? b.name, pick: "" });
   }
   return out;
+}
+
+/** Digital and ATL files have no business column: their brands go under the file's business. */
+export const underFileBusiness = (d: RowDraft) => d.type === "digital" || d.type === "atl";
+
+/** The row's draft after a preview: the names and brands seen, the file type, and the business the server found itself. */
+export function afterPreview(draft: RowDraft, preview: FilePreview): RowDraft {
+  const own = preview.businessSource !== null && preview.businessSource !== "admin";
+  return {
+    ...draft,
+    bizNames: seenNames(draft.bizNames, preview),
+    brands: seenBrands(draft.brands, preview),
+    type: preview.type,
+    // An admin pick hides what the server would find without it, which does not change, so keep the last one seen.
+    foundBusiness: own ? (preview.business?.slug ?? null) : preview.businessSource === "admin" ? draft.foundBusiness : null,
+  };
 }
 
 const decisionOf = (list: BusinessDecision[], name: string) => list.find((d) => same(d.name, name));
@@ -143,33 +171,63 @@ function brandBusiness(name: string, draft: RowDraft, businesses: BusinessOption
   return visible ? visible.slug : `new:${tidy(name)}`;
 }
 
+/**
+ * The select value for a brand's business pick: a name of this row shows where it goes now (itself when added, the
+ * business it is "same as" otherwise), or nothing while it is undecided.
+ */
+export function brandPickValue(pick: string, draft: RowDraft): string {
+  if (!pick.startsWith("new:")) return pick;
+  const d = decisionOf(draft.businesses, pick.slice(4));
+  if (!d) return "";
+  if (d.action === "same" && !d.slug?.startsWith("new:")) return d.slug ?? "";
+  const target = d.action === "new" ? pick.slice(4) : d.slug!.slice(4);
+  const shown = draft.bizNames.find((n) => same(n, target)); // the options use this row's spelling
+  return shown && decisionOf(draft.businesses, shown)?.action === "new" ? `new:${shown}` : "";
+}
+
+/** Review and add search: any part of the brand's name, ignoring case and spaces. An empty search shows every brand. */
+export const brandMatches = (b: BrandDraft, query: string) => normName(b.name).includes(normName(query));
+
+/** Tick all: ticks the brands the search shows, and leaves the others as they are. */
+export const tickShown = (rows: BrandDraft[], query: string) => rows.map((b) => (brandMatches(b, query) ? { ...b, ticked: true } : b));
+
 const fits = (s: string | null | undefined, max = MAX_NAME): s is string => !!s && s.length <= max;
 
 /** The row's decisions as the server's DecisionsSchema takes them, or null when there is nothing to send. */
 export function toDecisions(draft: RowDraft, businesses: BusinessOption[]): Decisions | null {
   const out: Decisions = { businesses: [], brands: [] };
   const business = pickValue(draft.business);
-  if (fits(business)) out.business = business;
+  if (fits(business, MAX_BUSINESS_VALUE)) out.business = business;
 
   out.businesses = draft.businesses
-    .filter((d) => fits(d.name) && (d.slug == null || fits(d.slug, MAX_SAME_SLUG)))
+    .filter((d) => fits(d.name) && (d.slug == null || fits(d.slug, MAX_BUSINESS_VALUE)))
     .slice(0, MAX_BUSINESS_ENTRIES);
 
   if (draft.atl) {
     const biz = pickValue(draft.atl.business);
     const own = draft.atl.ownBrands.filter((b) => fits(b)).slice(0, MAX_OWN_BRANDS);
-    if (fits(biz) && own.length) out.atl = { business: biz, ownBrands: own };
+    if (fits(biz, MAX_BUSINESS_VALUE) && own.length) out.atl = { business: biz, ownBrands: own };
   }
 
+  // Digital and ATL: the business sent now, as the server works it out (a valid pick, else the one it found itself);
+  // never a business name kept from an earlier preview.
+  const fileBusiness = draft.type === "atl" && draft.atl ? (out.atl?.business ?? null) : (out.business ?? draft.foundBusiness);
   for (const b of draft.brands) {
     if (!b.ticked || out.brands.length >= MAX_BRAND_ENTRIES) continue;
     const fullName = tidy(b.fullName);
-    const biz = b.business !== null ? brandBusiness(b.business, draft, businesses)
-      : b.pick.startsWith("new:") ? brandBusiness(b.pick.slice(4), draft, businesses) : b.pick || null;
-    if (fits(b.name) && fits(fullName) && fits(biz)) out.brands.push({ name: b.name, fullName, business: biz });
+    const biz = underFileBusiness(draft) ? fileBusiness
+      : b.business !== null ? brandBusiness(b.business, draft, businesses)
+        : b.pick.startsWith("new:") ? brandBusiness(b.pick.slice(4), draft, businesses) : b.pick || null;
+    if (fits(b.name) && fits(fullName) && fits(biz, MAX_BUSINESS_VALUE)) out.brands.push({ name: b.name, fullName, business: biz });
   }
 
   return out.business || out.businesses.length || out.atl || out.brands.length ? out : null;
+}
+
+/** The server's warning for the brands not on the list (the Review and add button sits next to it), or null when there are none. */
+export function brandWarning(p: FilePreview): string | null {
+  const n = p.newBrands.length;
+  return n ? `${n} ${n === 1 ? "brand" : "brands"} not on your list.` : null;
 }
 
 /** The block reason in grey, unless it is already shown in the red error list. */

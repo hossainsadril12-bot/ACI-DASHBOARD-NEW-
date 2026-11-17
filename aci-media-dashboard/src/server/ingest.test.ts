@@ -415,6 +415,26 @@ describe("business names in a file", () => {
     expect(same(`new:${"x".repeat(120)}`)).toBe(true);
     expect(same(`new:${"x".repeat(121)}`)).toBe(false);
   });
+  it("lets the file pick, the ATL business and a brand's business carry new: and a full 120-character name, no more", () => {
+    const takes = (v: string) => [
+      DecisionsSchema.safeParse({ business: v }).success,
+      DecisionsSchema.safeParse({ atl: { business: v, ownBrands: ["Lux"] } }).success,
+      DecisionsSchema.safeParse({ brands: [{ name: "Lux", fullName: "Lux", business: v }] }).success,
+    ];
+    expect(takes(`new:${"x".repeat(120)}`)).toEqual([true, true, true]);
+    expect(takes(`new:${"x".repeat(121)}`)).toEqual([false, false, false]);
+  });
+  it("adds a business with a 120-character name from a Digital pick, an ATL category and a brand", async () => {
+    const long = `B${"x".repeat(119)}`;
+    const store = await createTestStore();
+    const [digi] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), {
+      business: `new:${long}`, brands: [{ name: "Mystery Brand", fullName: "Mystery Brand", business: `new:${long}` }],
+    })]);
+    expect(digi).toMatchObject({ canPublish: true, business: { slug: null, name: long }, newBrands: [] });
+    expect(digi.pendingChanges.filter((c) => c.op === "addBusiness")).toEqual([{ op: "addBusiness", name: long }]);
+    const [atl] = await previewUploads(store, [decide(luxFile(), { atl: { business: `new:${long}`, ownBrands: ["Lux"] } })]);
+    expect(atl).toMatchObject({ canPublish: true, business: { slug: null, name: long }, newCategory: null });
+  });
   it("takes 'same as' new:<name> alone as deciding both names", async () => {
     const [p] = await previewUploads(await createTestStore(), [decide(file("billing.xlsx", calBook([["CB", "A"], ["CB Core", "B"]])), {
       businesses: [{ name: "CB Core", action: "same", slug: "new:cb" }],
