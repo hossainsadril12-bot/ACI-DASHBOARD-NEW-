@@ -20,6 +20,19 @@ describe("OOH master sheet read errors and warnings", () => {
   it("needs a header with OOH Location and Latitude", () => {
     expect(() => readOohSites(open(makeXlsx([{ name: "S", rows: [["Sl. No", "Place"]] }])))).toThrow(new ReadError('Couldn\'t find the header row (it needs "OOH Location" and "Latitude").'));
   });
+  it.each(["Asia/Dhaka", "UTC", "America/New_York"])("keeps the day typed as text on a %s server", (tz) => {
+    const was = process.env.TZ;
+    process.env.TZ = tz;
+    try {
+      const r = readOohSites(open(makeXlsx([{ name: "Master File", rows: [H,
+        [1, "Trishal, Mymensingh", "ACI Pure Salt", "W 10' x H 6'", "2 Nov 2026", "2026-12-01", 1000, "Sadaf Ad", 24.5, 90.3],
+      ] }])));
+      expect(r.data[0].start).toBe("2026-11-02");
+      expect(r.data[0].end).toBe("2026-12-01");
+    } finally {
+      if (was === undefined) delete process.env.TZ; else process.env.TZ = was;
+    }
+  });
   it("warns about a missing pin, coordinates outside Bangladesh and no amount", () => {
     const r = readOohSites(open(makeXlsx([{ name: "Master File", rows: [H,
       [1, "Trishal, Mymensingh", "ACI Pure Salt", "W 10' x H 6'", null, null, 1000, "Sadaf Ad", null, null],

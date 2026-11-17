@@ -51,8 +51,14 @@ export function readOohSites(wb: Workbook): ReadResult<OohSiteRow[]> {
     if (cl.date) return cl.date.toISOString().slice(0, 10);
     const t = xstr(cl.v).trim();
     if (!t) return t;
+    // A date typed as text keeps the day that was typed, on any server time zone.
+    // ISO text ("2026-12-01") parses as UTC, other text ("2 Nov 2026") parses as local time.
+    const iso = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/.exec(t);
+    if (iso) return iso[1];
     const d = new Date(t);
-    return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : t;
+    if (isNaN(d.getTime())) return t;
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
 
   const rows: OohSiteRow[] = [];
