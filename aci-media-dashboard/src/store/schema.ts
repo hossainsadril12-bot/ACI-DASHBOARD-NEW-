@@ -107,7 +107,7 @@ export const atlCategory = sqliteTable(
   (t) => [
     check("atl_category_slug_length", sql`length(${t.slug}) BETWEEN 1 AND 60`),
     check("atl_category_name_length", sql`length(${t.name}) BETWEEN 1 AND 120`),
-    check("atl_category_own_brands_array", sql`json_type(${t.ownBrands}) = 'array'`),
+    check("atl_category_own_brands_array", sql`json_type(${t.ownBrands}) = 'array' AND json_array_length(${t.ownBrands}) BETWEEN 1 AND 50`),
   ],
 );
 

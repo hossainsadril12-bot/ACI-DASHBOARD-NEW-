@@ -40,16 +40,22 @@ export function cleanName(s: string): string {
   return name;
 }
 
-/** An ATL category's "our brands": 1 to 50 names, each cleaned, duplicates (by normName) dropped, order kept. */
+/**
+ * An ATL category's "our brands": each cleaned, duplicates (by normName) dropped, order kept,
+ * then 1 to 50 distinct names. Anything that is not a list of strings is refused the same way.
+ */
 function cleanOwnBrands(list: string[]): string[] {
-  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_OWN_BRANDS) throw new ValidationError("Pick at least one of our brands.");
+  const pick = "Pick 1 to 50 of our brands.";
+  if (!Array.isArray(list)) throw new ValidationError(pick);
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of list) {
+  for (const raw of list as unknown[]) {
+    if (typeof raw !== "string") throw new ValidationError(pick);
     const name = cleanName(raw);
     const norm = normName(name);
     if (!seen.has(norm)) { seen.add(norm); out.push(name); }
   }
+  if (out.length === 0 || out.length > MAX_OWN_BRANDS) throw new ValidationError(pick);
   return out;
 }
 

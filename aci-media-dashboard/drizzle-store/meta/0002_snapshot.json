@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9bc3bb33-0d3c-41df-9b2b-0a4154c9d16f",
+  "id": "9cd1e907-44ed-48f6-8759-028af351c719",
   "prevId": "b0de066f-4d77-40e2-9d8c-adb734ac1bf4",
   "tables": {
     "admin_session": {
@@ -126,7 +126,7 @@
         },
         "atl_category_own_brands_array": {
           "name": "atl_category_own_brands_array",
-          "value": "json_type(\"atl_category\".\"own_brands\") = 'array'"
+          "value": "json_type(\"atl_category\".\"own_brands\") = 'array' AND json_array_length(\"atl_category\".\"own_brands\") BETWEEN 1 AND 50"
         }
       }
     },

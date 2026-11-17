@@ -9,7 +9,7 @@ CREATE TABLE `atl_category` (
 	FOREIGN KEY (`business_slug`) REFERENCES `business`(`slug`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "atl_category_slug_length" CHECK(length("atl_category"."slug") BETWEEN 1 AND 60),
 	CONSTRAINT "atl_category_name_length" CHECK(length("atl_category"."name") BETWEEN 1 AND 120),
-	CONSTRAINT "atl_category_own_brands_array" CHECK(json_type("atl_category"."own_brands") = 'array')
+	CONSTRAINT "atl_category_own_brands_array" CHECK(json_type("atl_category"."own_brands") = 'array' AND json_array_length("atl_category"."own_brands") BETWEEN 1 AND 50)
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `atl_category_norm_name_unique` ON `atl_category` (`norm_name`);--> statement-breakpoint

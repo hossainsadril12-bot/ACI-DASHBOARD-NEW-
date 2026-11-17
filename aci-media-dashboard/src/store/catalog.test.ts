@@ -186,9 +186,12 @@ describe("catalog", () => {
     await createBusiness(store, "Others");
     const add = (ownBrands: string[]) =>
       store.transaction((tx) => applyCatalogChanges(tx, [{ op: "addAtl", name: "ACI Pure Spices", businessSlug: "others", ownBrands }]));
-    const pick = "Pick at least one of our brands.";
+    const pick = "Pick 1 to 50 of our brands.";
     await expect(add([])).rejects.toThrow(new ValidationError(pick));
     await expect(add(Array.from({ length: 51 }, (_, i) => `Brand ${i}`))).rejects.toThrow(new ValidationError(pick));
+    await expect(add(["ACI Pure Masala", 7 as unknown as string])).rejects.toThrow(new ValidationError(pick));
+    await expect(add(["ACI Pure Masala", null as unknown as string])).rejects.toThrow(new ValidationError(pick));
+    await expect(add("ACI Pure Masala" as unknown as string[])).rejects.toThrow(new ValidationError(pick));
     await expect(add(["ACI Pure Masala", "   "])).rejects.toThrow("Names must be 1 to 120 characters.");
     await expect(add(["x".repeat(121)])).rejects.toThrow(ValidationError);
     expect((await getCatalog(store)).atl).toEqual([]);
@@ -197,9 +200,17 @@ describe("catalog", () => {
     await expect(setAtlCategory(store, "aci-pure-spices", { businessSlug: "others", ownBrands: [] })).rejects.toThrow(new ValidationError(pick));
     await setAtlCategory(store, "aci-pure-spices", { businessSlug: "others", ownBrands: Array.from({ length: 50 }, (_, i) => `Brand ${i}`) });
     expect((await getCatalog(store)).atlOf("aci pure spices")?.ownBrands).toHaveLength(50);
+    // 51 entries that de-duplicate to 50 are fine: the limit counts distinct brands.
+    const fiftyOne = [...Array.from({ length: 50 }, (_, i) => `Brand ${i}`), " brand  0 "];
+    await setAtlCategory(store, "aci-pure-spices", { businessSlug: "others", ownBrands: fiftyOne });
+    expect((await getCatalog(store)).atlOf("aci pure spices")?.ownBrands).toEqual(fiftyOne.slice(0, 50));
+    // 52 entries that de-duplicate to 51 are still too many.
+    await expect(
+      setAtlCategory(store, "aci-pure-spices", { businessSlug: "others", ownBrands: [...Array.from({ length: 51 }, (_, i) => `Brand ${i}`), "BRAND 3"] }),
+    ).rejects.toThrow(new ValidationError(pick));
   });
 
-  it("the database refuses our brands that are not a JSON array", async () => {
+  it("the database refuses our brands that are not a JSON array of 1 to 50", async () => {
     const store = await createTestStore();
     await createBusiness(store, "Others");
     const insert = (slug: string, own: string) =>
@@ -207,8 +218,14 @@ describe("catalog", () => {
     await expect(insert("a", '"ACI Pure Masala"')).rejects.toThrow();
     await expect(insert("b", '{"x":1}')).rejects.toThrow();
     await expect(insert("c", "not json")).rejects.toThrow();
+    await expect(insert("d", "[]")).rejects.toThrow();
+    await expect(insert("e", JSON.stringify(Array.from({ length: 51 }, (_, i) => `Brand ${i}`)))).rejects.toThrow();
     await insert("ok", '["ACI Pure Masala"]'); // positive control
-    expect((await getCatalog(store)).atlOf("ok")?.ownBrands).toEqual(["ACI Pure Masala"]);
+    await insert("ok-50", JSON.stringify(Array.from({ length: 50 }, (_, i) => `Brand ${i}`))); // positive control at the limit
+    const c = await getCatalog(store);
+    expect(c.atlOf("ok")?.ownBrands).toEqual(["ACI Pure Masala"]);
+    expect(c.atlOf("ok-50")?.ownBrands).toHaveLength(50);
+    expect(c.atl.map((a) => a.slug).sort()).toEqual(["ok", "ok-50"]);
   });
 
   it("the database refuses a name match that points at both or neither", async () => {
