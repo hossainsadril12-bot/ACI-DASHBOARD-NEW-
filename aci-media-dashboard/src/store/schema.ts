@@ -110,12 +110,13 @@ export const atlCategory = sqliteTable(
   ],
 );
 
-/** Every name (normalised) that points at a business or a brand: own names, old names and "same as" names. */
+/** Every name that points at a business or a brand: own names, old names and "same as" names. Keyed by the normalised name; `name` keeps the spelling. */
 export const nameMatch = sqliteTable(
   "name_match",
   {
     kind: text("kind", { enum: ["business", "brand"] }).notNull(),
     normName: text("norm_name").notNull(),
+    name: text("name").notNull(),
     businessSlug: text("business_slug").references(() => business.slug),
     brandId: integer("brand_id").references(() => brand.id),
   },
@@ -126,6 +127,7 @@ export const nameMatch = sqliteTable(
       sql`(${t.kind} = 'business' AND ${t.businessSlug} IS NOT NULL AND ${t.brandId} IS NULL) OR (${t.kind} = 'brand' AND ${t.brandId} IS NOT NULL AND ${t.businessSlug} IS NULL)`,
     ),
     check("name_match_norm_name_length", sql`length(${t.normName}) BETWEEN 1 AND 120`),
+    check("name_match_name_length", sql`length(${t.name}) BETWEEN 1 AND 120`),
   ],
 );
 

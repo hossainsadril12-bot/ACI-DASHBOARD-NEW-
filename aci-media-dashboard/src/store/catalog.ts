@@ -41,18 +41,18 @@ export function cleanName(s: string): string {
   return name;
 }
 
-function slugBase(name: string, fallback: string): string {
-  const base = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
-  return base || fallback;
-}
-
-/** A slug that is not taken yet: "food-beverage", then "food-beverage-2", "-3", ... Never longer than 60. */
-async function makeSlug(name: string, fallback: string, taken: (slug: string) => Promise<boolean>): Promise<string> {
-  const base = slugBase(name, fallback);
+/**
+ * The one slug rule. ASCII only: lower-case, anything outside a-z and 0-9 becomes "-", runs collapsed,
+ * "-" trimmed, max 60; empty becomes the fallback. If taken: "-2", "-3", ... still within 60.
+ * Synchronous so a caller can predict the slug the store will give a new name.
+ */
+export function makeSlug(name: string, taken: (slug: string) => boolean, fallback: "business" | "atl"): string {
+  const ascii = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const base = ascii.slice(0, MAX_SLUG).replace(/-+$/, "") || fallback;
   for (let n = 1; ; n++) {
     const suffix = n === 1 ? "" : `-${n}`;
     const slug = base.slice(0, MAX_SLUG - suffix.length).replace(/-+$/, "") + suffix;
-    if (!(await taken(slug))) return slug;
+    if (!taken(slug)) return slug;
   }
 }
 
@@ -84,10 +84,28 @@ async function duplicate(db: StoreTx, kind: MatchKind, name: string, match: { bu
   return new ValidationError(`"${name}" is already used by ${kind} "${existing ?? name}".`);
 }
 
+/** A rename back to a name it already matches: keep the new spelling. Only called for the caller's own match row. */
+async function setMatchSpelling(db: StoreTx, kind: MatchKind, name: string) {
+  await db.update(nameMatch).set({ name }).where(and(eq(nameMatch.kind, kind), eq(nameMatch.normName, normName(name))));
+}
+
+/** Saves a match name with its spelling. `name` must already be cleaned. */
+async function insertMatch(db: StoreTx, kind: MatchKind, name: string, target: { businessSlug: string } | { brandId: number }) {
+  await db.insert(nameMatch).values({ kind, normName: normName(name), name, ...target });
+}
+
 async function insertBusiness(db: StoreTx, name: string): Promise<string> {
-  const slug = await makeSlug(name, "business", async (s) => (await getBusiness(db, s)) !== null);
+  const taken = new Set((await db.select({ slug: business.slug }).from(business)).map((r) => r.slug));
+  const slug = makeSlug(name, (s) => taken.has(s), "business");
   await db.insert(business).values({ slug, name });
-  await db.insert(nameMatch).values({ kind: "business", normName: normName(name), businessSlug: slug });
+  await insertMatch(db, "business", name, { businessSlug: slug });
+  return slug;
+}
+
+async function insertAtl(db: StoreTx, name: string, businessSlug: string, ownBrand: string): Promise<string> {
+  const taken = new Set((await db.select({ slug: atlCategory.slug }).from(atlCategory)).map((r) => r.slug));
+  const slug = makeSlug(name, (s) => taken.has(s), "atl");
+  await db.insert(atlCategory).values({ slug, name, normName: normName(name), businessSlug, ownBrand });
   return slug;
 }
 
@@ -100,48 +118,53 @@ async function openBusiness(db: StoreTx, slug: string) {
 
 async function insertBrand(db: StoreTx, businessSlug: string, name: string): Promise<number> {
   const [row] = await db.insert(brand).values({ businessSlug, name }).returning({ id: brand.id });
-  await db.insert(nameMatch).values({ kind: "brand", normName: normName(name), brandId: row.id });
+  await insertMatch(db, "brand", name, { brandId: row.id });
   return row.id;
 }
 
-/** Applies upload decisions in order, inside the caller's transaction. A change whose name already matches is skipped. */
-export async function applyCatalogChanges(tx: StoreTx, changes: CatalogChange[]): Promise<void> {
+/** The slugs this call created, keyed by the normalised name that was added. */
+export type CatalogChangeResult = { businessSlugs: Record<string, string>; atlSlugs: Record<string, string> };
+
+/**
+ * Applies upload decisions in order, inside the caller's transaction. A change whose name already matches
+ * adds nothing new, except that addBrand still attaches its aliases to the brand it matched.
+ * An alias that already matches a brand is skipped (first one wins). Every other problem throws.
+ */
+export async function applyCatalogChanges(tx: StoreTx, changes: CatalogChange[]): Promise<CatalogChangeResult> {
+  const result: CatalogChangeResult = { businessSlugs: {}, atlSlugs: {} };
   for (const change of changes) {
     const name = cleanName(change.name);
     switch (change.op) {
       case "addBusiness": {
-        if (!(await findMatch(tx, "business", name))) await insertBusiness(tx, name);
+        if (!(await findMatch(tx, "business", name))) result.businessSlugs[normName(name)] = await insertBusiness(tx, name);
         break;
       }
       case "businessSameAs": {
-        if (!(await getBusiness(tx, change.slug))) throw noBusiness();
-        if (!(await findMatch(tx, "business", name))) {
-          await tx.insert(nameMatch).values({ kind: "business", normName: normName(name), businessSlug: change.slug });
-        }
+        await openBusiness(tx, change.slug);
+        if (!(await findMatch(tx, "business", name))) await insertMatch(tx, "business", name, { businessSlug: change.slug });
         break;
       }
       case "addBrand": {
         await openBusiness(tx, change.businessSlug);
         const aliases = (change.alsoMatches ?? []).map(cleanName);
-        if (await findMatch(tx, "brand", name)) break;
-        const id = await insertBrand(tx, change.businessSlug, name);
+        const match = await findMatch(tx, "brand", name);
+        const id = match?.brandId ?? (await insertBrand(tx, change.businessSlug, name));
         for (const alias of aliases) {
-          if (!(await findMatch(tx, "brand", alias))) await tx.insert(nameMatch).values({ kind: "brand", normName: normName(alias), brandId: id });
+          if (!(await findMatch(tx, "brand", alias))) await insertMatch(tx, "brand", alias, { brandId: id });
         }
         break;
       }
       case "addAtl": {
-        if (!(await getBusiness(tx, change.businessSlug))) throw noBusiness();
+        await openBusiness(tx, change.businessSlug);
         const ownBrand = cleanName(change.ownBrand);
         const norm = normName(name);
         const [existing] = await tx.select({ slug: atlCategory.slug }).from(atlCategory).where(eq(atlCategory.normName, norm)).limit(1);
-        if (existing) break;
-        const slug = await makeSlug(name, "atl", async (s) => (await tx.select({ slug: atlCategory.slug }).from(atlCategory).where(eq(atlCategory.slug, s)).limit(1)).length > 0);
-        await tx.insert(atlCategory).values({ slug, name, normName: norm, businessSlug: change.businessSlug, ownBrand });
+        if (!existing) result.atlSlugs[norm] = await insertAtl(tx, name, change.businessSlug, ownBrand);
         break;
       }
     }
   }
+  return result;
 }
 
 /** Loads every business, brand and ATL category, with lookups by name. */
@@ -153,40 +176,53 @@ export async function getCatalog(store: Store | StoreTx): Promise<Catalog> {
   const atlRows = await db.select().from(atlCategory);
   const matchRows = await db.select().from(nameMatch);
   const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
-  const otherNames = (own: string, names: string[]) => [normName(own), ...names.filter((n) => n !== normName(own)).sort()];
 
-  const businesses: CatalogBusiness[] = bizRows
-    .map((b) => ({
-      slug: b.slug,
-      name: b.name,
-      hidden: b.hidden,
-      names: otherNames(b.name, matchRows.filter((m) => m.kind === "business" && m.businessSlug === b.slug).map((m) => m.normName)),
-    }))
-    .sort(byName);
-  const brands: CatalogBrand[] = brandRows
-    .map((b) => ({
-      id: b.id,
-      name: b.name,
-      businessSlug: b.businessSlug,
-      hidden: b.hidden,
-      names: otherNames(b.name, matchRows.filter((m) => m.kind === "brand" && m.brandId === b.id).map((m) => m.normName)),
-    }))
-    .sort(byName);
-  const atl: CatalogAtl[] = atlRows
-    .map((a) => ({ slug: a.slug, name: a.name, businessSlug: a.businessSlug, ownBrand: a.ownBrand, hidden: a.hidden }))
-    .sort(byName);
-
-  const bizBySlug = new Map(businesses.map((b) => [b.slug, b]));
-  const brandById = new Map(brands.map((b) => [b.id, b]));
-  const bizByName = new Map<string, CatalogBusiness>();
-  const brandByName = new Map<string, CatalogBrand>();
+  // Group the match rows once: business slug -> rows, brand id -> rows.
+  type MatchRow = (typeof matchRows)[number];
+  const bizMatches = new Map<string, MatchRow[]>();
+  const brandMatches = new Map<number, MatchRow[]>();
+  const push = <K>(map: Map<K, MatchRow[]>, key: K, m: MatchRow) => {
+    const list = map.get(key);
+    if (list) list.push(m);
+    else map.set(key, [m]);
+  };
   for (const m of matchRows) {
-    const target = m.kind === "business" ? bizBySlug.get(m.businessSlug ?? "") : brandById.get(m.brandId ?? 0);
-    if (!target) continue;
-    if (m.kind === "business") bizByName.set(m.normName, target as CatalogBusiness);
-    else brandByName.set(m.normName, target as CatalogBrand);
+    if (m.kind === "business" && m.businessSlug !== null) push(bizMatches, m.businessSlug, m);
+    else if (m.kind === "brand" && m.brandId !== null) push(brandMatches, m.brandId, m);
   }
-  const atlByName = new Map(atlRows.map((a) => [a.normName, atl.find((x) => x.slug === a.slug)!]));
+  /** The shown name first, then the other stored spellings in alphabetical order. */
+  const namesOf = (own: string, rows: MatchRow[]) => {
+    const ownNorm = normName(own);
+    const others = rows.filter((m) => m.normName !== ownNorm).map((m) => m.name);
+    return [own, ...others.sort((a, b) => a.localeCompare(b))];
+  };
+
+  const bizByName = new Map<string, CatalogBusiness>();
+  const businesses: CatalogBusiness[] = bizRows
+    .map((b) => {
+      const rows = bizMatches.get(b.slug) ?? [];
+      const item: CatalogBusiness = { slug: b.slug, name: b.name, hidden: b.hidden, names: namesOf(b.name, rows) };
+      for (const m of rows) bizByName.set(m.normName, item);
+      return item;
+    })
+    .sort(byName);
+  const brandByName = new Map<string, CatalogBrand>();
+  const brands: CatalogBrand[] = brandRows
+    .map((b) => {
+      const rows = brandMatches.get(b.id) ?? [];
+      const item: CatalogBrand = { id: b.id, name: b.name, businessSlug: b.businessSlug, hidden: b.hidden, names: namesOf(b.name, rows) };
+      for (const m of rows) brandByName.set(m.normName, item);
+      return item;
+    })
+    .sort(byName);
+  const atlByName = new Map<string, CatalogAtl>();
+  const atl: CatalogAtl[] = atlRows
+    .map((a) => {
+      const item: CatalogAtl = { slug: a.slug, name: a.name, businessSlug: a.businessSlug, ownBrand: a.ownBrand, hidden: a.hidden };
+      atlByName.set(a.normName, item);
+      return item;
+    })
+    .sort(byName);
 
   return {
     businesses,
@@ -215,7 +251,8 @@ export async function renameBusiness(store: Store, slug: string, name: string): 
     const match = await findMatch(tx, "business", clean);
     if (match && match.businessSlug !== slug) throw await duplicate(tx, "business", clean, match);
     await tx.update(business).set({ name: clean }).where(eq(business.slug, slug));
-    if (!match) await tx.insert(nameMatch).values({ kind: "business", normName: normName(clean), businessSlug: slug });
+    if (match) await setMatchSpelling(tx, "business", clean);
+    else await insertMatch(tx, "business", clean, { businessSlug: slug });
   });
 }
 
@@ -242,7 +279,8 @@ export async function renameBrand(store: Store, id: number, name: string): Promi
     const match = await findMatch(tx, "brand", clean);
     if (match && match.brandId !== id) throw await duplicate(tx, "brand", clean, match);
     await tx.update(brand).set({ name: clean }).where(eq(brand.id, id));
-    if (!match) await tx.insert(nameMatch).values({ kind: "brand", normName: normName(clean), brandId: id });
+    if (match) await setMatchSpelling(tx, "brand", clean);
+    else await insertMatch(tx, "brand", clean, { brandId: id });
   });
 }
 
@@ -257,7 +295,7 @@ export async function setAtlCategory(store: Store, slug: string, input: { busine
   await store.transaction(async (tx) => {
     const [atl] = await tx.select({ slug: atlCategory.slug }).from(atlCategory).where(eq(atlCategory.slug, slug)).limit(1);
     if (!atl) throw noAtl();
-    if (!(await getBusiness(tx, input.businessSlug))) throw noBusiness();
+    await openBusiness(tx, input.businessSlug);
     await tx.update(atlCategory).set({ businessSlug: input.businessSlug, ownBrand }).where(eq(atlCategory.slug, slug));
   });
 }

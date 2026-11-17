@@ -35,11 +35,13 @@ CREATE TABLE `business` (
 CREATE TABLE `name_match` (
 	`kind` text NOT NULL,
 	`norm_name` text NOT NULL,
+	`name` text NOT NULL,
 	`business_slug` text,
 	`brand_id` integer,
 	PRIMARY KEY(`kind`, `norm_name`),
 	FOREIGN KEY (`business_slug`) REFERENCES `business`(`slug`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`brand_id`) REFERENCES `brand`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "name_match_target" CHECK(("name_match"."kind" = 'business' AND "name_match"."business_slug" IS NOT NULL AND "name_match"."brand_id" IS NULL) OR ("name_match"."kind" = 'brand' AND "name_match"."brand_id" IS NOT NULL AND "name_match"."business_slug" IS NULL)),
-	CONSTRAINT "name_match_norm_name_length" CHECK(length("name_match"."norm_name") BETWEEN 1 AND 120)
+	CONSTRAINT "name_match_norm_name_length" CHECK(length("name_match"."norm_name") BETWEEN 1 AND 120),
+	CONSTRAINT "name_match_name_length" CHECK(length("name_match"."name") BETWEEN 1 AND 120)
 );

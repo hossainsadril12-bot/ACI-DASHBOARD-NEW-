@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d9e3a8b7-17a8-430f-b89c-47ffe8c3da55",
+  "id": "197ebf57-2367-4e80-a5c7-8609df2fa6e7",
   "prevId": "b0de066f-4d77-40e2-9d8c-adb734ac1bf4",
   "tables": {
     "admin_session": {
@@ -490,6 +490,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "business_slug": {
           "name": "business_slug",
           "type": "text",
@@ -552,6 +559,10 @@
         "name_match_norm_name_length": {
           "name": "name_match_norm_name_length",
           "value": "length(\"name_match\".\"norm_name\") BETWEEN 1 AND 120"
+        },
+        "name_match_name_length": {
+          "name": "name_match_name_length",
+          "value": "length(\"name_match\".\"name\") BETWEEN 1 AND 120"
         }
       }
     },
