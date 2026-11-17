@@ -23,6 +23,7 @@ The client wants the admin to create businesses and brands (meeting notes, 5 Nov
 5. A **new brand** never blocks. The preview shows one warning, "N brands not on your list", with **Review and add**.
 6. A **new ATL category** shows "New category found: X". Add it asks for **Business** and **Our brands**, both pre-filled. "Our brands" is a list, because one category can hold several ACI products (his Spices file has 4); the admin ticks them among the file's brand rows. All other brand rows in an ATL file are competitors and are never added to the brand list. (Changed from one "Our brand" on 17 Nov 2026 during the build, to keep his Spices data identical.)
 7. Files with no business column (Digital, ATL) get the business from the admin's pick in the preview. New brands in such a file go under that business.
+7b. Brands are never pre-ticked (Sadril, 17 Nov 2026, "gives the user freedom"). Picking a Digital file's business or adding an ATL category does not add that file's brands. Until the admin ticks them once in Review and add, a Digital file asks for its business again on each upload.
 8. Short names in his files (e.g. "Savlon HW") get a one-click full-name suggestion from his old short-name list (e.g. "Savlon Handwash"). Nothing is added without the admin.
 
 ## 3. Approach
