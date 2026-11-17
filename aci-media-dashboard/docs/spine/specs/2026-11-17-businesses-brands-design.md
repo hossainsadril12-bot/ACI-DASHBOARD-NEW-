@@ -57,7 +57,7 @@ Rejected: one saved JSON document for the whole list (no unique names, edits can
   - a normal warning "12 brands not on your list", which never blocks;
   - **Review and add** opens a list: each brand, its business (from its own row, or the business picked for the file; for the OOH master sheet, which has neither, a business select per brand), a suggested full name when his short-name list knows it, and a tick box;
   - ticked brands are added on Publish; unticked brands stay "not on your list" and are asked again next upload.
-- **Business picker** (Digital, ATL): lists his businesses (not hidden), not fixed names. It is pre-picked when the file's brands all belong to one business, as today.
+- **Business picker** (Digital): lists his businesses (not hidden), not fixed names. It is pre-picked when the file's brands all belong to one business, as today. An ATL file takes its business from its category (set when the category is added, changed with the category's Change button), so ATL rows have no business picker of their own.
 - **Suggestions** come from the old demo lists: a business name for an ATL category or a brand, a full name for a short name. A suggestion pre-fills a field; it never decides on its own.
 
 ### 4.3 Rules

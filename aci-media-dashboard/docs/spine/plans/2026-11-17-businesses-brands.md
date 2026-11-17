@@ -278,8 +278,13 @@ Service rules (in `prepareAll`, which now loads `getCatalog(store)` once per bat
 - Consumes: `FilePreview` from Task 4; `getCatalog` (server side, in `page.tsx`) → `businesses: { slug, name }[]` (not hidden) as a prop.
 - Produces: `uploadForm(files, types, decisions)` where `decisions: (Decisions | null)[]` sets `decisions-<i>` = `JSON.stringify(d)` only where `d` has any content.
 
+Notes from the Task 4 review (binding):
+- "Same as" a business that this same row is adding sends `slug: "new:<name>"` (the service resolves it). Never send predicted slugs.
+- ATL rows have no Business select: the business comes from the category (existing, or the one picked in the New category block).
+- One out-of-range entry makes the server ignore that file's whole decisions object, so keep payloads inside `DecisionsSchema` (names ≤ 120 characters, ≤ 200 business entries, ≤ 500 brand entries, ATL `ownBrands` 1 to 50). Never send an empty `ownBrands`.
+
 UI (exact strings):
-- **Business select** on Digital and ATL rows: aria-label `Business for <file name>`, empty option `Pick the business…`, the visible businesses, then `New business…` which shows a text box (aria-label `New business name for <file name>`) and sends `new:<name>`.
+- **Business select** on Digital rows: aria-label `Business for <file name>`, empty option `Pick the business…`, the visible businesses, then `New business…` which shows a text box (aria-label `New business name for <file name>`) and sends `new:<name>`.
 - **New businesses** block on a row with `newBusinesses`: chip `New business` (amber, `bg-amber-100 text-amber-900`); one line per name: the name, a select (aria-label `Decision for <name>`) with options `Add as new` and `Same as <business>` for each visible business and each business being added in this row; button `Add all as new` when 2 or more names.
 - **New ATL category:** chip `New category` (amber); text `New category found: <title>`; `Business` select (as above, pre-filled from the suggestion when it names a visible business, else `New business…` pre-filled with the suggested name); `Our brands`: one tick box per entry in `newCategory.brands` (aria-label `Our brand <name>`), pre-ticked from the suggestion; button `Add category` (disabled until a business and at least one brand are set).
 - **New brands:** the warning line comes from the server. A button `Review and add` opens a panel: one line per brand: tick box (aria-label `Add <name>`), full name text box pre-filled with the suggestion or the name (aria-label `Full name for <name>`), business (read-only when known from the row or file; a select when null, e.g. OOH). Buttons `Tick all` and `Done`.
