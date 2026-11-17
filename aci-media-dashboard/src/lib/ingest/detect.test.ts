@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { detectFileType, NOT_USUAL_FILE } from "./detect";
 import { openWorkbook } from "./workbook";
 import { clientFiles, hasClientFiles, makeXlsx } from "./test-workbooks";
-import type { FileType } from "./file-types";
+import { FILE_TYPES, type FileType } from "./file-types";
 
 const open = (b: Buffer) => openWorkbook(new Uint8Array(b));
 
@@ -51,11 +51,86 @@ describe("files that are not his usual files", () => {
     const b = makeXlsx([{ name: "Electronic", rows: [["SL", "Channel Name"]] }]);
     expect(detectFileType(open(b))).toEqual({ status: "unsure", candidates: ["channel"] });
   });
-  it("never says sure for the old app's template files", () => {
-    const dir = path.resolve("../demo-files");
-    if (!fs.existsSync(dir)) return;
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".xlsx"))) {
-      expect(detectFileType(open(fs.readFileSync(path.join(dir, f)))).status, f).not.toBe("sure");
+});
+
+// The old app's template files live outside this repo, so other machines skip this.
+const DEMO_DIR = path.resolve("../demo-files");
+describe.skipIf(!fs.existsSync(DEMO_DIR))("the old app's template files", () => {
+  it("are never detected as sure", () => {
+    const files = fs.readdirSync(DEMO_DIR).filter((x) => x.endsWith(".xlsx"));
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      expect(detectFileType(open(fs.readFileSync(path.join(DEMO_DIR, f)))).status, f).not.toBe("sure");
     }
+  });
+});
+
+type Sheets = Parameters<typeof makeXlsx>[0];
+// No "SL" first: "SL" then "Media/ Vendor" is also the billboard header, a fair partial billboard match.
+const BILLING_HEADERS = ["Media/ Vendor", "Business", "Brand", "Month", "PO Number", "Invoice No", "Amount"];
+const digitalSheets: Sheets = ["Meta", "YouTube", "TikTok"].map((name) => ({ name, rows: [["Brand", "Month", "Spend"], ["Savlon", "Nov'26", 100]] }));
+
+// One workbook per type that matches its rule fully, and one that matches only partly.
+const SYNTHETIC: [FileType, Sheets, Sheets][] = [
+  [
+    "atl",
+    [{ name: "TV", rows: [["Brand Name: Toiletries"], [], ["Brand Name", "Channel", "NGRP"], ["Savlon Soap", "Channel i", 12]] }],
+    [{ name: "TV", rows: [["Brand Name: Toiletries"], [], ["Name", "Channel", "NGRP"]] }],
+  ],
+  [
+    "calendar",
+    [{ name: "Nov'26", rows: [["CB Media Activity Nov 2026"], ["Business", "Brand", "Media"], ["Toiletries", "Savlon Soap", 1], ["Grand Total", null, 1]] }],
+    [{ name: "Nov'26", rows: [["CB Media Activity Nov 2026"], ["Business", "Brand", "Media"], ["Toiletries", "Savlon Soap", 1]] }],
+  ],
+  [
+    "fy",
+    [{ name: "Final Report 26-27", rows: [["FY 26-27"], ["Brand", "Media", "Jul"], ["Savlon", "TV", 100]] }],
+    [{ name: "Sheet1", rows: [["Brand", "Media", "Jul"], ["Savlon", "TV", 100]] }],
+  ],
+  [
+    "channel",
+    [
+      { name: "Electronic", rows: [["SL", "Channel Name"]] },
+      { name: "Digital", rows: [["SL", "Platform"]] },
+      { name: "Press & Radio", rows: [["SL", "Name"]] },
+    ],
+    [
+      { name: "Electronic", rows: [["SL", "Channel Name"]] },
+      { name: "Digital", rows: [["SL", "Platform"]] },
+    ],
+  ],
+  [
+    "billing",
+    [{ name: "Master", rows: [BILLING_HEADERS, ["Channel i", "Toiletries", "Savlon", "Nov'26", "PO-1", "INV-1", 100]] }],
+    [{ name: "Master", rows: [["Media/ Vendor", "Business", "Brand", "Amount"]] }],
+  ],
+  [
+    "billboard",
+    [{ name: "Status", rows: [["Billboard Billing Status"], ["SL", "Vendor Name", "Location", "Purchase Order", "Bill No"]] }],
+    [{ name: "Status", rows: [["Billboard Billing Status"], ["SL", "Vendor Name", "Location"]] }],
+  ],
+  ["digital", digitalSheets, digitalSheets.slice(0, 2)],
+  [
+    "ooh-sites",
+    [{ name: "Sites", rows: [["SL", "OOH Location", "Latitude", "Longitude"], [1, "Gulshan 1", 23.78, 90.41]] }],
+    [{ name: "Sites", rows: [["SL", "OOH Location", "Size"], [1, "Gulshan 1", "20x10"]] }],
+  ],
+];
+
+describe("detection without client files", () => {
+  it("covers every type", () => expect(SYNTHETIC.map(([t]) => t).sort()).toEqual([...FILE_TYPES].sort()));
+  it.each(SYNTHETIC.map(([t, full]) => [t, full] as const))("%s: a full match is sure", (type, sheets) => {
+    expect(detectFileType(open(makeXlsx(sheets)))).toEqual({ status: "sure", type });
+  });
+  it.each(SYNTHETIC.map(([t, , partial]) => [t, partial] as const))("%s: a partial match is unsure", (type, sheets) => {
+    expect(detectFileType(open(makeXlsx(sheets)))).toEqual({ status: "unsure", candidates: [type] });
+  });
+  it("is unsure when two types match fully, full matches first", () => {
+    const b = makeXlsx([{ name: "Master", rows: [BILLING_HEADERS] }, ...digitalSheets, { name: "Electronic", rows: [["SL", "Channel Name"]] }]);
+    expect(detectFileType(open(b))).toEqual({ status: "unsure", candidates: ["billing", "digital", "channel"] });
+  });
+  it("billing needs each keyword in its own cell", () => {
+    const b = makeXlsx([{ name: "Master", rows: [["Media/ Vendor", "Business Brand", "Month", "PO Number", "Invoice No"]] }]);
+    expect(detectFileType(open(b))).toEqual({ status: "unsure", candidates: ["billing"] });
   });
 });
