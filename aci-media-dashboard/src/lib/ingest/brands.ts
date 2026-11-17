@@ -1,5 +1,6 @@
 /** The client's brand list and aliases (template.html 658-667), and working out a Digital file's business. */
 
+// Old fixed list; removed when the upload service reads the admin's businesses (Task 4/5).
 export const DIGITAL_BUSINESSES = ["Toiletries", "Hygiene", "Salt"] as const;
 export type DigitalBusiness = (typeof DIGITAL_BUSINESSES)[number];
 export const isDigitalBusiness = (v: unknown): v is DigitalBusiness => (DIGITAL_BUSINESSES as readonly unknown[]).includes(v);
@@ -36,6 +37,7 @@ export function businessOfBrand(name: string): string | null {
 
 const NAME_HINTS: readonly [RegExp, DigitalBusiness][] = [[/toiletries/i, "Toiletries"], [/hygiene/i, "Hygiene"], [/salt/i, "Salt"]];
 
+// Old fixed list; removed when the upload service reads the admin's businesses (Task 4/5).
 export function resolveDigitalBusiness(input: { brands: string[]; fileName: string; chosen: DigitalBusiness | null }):
   { business: DigitalBusiness; source: BusinessSource } | null {
   if (isDigitalBusiness(input.chosen)) return { business: input.chosen, source: "admin" };

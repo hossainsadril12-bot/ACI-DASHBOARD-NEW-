@@ -24,8 +24,19 @@ export function suggestBusinessForBrand(brand: string): string | null {
  * "Others" is never suggested as a business (the admin decides): those categories give business null.
  */
 export function suggestAtlCategory(title: string): { name: string; business: string | null; ownBrand: string | null } | null {
-  if (!title.trim()) return null;
-  const c = ATL_CATEGORIES.find((c) => c[3].test(title) && !(c[0] === "antiseptic" && /septex/i.test(title)));
+  const c = matchAtlCategory(title);
   if (!c) return null;
   return { name: c[1], business: normName(c[2]) === "others" ? null : c[2], ownBrand: null };
+}
+
+/** His whole ATLCATS row for a title (his key and his business, "Others" included), matched the way his reader matched it. */
+export function matchAtlCategory(title: string): (typeof ATL_CATEGORIES)[number] | null {
+  if (!title.trim()) return null;
+  return ATL_CATEGORIES.find((c) => c[3].test(title) && !(c[0] === "antiseptic" && /septex/i.test(title))) ?? null;
+}
+
+/** His own-brand rule for the title's category, applied to the file's brand rows, in row order. Empty for an unknown title. */
+export function suggestOwnBrands(title: string, brands: string[]): string[] {
+  const c = matchAtlCategory(title);
+  return c ? brands.filter((b) => c[4].test(b)) : [];
 }

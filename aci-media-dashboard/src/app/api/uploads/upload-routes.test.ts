@@ -141,13 +141,13 @@ describe("upload routes: admin", () => {
     const salt = form(xlsx(digital, "digital.xlsx"));
     salt.set("business-0", "Salt");
     const ok = await (await preview.POST(await post(salt))).json();
-    expect(ok.previews[0]).toMatchObject({ type: "digital", canPublish: true, business: "Salt", businessSource: "admin", datasetKey: "digital:Salt" });
+    expect(ok.previews[0]).toMatchObject({ type: "digital", canPublish: true, business: "Salt", businessSource: "admin", datasetKey: "digital:salt" });
     const evil = form(xlsx(digital, "digital.xlsx"));
     evil.set("business-0", "evil");
     const bad = await (await preview.POST(await post(evil))).json();
     expect(bad.previews[0]).toMatchObject({ canPublish: false, needsBusiness: true, business: null, blockReason: "Pick the business." });
     const pub = await (await publish.POST(await post(salt))).json();
-    expect(pub).toMatchObject({ ok: true, published: [{ datasetKey: "digital:Salt" }] });
+    expect(pub).toMatchObject({ ok: true, published: [{ datasetKey: "digital:salt" }] });
   });
   it("refuses an empty file by name", async () => {
     await asAdmin();

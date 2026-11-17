@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestAtlCategory, suggestBusinessForBrand, suggestFullName } from "./suggestions";
+import { matchAtlCategory, suggestAtlCategory, suggestBusinessForBrand, suggestFullName, suggestOwnBrands } from "./suggestions";
 
 describe("suggestFullName", () => {
   it("gives his official name for a short name", () => {
@@ -50,5 +50,26 @@ describe("suggestAtlCategory", () => {
   it("is null for an unknown or blank title", () => {
     expect(suggestAtlCategory("Mosquito Coil")).toBeNull();
     expect(suggestAtlCategory("")).toBeNull();
+  });
+});
+
+describe("matchAtlCategory", () => {
+  it("gives his whole category row, Others included, with his key", () => {
+    expect(matchAtlCategory("ACI Savlon Soap")?.slice(0, 3)).toEqual(["soap", "Savlon Soap", "Toiletries"]);
+    expect(matchAtlCategory("ACI Pure Spice")?.slice(0, 3)).toEqual(["spice", "ACI Pure Spices", "Others"]);
+    expect(matchAtlCategory("ACI Septex Antiseptic Bar")?.[0]).toBe("septex");
+    expect(matchAtlCategory("Lux Soap")).toBeNull();
+    expect(matchAtlCategory("  ")).toBeNull();
+  });
+});
+
+describe("suggestOwnBrands", () => {
+  it("applies his own-brand rule to the file's brand rows, in row order", () => {
+    const rows = ["Radhuni Masala", "ACI Pure Masala", "Pran Spice", "ACI Pure Halim Mix"];
+    expect(suggestOwnBrands("ACI Pure Spice", rows)).toEqual(["ACI Pure Masala", "ACI Pure Halim Mix"]);
+    expect(suggestOwnBrands("Twinkle Baby Diaper", ["MamyPoko", "Savlon Twinkle Baby Diaper"])).toEqual(["Savlon Twinkle Baby Diaper"]);
+  });
+  it("is empty for an unknown title", () => {
+    expect(suggestOwnBrands("Lux Soap", ["Lux"])).toEqual([]);
   });
 });

@@ -4,8 +4,12 @@ import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
 import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
 import { READERS, READER_NEEDS_STYLES } from "@/lib/ingest/readers";
-import { NeedsBusinessError, ReadError, type ReadResult } from "@/lib/ingest/read-result";
-import { isDigitalBusiness, type BusinessSource, type DigitalBusiness } from "@/lib/ingest/brands";
+import { NeedsBusinessError, ReadError, type ReaderContext, type ReadResult } from "@/lib/ingest/read-result";
+import { isDigitalBusiness, resolveDigitalBusiness, type BusinessSource, type DigitalBusiness } from "@/lib/ingest/brands";
+import { readAtl, readAtlTitle } from "@/lib/ingest/readers/atl";
+import { digitalBrands } from "@/lib/ingest/readers/digital";
+import { matchAtlCategory, suggestOwnBrands } from "@/lib/ingest/suggestions";
+import { makeSlug } from "@/store/catalog";
 import { getActiveFileHashes, publishVersions, type PublishInput } from "@/store/datasets";
 import type { Store } from "@/store/client";
 import { ValidationError } from "./errors";
@@ -24,6 +28,29 @@ export type FilePreview = {
 type Prepared = { preview: FilePreview; result: ReadResult<unknown> | null };
 
 const NOT_OPENABLE = "This file could not be opened as an Excel workbook.";
+
+type OldBusiness = { name: DigitalBusiness; source: BusinessSource };
+
+/**
+ * Bridge until Task 4 reads the admin's lists: builds the reader's context from his old fixed lists,
+ * so dataset keys, labels and data stay as they were (Digital keys now use the business slug).
+ */
+function oldListContext(type: FileType, wb: Workbook, fileName: string, chosen: DigitalBusiness | null): { ctx: ReaderContext; business: OldBusiness | null } {
+  if (type === "digital") {
+    const r = resolveDigitalBusiness({ brands: digitalBrands(wb), fileName, chosen });
+    if (!r) return { ctx: { fileName, business: null }, business: null };
+    return { ctx: { fileName, business: { slug: makeSlug(r.business, () => false, "business"), name: r.business } }, business: { name: r.business, source: r.source } };
+  }
+  if (type === "atl") {
+    const title = readAtlTitle(wb);
+    const c = matchAtlCategory(title);
+    if (!c) throw new ReadError(`"${title}" doesn't match any ATL category on the dashboard (Savlon Soap, Septex, Hand Wash, Antiseptic Liquid, Baby Soft, Savlon/Twinkle Baby Wipes, Freedom, Diaper, Salt, Mustard Oil, Rice, Spices).`);
+    const base = { slug: c[0], name: c[1], business: c[2] };
+    const brands = readAtl(wb, { fileName, atlCategory: { ...base, ownBrands: [] } }).data.brands;
+    return { ctx: { fileName, atlCategory: { ...base, ownBrands: suggestOwnBrands(title, brands) } }, business: null };
+  }
+  return { ctx: { fileName }, business: null };
+}
 
 /** Reads one file: byte check, detection, reader. Pure: no store, no network. */
 function prepareFile(input: UploadInput, index: number): Prepared {
@@ -89,9 +116,13 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   }
 
   let result: ReadResult<unknown>;
+  let business: OldBusiness | null = null;
   try {
     // An unknown business override is ignored, the same as an unknown type.
-    result = reader(wb, { fileName: preview.fileName, business: isDigitalBusiness(input.chosenBusiness) ? input.chosenBusiness : null });
+    const chosen = isDigitalBusiness(input.chosenBusiness) ? input.chosenBusiness : null;
+    const old = oldListContext(type, wb, preview.fileName, chosen);
+    business = old.business;
+    result = reader(wb, old.ctx);
   } catch (e) {
     if (e instanceof NeedsBusinessError) {
       preview.needsBusiness = true;
@@ -108,10 +139,10 @@ function prepareFile(input: UploadInput, index: number): Prepared {
   preview.datasetKey = result.datasetKey;
   preview.rowCount = result.rowCount;
   preview.warnings.push(...result.warnings);
-  if (result.business) {
-    preview.business = result.business.name;
-    preview.businessSource = result.business.source;
-    if (result.business.source === "file name") preview.warnings.push("Business taken from the file name.");
+  if (business) {
+    preview.business = business.name;
+    preview.businessSource = business.source;
+    if (business.source === "file name") preview.warnings.push("Business taken from the file name.");
   }
   preview.canPublish = true;
   return { preview, result };

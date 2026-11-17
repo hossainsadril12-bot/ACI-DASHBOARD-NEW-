@@ -1,4 +1,4 @@
-import type { BusinessSource, DigitalBusiness } from "./brands";
+import type { BusinessSource } from "./brands";
 import type { FileType } from "./file-types";
 import type { Workbook } from "./workbook";
 
@@ -12,6 +12,11 @@ export class NeedsBusinessError extends Error {
   constructor(message: string) { super(message); this.name = "NeedsBusinessError"; }
 }
 
+/** An ATL file whose category the caller didn't give: the admin must pick or add it. `title` is the file's "Brand Name:" title. */
+export class NeedsCategoryError extends Error {
+  constructor(public title: string) { super("New ATL category."); this.name = "NeedsCategoryError"; }
+}
+
 export type ReadResult<T> = {
   type: FileType;
   datasetKey: string;   // e.g. "atl:soap", "calendar"
@@ -21,8 +26,14 @@ export type ReadResult<T> = {
   rowCount: number;
   data: T;              // stored as the version's data; same shape as his built-in data
   warnings: string[];   // never block
-  business?: { name: DigitalBusiness; source: BusinessSource };
+  business?: { name: string; source: BusinessSource };
 };
 
-export type ReaderContext = { fileName: string; business?: DigitalBusiness | null };
+export type ReaderContext = {
+  fileName: string;
+  /** Digital: required, else NeedsBusinessError. */
+  business?: { slug: string; name: string } | null;
+  /** ATL: required, else NeedsCategoryError. `ownBrands` are matched to the file's brand rows by normName. */
+  atlCategory?: { slug: string; name: string; business: string; ownBrands: string[] } | null;
+};
 export type Reader = (wb: Workbook, ctx: ReaderContext) => ReadResult<unknown>;

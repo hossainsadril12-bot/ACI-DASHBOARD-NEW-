@@ -159,8 +159,8 @@ describe("Digital business in the service", () => {
     const store = await createTestStore();
     const input = { ...file("digital.xlsx", digitalBook()), chosenBusiness: "Hygiene" as const };
     const [p] = await previewUploads(store, [input]);
-    expect(p).toMatchObject({ canPublish: true, business: "Hygiene", businessSource: "admin", needsBusiness: false, datasetKey: "digital:Hygiene" });
-    expect((await publishUploads(store, [input])).published[0].datasetKey).toBe("digital:Hygiene");
+    expect(p).toMatchObject({ canPublish: true, business: "Hygiene", businessSource: "admin", needsBusiness: false, datasetKey: "digital:hygiene" });
+    expect((await publishUploads(store, [input])).published[0].datasetKey).toBe("digital:hygiene");
   });
   it("ignores a business value that isn't one of the three", async () => {
     const [p] = await previewUploads(await createTestStore(), [{ ...file("digital.xlsx", digitalBook()), chosenBusiness: "constructor" as never }]);
@@ -174,7 +174,7 @@ describe("Digital business in the service", () => {
       await previewUploads(store, [{ ...file("digital.xlsx", digitalBook()), chosenBusiness: "evil" as never }]);
       expect(spy.mock.calls.at(-1)?.[1].business).toBeNull(); // the server check, not only the reader's own
       await previewUploads(store, [{ ...file("digital.xlsx", digitalBook()), chosenBusiness: "Salt" }]);
-      expect(spy.mock.calls.at(-1)?.[1].business).toBe("Salt"); // positive control
+      expect(spy.mock.calls.at(-1)?.[1].business).toEqual({ slug: "salt", name: "Salt" }); // positive control
     } finally {
       spy.mockRestore();
     }
@@ -187,7 +187,7 @@ describe("Digital business in the service", () => {
   });
   it("warns when the business comes from the file name", async () => {
     const [p] = await previewUploads(await createTestStore(), [file("Salt digital.xlsx", digitalBook())]);
-    expect(p).toMatchObject({ canPublish: true, business: "Salt", businessSource: "file name", needsBusiness: false, datasetKey: "digital:Salt" });
+    expect(p).toMatchObject({ canPublish: true, business: "Salt", businessSource: "file name", needsBusiness: false, datasetKey: "digital:salt" });
     expect(p.warnings).toContain("Business taken from the file name.");
   });
   it("leaves the business fields empty for a file that isn't Digital", async () => {
