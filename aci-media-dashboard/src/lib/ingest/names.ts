@@ -12,7 +12,7 @@ import type { ReadResult } from "./read-result";
 export type FileNames = {
   /** Distinct (by normName), as typed in the file (trimmed), from the file's business column. */
   businesses: string[];
-  /** Distinct by normName. business = the row's business as typed, null when the file has none. */
+  /** Distinct by normName. business = the first real business the brand's rows give, as typed; null when none does. */
   brands: { name: string; business: string | null }[];
   /** Digital and ATL: the business comes from the admin's pick. */
   needsFileBusiness: boolean;
@@ -22,9 +22,9 @@ export type FileNames = {
 
 type Pair = { biz: unknown; brand: unknown };
 
-const NOT_NAMES = new Set(["", "others", "total"]);
+const NOT_NAMES = new Set(["", "others", "total", "all"]);
 
-/** The trimmed name, or null when it is blank, "Others" or "Total". */
+/** The trimmed name, or null when it is blank, "Others", "Total" or "All". */
 function keep(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -53,7 +53,11 @@ export function namesIn(result: ReadResult<unknown>): FileNames {
     const biz = keep(p.biz);
     if (biz && !businesses.has(normName(biz))) businesses.set(normName(biz), biz);
     const brand = keep(p.brand);
-    if (brand && !brands.has(normName(brand))) brands.set(normName(brand), { name: brand, business: biz });
+    if (!brand) continue;
+    const seen = brands.get(normName(brand));
+    // The first spelling is kept; the business is the first real one seen for the brand.
+    if (!seen) brands.set(normName(brand), { name: brand, business: biz });
+    else if (seen.business == null && biz) seen.business = biz;
   }
   return {
     businesses: [...businesses.values()],

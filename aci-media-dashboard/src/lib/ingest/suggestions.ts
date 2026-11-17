@@ -1,4 +1,5 @@
 import { BRANDLIST, businessOfBrand, fullB } from "./brands";
+import { normName } from "@/lib/names-normal";
 import { ATL_CATEGORIES } from "./readers/atl";
 
 /** One-click suggestions from his old built-in lists. They only pre-fill a field; they never decide. */
@@ -18,9 +19,13 @@ export function suggestBusinessForBrand(brand: string): string | null {
   return businessOfBrand(brand);
 }
 
-/** His ATL category for a file's title, matched the way his reader matches it. The own brand is picked from the file's rows by the caller. */
-export function suggestAtlCategory(title: string): { name: string; business: string; ownBrand: string | null } | null {
+/**
+ * His ATL category for a file's title, matched the way his reader matches it. The own brand is picked from the file's rows by the caller.
+ * "Others" is never suggested as a business (the admin decides): those categories give business null.
+ */
+export function suggestAtlCategory(title: string): { name: string; business: string | null; ownBrand: string | null } | null {
   if (!title.trim()) return null;
   const c = ATL_CATEGORIES.find((c) => c[3].test(title) && !(c[0] === "antiseptic" && /septex/i.test(title)));
-  return c ? { name: c[1], business: c[2], ownBrand: null } : null;
+  if (!c) return null;
+  return { name: c[1], business: normName(c[2]) === "others" ? null : c[2], ownBrand: null };
 }

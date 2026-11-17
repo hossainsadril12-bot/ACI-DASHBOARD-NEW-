@@ -39,6 +39,30 @@ describe("namesIn", () => {
     expect(n.brands).toEqual([{ name: "Savlon Soap", business: null }, { name: "Leona", business: null }]);
   });
 
+  it("drops names that normalise to all (Billing's \"All\" brand cells), for brands and businesses", () => {
+    const n = namesIn(rr("billing", {
+      bl: [bl("Hygiene", "All"), bl(" ALL ", "Freedom"), bl("Toiletries", " all ")],
+      br: { h: [], r: [] },
+    }));
+    expect(n.businesses).toEqual(["Hygiene", "Toiletries"]);
+    expect(n.brands).toEqual([{ name: "Freedom", business: null }]);
+  });
+
+  it("a brand takes the first real business it is seen with, not a blank/Others/Total one", () => {
+    const n = namesIn(rr("billing", {
+      bl: [bl("", "Savlon Soap"), bl("Others", "Savlon Soap"), bl("Total", "savlon soap"), bl("Toiletries", "SAVLON SOAP"), bl("Hygiene", "Savlon Soap")],
+      br: { h: [], r: [] },
+    }));
+    expect(n.brands).toEqual([{ name: "Savlon Soap", business: "Toiletries" }]);
+  });
+
+  it("atl: an empty own list gives no brands", () => {
+    const n = namesIn(rr("atl", { name: "Savlon Soap", biz: "Toiletries", title: "Savlon Soap", own: [], brands: ["Lux", "Lifebuoy"], months: {} }));
+    expect(n.brands).toEqual([]);
+    expect(n.businesses).toEqual([]);
+    expect(n.atlTitle).toBe("Savlon Soap");
+  });
+
   it("billboard: rows biz (raw) and b", () => {
     const n = namesIn(rr("billboard", { legend: [], rows: [{ biz: "AI", bz: "Others", b: "Agro" }, { biz: "Hygiene", bz: "Hygiene", b: "Freedom" }] }));
     expect(n.businesses).toEqual(["AI", "Hygiene"]);

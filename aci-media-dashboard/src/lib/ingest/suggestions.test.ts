@@ -41,6 +41,12 @@ describe("suggestAtlCategory", () => {
     expect(suggestAtlCategory("Savlon Antiseptic Liquid")?.name).toBe("Savlon Antiseptic Liquid");
   });
 
+  it("never suggests Others as a business: Mustard Oil, Rice and Spices give business null", () => {
+    expect(suggestAtlCategory("ACI Pure Spice")).toEqual({ name: "ACI Pure Spices", business: null, ownBrand: null });
+    expect(suggestAtlCategory("ACI Pure Mustard Oil")).toEqual({ name: "ACI Pure Mustard Oil", business: null, ownBrand: null });
+    expect(suggestAtlCategory("ACI Pure Fortified Rice")).toEqual({ name: "ACI Pure Fortified Rice", business: null, ownBrand: null });
+  });
+
   it("is null for an unknown or blank title", () => {
     expect(suggestAtlCategory("Mosquito Coil")).toBeNull();
     expect(suggestAtlCategory("")).toBeNull();
