@@ -1,12 +1,11 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { clientFile, hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
+import { hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
+import { XLSX_TYPE, addFiles, fileOf, historyRows, openUpload, pickBusiness, publishBtn, ready, settled } from "./helpers";
 
 // Phase 2 Part B user flow: the new file types and the Digital business picker. Serial: one shared temp store.
 test.describe.configure({ mode: "serial" });
 
-const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const HYGIENE = "Hygiene_Business.xlsx";
-const fileOf = (rel: string, name = rel.split("/").pop()!) => ({ name, mimeType: XLSX_TYPE, buffer: clientFile(rel) });
 
 // Digital sheets with a brand no business owns, so neither brands nor the file name settle the business.
 const digitalBook = () => makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
@@ -23,33 +22,9 @@ const NEW_TYPES = [
   ["ACI_CB_Media_Billboard_Master_Sheet_02_Nov_Updated_2026.xlsx", "OOH master sheet, 40 sites"],
 ] as const;
 
-const openUpload = async (page: Page) => {
-  await page.goto("/data-entry");
-  await expect(page.getByTestId("upload-drop")).toBeVisible();
-};
-const addFiles = (page: Page, files: { name: string; mimeType: string; buffer: Buffer }[]) => page.setInputFiles("input[type=file]", files);
-const publishBtn = (page: Page) => page.getByRole("button", { name: /Publish \d+ files?/ });
-const historyRows = async (page: Page) => {
-  await page.goto("/data-entry?tab=history");
-  return page.getByTestId("history-table").locator("tbody tr");
-};
-
-const ready = (row: Locator) => row.getByText("Ready", { exact: true });
-/** Waits until no preview request is running, so the next control is enabled. */
-const settled = (page: Page) => expect(page.locator("ul[aria-busy=true]")).toHaveCount(0);
-
-/**
- * Lists start empty, and the specs share one store: picks `name` in a Business select when it is on the list,
- * else "New business…" with that name (sent on Enter).
- */
-const pickBusiness = async (page: Page, fileName: string, name: string) => {
-  const select = page.getByLabel(`Business for ${fileName}`);
-  if (await select.locator("option", { hasText: new RegExp(`^${name}$`) }).count()) return select.selectOption({ label: name });
-  await select.selectOption({ label: "New business…" });
-  const box = page.getByLabel(`New business name for ${fileName}`);
-  await box.fill(name);
-  await box.press("Enter");
-};
+/** The specs share one store: picks `name` for a Digital row when it is on the list, else adds it as New business…. */
+const pickFileBusiness = (page: Page, fileName: string, name: string) =>
+  pickBusiness(page, `Business for ${fileName}`, `New business name for ${fileName}`, name);
 
 /** Decides every new business in a row as new (Add all as new, or the one name's select), until the row is Ready. */
 const addBusinessesAsNew = async (page: Page, row: Locator) => {
@@ -86,7 +61,7 @@ test("1. Digital from brands: once its brands are added, a renamed Hygiene file 
   const row = page.getByTestId("preview-row");
   await expect(row.getByText("Needs a business")).toBeVisible();
   await expect(publishBtn(page)).toBeDisabled();
-  await pickBusiness(page, "digital.xlsx", "Hygiene");
+  await pickFileBusiness(page, "digital.xlsx", "Hygiene");
   await expect(ready(row)).toBeVisible();
   await expect(row.getByText(/^Digital, Hygiene, /)).toBeVisible();
   await expect(row.getByText(/brands? not on your list\./)).toBeVisible();
@@ -112,7 +87,7 @@ test("2. Digital unclear: pick Salt, it becomes Ready, publishes as Digital, Sal
   await expect(page.getByLabel("Business for digital.xlsx")).toHaveValue("");
   await expect(publishBtn(page)).toBeDisabled();
 
-  await pickBusiness(page, "digital.xlsx", "Salt");
+  await pickFileBusiness(page, "digital.xlsx", "Salt");
   await expect(ready(row)).toBeVisible();
   await expect(row.getByText(/^Digital, Salt/)).toBeVisible();
   await expect(publishBtn(page)).toBeEnabled();

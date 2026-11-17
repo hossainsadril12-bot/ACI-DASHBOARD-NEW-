@@ -1,28 +1,14 @@
 import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { clientFile, hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
+import { XLSX_TYPE, addFiles, fileOf, historyRows, openUpload, publishBtn, ready, sheetFile } from "./helpers";
 
 // Phase 2 Part A user flow, every path. Serial: paths 6 and 7 build on each other.
 test.describe.configure({ mode: "serial" });
 
-const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const SAVLON = "atl/1._2026_Dash_Board_-_Savlon_Soap_-_Oct26.xlsx";
 const SEPTEX = "atl/2._2026_Dash_Board_-_Septex_-_Oct26.xlsx";
 // The category is named from the file's own "Brand Name:" title now that lists start empty.
 const SAVLON_LABEL = "ATL, ACI Savlon Soap, Jul'25 to Oct'26";
-const fileOf = (rel: string) => ({ name: rel.split("/").pop()!, mimeType: XLSX_TYPE, buffer: clientFile(rel) });
-const sheetFile = (name: string, rows: unknown[][], sheetName = "S") => ({ name, mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: sheetName, rows }]) });
-
-const openUpload = async (page: Page) => {
-  await page.goto("/data-entry");
-  await expect(page.getByTestId("upload-drop")).toBeVisible();
-};
-const addFiles = (page: Page, files: { name: string; mimeType: string; buffer: Buffer }[]) => page.setInputFiles("input[type=file]", files);
-const publishBtn = (page: Page) => page.getByRole("button", { name: /Publish \d+ files?/ });
-const historyRows = async (page: Page) => {
-  await page.goto("/data-entry?tab=history");
-  return page.getByTestId("history-table").locator("tbody tr");
-};
-const ready = (row: Locator) => row.getByText("Ready", { exact: true });
 
 /**
  * Lists start empty, and the specs share one store: an ATL file whose category is not on the list yet asks for it.

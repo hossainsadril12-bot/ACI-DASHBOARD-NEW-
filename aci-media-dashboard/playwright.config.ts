@@ -18,11 +18,18 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3100" },
   projects: [
     { name: "admin-setup", testMatch: /auth\.setup\.ts/ },
+    // Runs before every other spec, so it starts with the empty business, brand and ATL category lists.
+    {
+      name: "fresh-store",
+      use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
+      testMatch: /phase2c-.*\.spec\.ts/,
+      dependencies: ["admin-setup"],
+    },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
-      dependencies: ["admin-setup"],
-      testIgnore: /phase1-.*\.spec\.ts/,
+      dependencies: ["admin-setup", "fresh-store"],
+      testIgnore: [/phase1-.*\.spec\.ts/, /phase2c-.*\.spec\.ts/],
     },
     { name: "phase1-flow", use: { ...devices["Desktop Chrome"] }, testMatch: /phase1-.*\.spec\.ts/, dependencies: ["admin-setup"] },
   ],

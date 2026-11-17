@@ -1,21 +1,17 @@
 import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
-import { clientFile, hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
+import { hasClientFiles } from "../src/lib/ingest/test-workbooks";
+import { addFiles, fileOf, openUpload, pickBusiness, publishBtn, ready, settled, sheetFile, type Upload } from "./helpers";
 
 // Phase 2 Part C user flow: the business, brand and ATL category lists start empty and uploads ask about new names.
-// Serial: one shared temp store. Other specs in the same run may already have added businesses (Billing, ATL), so
-// every path uses names only it uses, or checks against what the list held before it started.
+// Runs first, as the "fresh-store" project (playwright.config.ts), so the shared temp store is still empty.
+// Serial: later paths build on the businesses earlier ones add.
 test.describe.configure({ mode: "serial" });
 
-const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const BILLING = "Dashboard_Media_Final_Fixed_26th_October_2026.xlsx";
 const BILLING_LABEL = "Billing master, 2,956 lines";
 const BILLING_NAMES = ["Toiletries", "Hygiene", "Foods", "Salt", "Commodity", "Electrical", "Rice", "IB", "SCJ", "CB", "ACI Salt", "CB Core", "Beverage"];
 const EMPTY_LIST = "No businesses yet. Add one here, or upload a file and add the businesses it contains.";
 const HIDDEN_LINE = "This business is hidden. Show it to add brands.";
-
-type Upload = { name: string; mimeType: string; buffer: Buffer };
-const fileOf = (rel: string): Upload => ({ name: rel.split("/").pop()!, mimeType: XLSX_TYPE, buffer: clientFile(rel) });
-const sheetFile = (name: string, rows: unknown[][], sheetName = "S"): Upload => ({ name, mimeType: XLSX_TYPE, buffer: makeXlsx([{ name: sheetName, rows }]) });
 
 /** An Activity Calendar for Dec'26 with a Grand Total row: one line per [business, brand]. */
 const calendar = (name: string, lines: [string, string][]) => sheetFile(name, [
@@ -30,17 +26,8 @@ const luxSoap = (): Upload => {
   return sheetFile("lux-soap.xlsx", [["Brand Name: Lux Soap"], ["Brand Name", jul], [null, "GRP", "Spend"], ["Lux", 10, 1000], ["Dove", 30, 3000]], "GRP");
 };
 
-const openUpload = async (page: Page) => {
-  await page.goto("/data-entry");
-  await expect(page.getByTestId("upload-drop")).toBeVisible();
-};
-const addFiles = (page: Page, files: Upload[]) => page.setInputFiles("input[type=file]", files);
-const publishBtn = (page: Page) => page.getByRole("button", { name: /Publish \d+ files?/ });
-const ready = (row: Locator) => row.getByText("Ready", { exact: true });
 const newBusinessChip = (row: Locator) => row.getByText("New business", { exact: true });
 const brandWarning = (row: Locator) => row.getByText(/\d+ brands? not on your list\./);
-/** Waits until no preview request is running, so the controls are enabled again. */
-const settled = (page: Page) => expect(page.locator("ul[aria-busy=true]")).toHaveCount(0);
 
 /** Opens /businesses and returns the business names it lists (none when it shows the empty state). */
 const listedBusinesses = async (page: Page) => {
@@ -61,20 +48,8 @@ const askedNames = async (row: Locator) => {
   return labels.map((l) => l.replace(/^Decision for /, ""));
 };
 
-/** Picks `name` in a Business select when it is on the list, else "New business…" with the name typed in. */
-const pickBusiness = async (page: Page, selectLabel: string, boxLabel: string, name: string) => {
-  const select = page.getByLabel(selectLabel, { exact: true });
-  if (await select.locator("option", { hasText: new RegExp(`^${name}$`) }).count()) {
-    await select.selectOption({ label: name });
-    return;
-  }
-  await select.selectOption({ label: "New business…" });
-  await page.getByLabel(boxLabel, { exact: true }).fill(name);
-};
-
 test("1. empty list: /businesses shows the empty state", async ({ page }) => {
-  const names = await listedBusinesses(page);
-  test.skip(names.length > 0, "Another spec in this run added businesses first; run this spec on its own to see the empty state.");
+  expect(await listedBusinesses(page)).toEqual([]);
   await expect(page.getByRole("heading", { name: "Businesses & Brands" })).toBeVisible();
   await expect(page.getByText(EMPTY_LIST)).toBeVisible();
   await expect(page.getByRole("button", { name: "Add business" })).toBeVisible();
@@ -82,39 +57,27 @@ test("1. empty list: /businesses shows the empty state", async ({ page }) => {
 
 test("2. real Billing file: decide 13 new businesses, ACI Salt same as Salt, publish, the list shows them", async ({ page }) => {
   test.skip(!hasClientFiles, "client files not present");
-  const before = await listedBusinesses(page);
-  const fresh = !before.some((n) => BILLING_NAMES.includes(n)); // no other spec added Billing's businesses first
+  expect(await listedBusinesses(page)).toEqual([]); // path 1's empty start
 
   await openUpload(page);
   await addFiles(page, [fileOf(BILLING)]);
   const row = page.getByTestId("preview-row");
   await expect(row).toHaveCount(1);
-  await expect(ready(row).or(newBusinessChip(row)).first()).toBeVisible();
-  const asked = await askedNames(row);
-  for (const n of asked) expect(BILLING_NAMES).toContain(n);
-  if (fresh) {
-    expect([...asked].sort()).toEqual([...BILLING_NAMES].sort());
-  } else {
-    test.info().annotations.push({ type: "note", description: `Billing businesses already listed by another spec; asked about ${asked.length}.` });
-  }
+  await expect(newBusinessChip(row)).toBeVisible();
+  await expect(row.getByText("New businesses in this file")).toBeVisible();
+  expect((await askedNames(row)).sort()).toEqual([...BILLING_NAMES].sort());
+  await expect(publishBtn(page)).toBeDisabled();
 
-  if (asked.length > 0) {
-    await expect(newBusinessChip(row)).toBeVisible();
-    await expect(publishBtn(page)).toBeDisabled();
-    if (asked.length >= 2) await row.getByRole("button", { name: "Add all as new" }).click();
-    else await decision(row, asked[0]).selectOption({ label: "Add as new" });
-    await expect(ready(row)).toBeVisible();
-    await settled(page);
-    for (const n of asked) await expect(decision(row, n)).toHaveValue("add");
-  }
-  // ACI Salt is the same business as Salt: Salt is added by this row (or already on the list), then picked.
-  const sameAsSalt = asked.includes("ACI Salt");
-  if (sameAsSalt) {
-    await decision(row, "ACI Salt").selectOption({ label: "Same as Salt" });
-    await expect(decision(row, "ACI Salt")).toHaveValue(/^same:/);
-    if (asked.includes("Salt")) await expect(decision(row, "Salt")).toHaveValue("add"); // Salt itself stays new
-    await settled(page);
-  }
+  await row.getByRole("button", { name: "Add all as new" }).click();
+  await expect(ready(row)).toBeVisible();
+  await settled(page);
+  for (const n of BILLING_NAMES) await expect(decision(row, n), n).toHaveValue("add");
+
+  // ACI Salt is the same business as Salt, which this row adds.
+  await decision(row, "ACI Salt").selectOption({ label: "Same as Salt" });
+  await expect(decision(row, "ACI Salt")).toHaveValue("same:new:Salt");
+  await settled(page);
+  await expect(decision(row, "Salt")).toHaveValue("add"); // Salt itself stays new
   await expect(ready(row)).toBeVisible();
   await expect(brandWarning(row)).toBeVisible(); // brands are never pre-ticked: they stay flagged
   await expect(row.getByRole("button", { name: "Review and add" })).toBeVisible();
@@ -123,13 +86,10 @@ test("2. real Billing file: decide 13 new businesses, ACI Salt same as Salt, pub
   await expect(page.getByText(`Published 1 file: ${BILLING_LABEL}`)).toBeVisible();
 
   const after = await listedBusinesses(page);
-  for (const n of BILLING_NAMES.filter((x) => x !== "ACI Salt")) expect(after, n).toContain(n);
-  if (sameAsSalt) {
-    expect(after).not.toContain("ACI Salt");
-    await page.getByRole("link", { name: "Salt", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Salt", exact: true })).toBeVisible();
-    await expect(page.getByText("Also matches: ACI Salt")).toBeVisible();
-  }
+  expect([...after].sort()).toEqual(BILLING_NAMES.filter((x) => x !== "ACI Salt").sort()); // 12 businesses, no ACI Salt
+  await page.getByRole("link", { name: "Salt", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Salt", exact: true })).toBeVisible();
+  await expect(page.getByText("Also matches: ACI Salt")).toBeVisible();
 });
 
 test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, published, shown on the Toiletries page", async ({ page }) => {
@@ -159,7 +119,8 @@ test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, publi
   await expect(page.getByRole("heading", { name: "Toiletries", exact: true })).toBeVisible();
   const atl = page.getByTestId("atl-table").locator("tbody tr").filter({ hasText: "Lux Soap" });
   await expect(atl).toHaveCount(1);
-  await expect(atl).toContainText("Lux");
+  await expect(atl.locator("td").nth(0)).toHaveText("Lux Soap");
+  await expect(atl.locator("td").nth(1)).toHaveText("Lux"); // the Our brands column: Lux only, Dove left out
 });
 
 test("4. Review and add: Savlon HW is added as Savlon Handwash, and the same file then asks nothing", async ({ page }) => {
@@ -295,8 +256,7 @@ test.describe("6. viewer", () => {
   });
 
   test("a hidden business's page shows the Hidden tag but no admin line or Show", async ({ page }) => {
-    const names = await listedBusinesses(page);
-    test.skip(!names.includes(HIDDEN_BIZ), "the admin hide path did not run");
+    expect(await listedBusinesses(page)).toContain(HIDDEN_BIZ); // hidden by the admin test above
     await page.getByRole("link", { name: HIDDEN_BIZ, exact: true }).click();
     await expect(page.getByRole("heading", { name: HIDDEN_BIZ, exact: true })).toBeVisible();
     // cacheComponents keeps the list page in the DOM, hidden, after a client navigation: look at what shows.
@@ -332,11 +292,10 @@ test.describe("7. phone width (375 px)", () => {
 
   test("/businesses and a business page fit with no side scroll", async ({ page }) => {
     const names = await listedBusinesses(page);
+    expect(names.length).toBeGreaterThan(0); // the paths above added businesses
     expect(await noSideScroll(page)).toBeLessThanOrEqual(375);
-    if (names.length) {
-      await page.getByRole("link", { name: names[0], exact: true }).click();
-      await expect(page.getByRole("heading", { name: names[0], exact: true })).toBeVisible();
-      expect(await noSideScroll(page)).toBeLessThanOrEqual(375);
-    }
+    await page.getByRole("link", { name: names[0], exact: true }).click();
+    await expect(page.getByRole("heading", { name: names[0], exact: true })).toBeVisible();
+    expect(await noSideScroll(page)).toBeLessThanOrEqual(375);
   });
 });
