@@ -255,11 +255,12 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
         atlRows = atlBrands(wb); // a missing header row is a read error, before any category question
         if (!atlRows.length) throw new ReadError("No brand rows were found under the header row.");
         const name = tidy(title);
+        if (!name) throw new ReadError("The ATL title is longer than 120 characters."); // readTop never gives an empty title
         // Our brands must be rows of this file; the business is checked only once the brands are valid, so an ignored decision adds nothing.
         const wanted = new Set((decisions?.atl?.ownBrands ?? []).map(normName));
         const own = atlRows.filter((r) => wanted.has(normName(r)));
-        const biz = name && own.length ? fc.resolve(decisions?.atl?.business) : null;
-        if (name && biz) {
+        const biz = own.length ? fc.resolve(decisions?.atl?.business) : null;
+        if (biz) {
           const slug = fc.atlSlug(name);
           fc.changes.push({ op: "addAtl", name, businessSlug: biz.slug, ownBrands: own });
           ctx.atlCategory = { slug, name, business: biz.name, ownBrands: own };
@@ -298,6 +299,9 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   const noBusinessColumn = result.type === "fy" && result.warnings.includes(FY_STANDARD_ORDER);
   const fileBusinesses = noBusinessColumn ? [] : names.businesses;
   const fileBrands = noBusinessColumn ? names.brands.map((b) => ({ ...b, business: null })) : names.brands;
+  // A name too long for the list could never be decided: a read error, not a question.
+  const tooLong = fileBusinesses.find((n) => !tidy(n));
+  if (tooLong) return block("Fix the read error first.", `The business name "${tooLong.replace(/\s+/g, " ").slice(0, 40)}…" is longer than 120 characters.`);
 
   // Business names: "new" first, so a "same as" a business added here comes after it.
   const unknownBiz = new Map(fileBusinesses.filter((n) => !catalog.businessOf(n)).map((n) => [normName(n), n] as const));
@@ -312,12 +316,17 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
     if (d.action === "new" && fc.addBusiness(unknownBiz.get(key)!)) decidedBiz.add(key);
   }
   for (const [key, d] of bizDecisions) {
-    if (d.action !== "same") continue;
-    // A visible slug, a business this file adds, or "new:<name>" (added first, once). Hidden or unknown: ignored.
-    const target = fc.resolve(d.slug);
+    if (d.action !== "same" || !d.slug) continue;
+    // "new:<name>" must be another of this file's new names, not one the admin made "same as" something else;
+    // it adds that business (once, first) and decides that name too.
+    const pointed = d.slug.startsWith("new:") ? normName(d.slug.slice(4)) : null;
+    if (pointed !== null && (!unknownBiz.has(pointed) || bizDecisions.get(pointed)?.action === "same")) continue;
+    // A visible slug, a business this file adds, or the new:<name> above. Hidden or unknown: ignored.
+    const target = fc.resolve(pointed !== null ? `new:${unknownBiz.get(pointed)!}` : d.slug);
     if (!target) continue;
-    fc.changes.push({ op: "businessSameAs", name: unknownBiz.get(key)!, slug: target.slug });
+    if (pointed !== key) fc.changes.push({ op: "businessSameAs", name: unknownBiz.get(key)!, slug: target.slug });
     decidedBiz.add(key);
+    if (pointed !== null) decidedBiz.add(pointed);
   }
   preview.newBusinesses = [...unknownBiz].filter(([key]) => !decidedBiz.has(key)).map(([, name]) => ({ name, suggestion: suggestBusiness(name) }));
 
@@ -388,6 +397,12 @@ export async function previewUploads(store: Store, inputs: UploadInput[]): Promi
 
 const changedWhileUploading = (fileName: string, what: string) => new ValidationError(`${fileName}: ${what} while you were uploading. Preview again.`);
 
+/** The same names, by normName, in any order. */
+function sameNames(a: string[], b: string[]): boolean {
+  const x = new Set(a.map(normName)), y = new Set(b.map(normName));
+  return x.size === y.size && [...x].every((n) => y.has(n));
+}
+
 /**
  * Applies each file's list changes in order, inside the publish transaction, and returns predicted slug -> real slug.
  * They differ only if the lists changed after the snapshot; later changes then use the real slug. A name that now
@@ -407,7 +422,7 @@ async function applyChanges(tx: StoreTx, prepared: Prepared[], plan: SlugPlan) {
             let slug = made.businessSlugs[key];
             if (!slug) {
               const found = (await getCatalog(tx)).businessOf(change.name); // the name matched a business added since the snapshot
-              if (found?.hidden) throw changedWhileUploading(preview.fileName, `the business "${found.name}" was hidden`);
+              if (found?.hidden) throw changedWhileUploading(preview.fileName, `The business "${found.name}" was hidden`);
               slug = found?.slug ?? predicted;
             }
             real.business.set(predicted, slug);
@@ -427,8 +442,17 @@ async function applyChanges(tx: StoreTx, prepared: Prepared[], plan: SlugPlan) {
           if (predicted && !real.atl.has(predicted)) {
             let slug = made.atlSlugs[key];
             if (!slug) {
-              const found = (await getCatalog(tx)).atlOf(change.name);
-              if (found?.hidden) throw changedWhileUploading(preview.fileName, `the ATL category "${found.name}" was hidden`);
+              // The title matched a category added since the snapshot: use it only if it is what the admin decided.
+              const now = await getCatalog(tx);
+              const found = now.atlOf(change.name);
+              if (found?.hidden) throw changedWhileUploading(preview.fileName, `The ATL category "${found.name}" was hidden`);
+              if (found) {
+                const owner = now.businesses.find((b) => b.slug === found.businessSlug);
+                if (owner?.hidden) throw changedWhileUploading(preview.fileName, `The business "${owner.name}" was hidden`);
+                if (found.businessSlug !== biz(change.businessSlug) || !sameNames(found.ownBrands, change.ownBrands)) {
+                  throw changedWhileUploading(preview.fileName, `The ATL category "${found.name}" was added`);
+                }
+              }
               slug = found?.slug ?? predicted;
             }
             real.atl.set(predicted, slug);
@@ -452,17 +476,23 @@ function readWithReal(p: Prepared, result: ReadResult<unknown>, real: Awaited<Re
   if (rekey.kind === "business") {
     const slug = real.business.get(rekey.slug) ?? rekey.slug;
     const b = after.businesses.find((x) => x.slug === slug);
-    if (!b) throw changedWhileUploading(preview.fileName, "the lists changed");
+    if (!b) throw changedWhileUploading(preview.fileName, "The lists changed");
     next.business = { slug: b.slug, name: b.name };
   } else {
     const slug = real.atl.get(rekey.slug) ?? rekey.slug;
     const a = after.atl.find((x) => x.slug === slug);
     const b = a && after.businesses.find((x) => x.slug === a.businessSlug);
-    if (!a || !b) throw changedWhileUploading(preview.fileName, "the lists changed");
+    if (!a || !b) throw changedWhileUploading(preview.fileName, "The lists changed");
     next.atlCategory = { slug: a.slug, name: a.name, business: b.name, ownBrands: a.ownBrands };
   }
   if (JSON.stringify(next) === JSON.stringify(ctx)) return { result, warnings: preview.warnings };
-  const again = reread(next);
+  let again: ReadResult<unknown>;
+  try {
+    again = reread(next);
+  } catch (e) {
+    if (e instanceof ReadError) throw new ValidationError(`${preview.fileName}: ${e.message}`);
+    throw e;
+  }
   return { result: again, warnings: [...preview.warnings.filter((w) => !result.warnings.includes(w)), ...again.warnings] };
 }
 
@@ -490,6 +520,12 @@ export async function publishUploads(store: Store, inputs: UploadInput[]) {
         file: { name: preview.fileName, bytes: Buffer.from(inputs[i].bytes) },
       };
     });
+    // The real slugs can bring two files onto one dataset, as the preview check would have.
+    const seen = new Set<string>();
+    for (const p of publishInputs) {
+      if (seen.has(p.datasetKey)) throw new ValidationError(`Two files are for ${p.label}. Preview again.`);
+      seen.add(p.datasetKey);
+    }
     const versionIds = await publishVersionsTx(tx, publishInputs);
     return { published: publishInputs.map((p, i) => ({ datasetKey: p.datasetKey, label: p.label, versionId: versionIds[i] })) };
   });
