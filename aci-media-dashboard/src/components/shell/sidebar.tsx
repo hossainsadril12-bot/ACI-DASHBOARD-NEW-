@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
   Building2, CalendarRange, ChartColumn, FileUp, History, House, MonitorSmartphone, ReceiptText, Settings, Target, Wallet, type LucideIcon,
@@ -23,11 +23,35 @@ const ICONS: Record<string, LucideIcon> = {
   "/settings": Settings,
 };
 
+type NavItem = (typeof NAV_ITEMS)[number];
+
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+  const Icon = ICONS[item.href];
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        // Whole 40px row is the target (Fitts's law).
+        "relative flex h-10 shrink-0 items-center gap-3 rounded-md px-3 text-sm whitespace-nowrap transition-colors hover:bg-sidebar-accent hover:text-white",
+        active && "bg-sidebar-accent font-medium text-white md:before:absolute md:before:inset-y-2 md:before:left-0 md:before:w-[3px] md:before:rounded-full md:before:bg-sidebar-primary",
+      )}
+    >
+      {Icon && <Icon className={cn("size-[18px] shrink-0", active ? "text-white" : "text-sidebar-foreground/60")} aria-hidden />}
+      {item.label}
+    </Link>
+  );
+}
+
+/** The only part that reads the path, so pages with a slug can prerender the rest of the sidebar. */
+function CurrentNavLink({ item }: { item: NavItem }) {
+  const pathname = usePathname();
+  const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+  return <NavLink item={item} active={active} />;
+}
+
 /** Wix-style dark navigation: brand, the admin's quick actions (desktop), short grouped lists. */
 export function Sidebar({ quickActionsSlot }: { quickActionsSlot?: ReactNode }) {
-  const pathname = usePathname();
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
-
   return (
     <div className="flex h-full flex-col text-sidebar-foreground">
       <Link href="/" className="flex items-center gap-2.5 px-5 pt-5 pb-4" aria-label="ACI Media home">
@@ -44,25 +68,11 @@ export function Sidebar({ quickActionsSlot }: { quickActionsSlot?: ReactNode }) 
         {NAV_GROUPS.map((group) => (
           <div key={group || "top"} className="flex gap-1 md:mb-3 md:flex-col md:gap-0.5 md:border-t md:border-sidebar-border md:pt-3 md:first:border-t-0 md:first:pt-0">
             {group && <p className="hidden px-3 pb-1 text-[11px] font-medium tracking-wider text-sidebar-foreground/50 uppercase md:block">{group}</p>}
-            {NAV_ITEMS.filter((i) => i.group === group).map((item) => {
-              const Icon = ICONS[item.href];
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    // Whole 40px row is the target (Fitts's law).
-                    "relative flex h-10 shrink-0 items-center gap-3 rounded-md px-3 text-sm whitespace-nowrap transition-colors hover:bg-sidebar-accent hover:text-white",
-                    active && "bg-sidebar-accent font-medium text-white md:before:absolute md:before:inset-y-2 md:before:left-0 md:before:w-[3px] md:before:rounded-full md:before:bg-sidebar-primary",
-                  )}
-                >
-                  {Icon && <Icon className={cn("size-[18px] shrink-0", active ? "text-white" : "text-sidebar-foreground/60")} aria-hidden />}
-                  {item.label}
-                </Link>
-              );
-            })}
+            {NAV_ITEMS.filter((i) => i.group === group).map((item) => (
+              <Suspense key={item.href} fallback={<NavLink item={item} active={false} />}>
+                <CurrentNavLink item={item} />
+              </Suspense>
+            ))}
           </div>
         ))}
       </nav>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, ChevronRight } from "lucide-react";
@@ -9,13 +9,24 @@ import { NAV_ITEMS } from "./nav-items";
 
 const noop = () => () => {};
 
+/** The only part that reads the path, so pages with a slug can prerender the rest of the bar. */
+function CurrentPageCrumb() {
+  const pathname = usePathname();
+  const page = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
+  if (!page || page.href === "/") return null;
+  return (
+    <>
+      <ChevronRight className="size-4 text-gray-300" aria-hidden />
+      <span className="truncate font-medium text-gray-900">{page.label}</span>
+    </>
+  );
+}
+
 /**
  * White bar above every page: where you are on the left; date, money rule, the admin's
  * quick actions (phone only) and the Login / Sign out slot on the right, Login last.
  */
 export function TopBar({ adminSlot, quickActionsSlot }: { adminSlot?: ReactNode; quickActionsSlot?: ReactNode }) {
-  const pathname = usePathname();
-  const page = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
   // The layout is prerendered, so the date is read on the client only (null on the server).
   const today = useSyncExternalStore(noop, todayDhaka, () => null);
 
@@ -24,12 +35,9 @@ export function TopBar({ adminSlot, quickActionsSlot }: { adminSlot?: ReactNode;
       <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-3 px-4 md:px-10">
         <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
           <Link href="/" className="truncate text-gray-500 hover:text-gray-900">ACI Media</Link>
-          {page && page.href !== "/" && (
-            <>
-              <ChevronRight className="size-4 text-gray-300" aria-hidden />
-              <span className="truncate font-medium text-gray-900">{page.label}</span>
-            </>
-          )}
+          <Suspense fallback={null}>
+            <CurrentPageCrumb />
+          </Suspense>
         </nav>
         <div data-testid="topbar-actions" className="flex shrink-0 items-center gap-2">
           {/* Date and money pills hide below md so the Login / Sign out buttons fit on phones and small tablets. */}
