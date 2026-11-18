@@ -1,5 +1,7 @@
 # Questions for the client (Media Mind), 17 Nov 2026
 
+> Internal note, not to be sent (Sadril, 17 Nov 2026): the client gets a video update instead of technical questions. Question 5 is already decided (the list starts empty).
+
 Hello,
 
 The dashboard is moving well. Phase 1 is finished and the upload pipeline (Phase 2) is nearly done. We need four answers from you. None of them stops our work today, but each one changes how we ship.

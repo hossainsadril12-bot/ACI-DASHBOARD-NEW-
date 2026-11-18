@@ -16,7 +16,7 @@ The client wants the admin to create businesses and brands (meeting notes, 5 Nov
 
 ## 2. Decisions (made with Sadril, 17 Nov 2026)
 
-1. The admin creates, renames and hides businesses, brands and ATL categories.
+1. The admin creates, renames and hides businesses and brands. The admin creates and hides ATL categories and changes their business and "Our brands", but does not rename them in this phase (Sadril, 18 Nov 2026): an ATL category is named by its file's "Brand Name:" title, e.g. "ACI Savlon Soap".
 2. The lists start **empty**. The 4 PRD businesses, his brand list and his short-name list are demo data; they are kept only as **suggestions**.
 3. The client keeps his **usual Excel layouts**. No new file type, no column mapping.
 4. A **new business** in an upload needs the admin's decision before the file can publish. For each new name: **Add as new** or **Same as [an existing business]**. An **Add all as new** button decides every new business at once.
@@ -83,7 +83,7 @@ Rejected: one saved JSON document for the whole list (no unique names, edits can
 - Uploaded data keeps every name exactly as in the file (fidelity with his readers; answer-key tests unchanged).
 - A small read API in `src/store/` (for example `getCatalog()`, `resolveBusiness(name)`, `resolveBrand(name)`) so the Phase 3 pages read names through the lists.
 - **Digital and ATL dataset keys** use a fixed slug made from the business or category name when it is created (`digital:<business slug>`, `atl:<category slug>`). A rename never changes the slug, so a rename doesn't split the data. The label keeps the name at publish time. Existing dev data under the old keys is dev-only and can be re-uploaded.
-- **ATL:** the category is matched by the file's "Brand Name:" title against `atl_category` names, normalised. Own vs competitor brands come from the category's "Our brands". His 13 category rules become suggestions only.
+- **ATL:** a new category is named by the file's "Brand Name:" title as typed (cleaned), and is matched by that title against `atl_category` names, normalised. That name is permanent in this phase; a separate display name can be added later if the pages need his shorter names. Own vs competitor brands come from the category's "Our brands". His 13 category rules become suggestions only.
 - Catalog changes are not versions in Upload History. A short "who changed what, when" log is out of scope.
 
 ## 6. Changes to today's behaviour
