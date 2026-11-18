@@ -15,6 +15,13 @@
       "when": 1794814504822,
       "tag": "0001_history_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794899467606,
+      "tag": "0002_orange_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
-import { clientFile, hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+import { hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
+import { XLSX_TYPE, addFiles, fileOf, historyRows, openUpload, pickBusiness, publishBtn, ready, settled } from "./helpers";
 
 // Phase 2 Part B user flow: the new file types and the Digital business picker. Serial: one shared temp store.
 test.describe.configure({ mode: "serial" });
 
-const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const HYGIENE = "Hygiene_Business.xlsx";
-const fileOf = (rel: string, name = rel.split("/").pop()!) => ({ name, mimeType: XLSX_TYPE, buffer: clientFile(rel) });
 
 // Digital sheets with a brand no business owns, so neither brands nor the file name settle the business.
 const digitalBook = () => makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
@@ -23,31 +22,58 @@ const NEW_TYPES = [
   ["ACI_CB_Media_Billboard_Master_Sheet_02_Nov_Updated_2026.xlsx", "OOH master sheet, 40 sites"],
 ] as const;
 
-const openUpload = async (page: Page) => {
-  await page.goto("/data-entry");
-  await expect(page.getByTestId("upload-drop")).toBeVisible();
-};
-const addFiles = (page: Page, files: { name: string; mimeType: string; buffer: Buffer }[]) => page.setInputFiles("input[type=file]", files);
-const publishBtn = (page: Page) => page.getByRole("button", { name: /Publish \d+ files?/ });
-const historyRows = async (page: Page) => {
-  await page.goto("/data-entry?tab=history");
-  return page.getByTestId("history-table").locator("tbody tr");
+/** The specs share one store: picks `name` for a Digital row when it is on the list, else adds it as New business…. */
+const pickFileBusiness = (page: Page, fileName: string, name: string) =>
+  pickBusiness(page, `Business for ${fileName}`, `New business name for ${fileName}`, name);
+
+/** Decides every new business in a row as new (Add all as new, or the one name's select), until the row is Ready. */
+const addBusinessesAsNew = async (page: Page, row: Locator) => {
+  await expect(ready(row).or(row.getByText("New business", { exact: true })).first()).toBeVisible();
+  await settled(page);
+  const all = row.getByRole("button", { name: "Add all as new" });
+  if (await all.isVisible()) await all.click();
+  else {
+    for (const select of await row.getByLabel(/^Decision for /).all()) {
+      if ((await select.inputValue()) === "") await select.selectOption({ label: "Add as new" });
+    }
+  }
+  await expect(ready(row)).toBeVisible();
+  await settled(page);
 };
 
-/** Path 1: a real Digital file under a neutral name; the business comes from its brands. */
+/** Path 1, again: a real Digital file under a neutral name, Ready with the business found from its (added) brands. */
 const addHygieneAsDigital = async (page: Page) => {
   await openUpload(page);
   await addFiles(page, [fileOf(HYGIENE, "digital.xlsx")]);
   const row = page.getByTestId("preview-row");
   await expect(row).toHaveCount(1);
   await expect(row.getByText(/^Digital, Hygiene, /)).toBeVisible();
-  await expect(row.getByText("Ready")).toBeVisible();
-  await expect(page.getByLabel("Business for digital.xlsx")).toHaveValue("Hygiene");
+  await expect(ready(row)).toBeVisible();
+  await expect(page.getByLabel("Business for digital.xlsx").locator("option:checked")).toHaveText("Hygiene");
   return row;
 };
 
-test("1. Digital from brands: a renamed Hygiene file is Ready with Hygiene picked", async ({ page }) => {
+test("1. Digital from brands: once its brands are added, a renamed Hygiene file comes back Ready with Hygiene picked", async ({ page }) => {
   test.skip(!hasClientFiles, "client files not present");
+  // First upload: no brand of the file is on the list yet, so the admin picks the business and adds the brands.
+  await openUpload(page);
+  await addFiles(page, [fileOf(HYGIENE, "digital.xlsx")]);
+  const row = page.getByTestId("preview-row");
+  await expect(row.getByText("Needs a business")).toBeVisible();
+  await expect(publishBtn(page)).toBeDisabled();
+  await pickFileBusiness(page, "digital.xlsx", "Hygiene");
+  await expect(ready(row)).toBeVisible();
+  await expect(row.getByText(/^Digital, Hygiene, /)).toBeVisible();
+  await expect(row.getByText(/brands? not on your list\./)).toBeVisible();
+  await row.getByRole("button", { name: "Review and add" }).click();
+  await row.getByRole("button", { name: "Tick all" }).first().click();
+  await row.getByRole("button", { name: "Done" }).first().click();
+  await expect(row.getByText(/brands? not on your list\./)).toHaveCount(0);
+  await settled(page);
+  await publishBtn(page).click();
+  await expect(page.getByText(/^Published 1 file: Digital, Hygiene/)).toBeVisible();
+
+  // Second upload: the business now comes from the brands.
   await addHygieneAsDigital(page);
   await expect(page.getByLabel("File type for digital.xlsx")).toHaveValue("digital");
   await expect(publishBtn(page)).toBeEnabled();
@@ -61,8 +87,8 @@ test("2. Digital unclear: pick Salt, it becomes Ready, publishes as Digital, Sal
   await expect(page.getByLabel("Business for digital.xlsx")).toHaveValue("");
   await expect(publishBtn(page)).toBeDisabled();
 
-  await page.getByLabel("Business for digital.xlsx").selectOption({ label: "Salt" });
-  await expect(row.getByText("Ready")).toBeVisible();
+  await pickFileBusiness(page, "digital.xlsx", "Salt");
+  await expect(ready(row)).toBeVisible();
   await expect(row.getByText(/^Digital, Salt/)).toBeVisible();
   await expect(publishBtn(page)).toBeEnabled();
   await publishBtn(page).click();
@@ -78,7 +104,9 @@ test("3. every new type: 5 real files Ready with their labels, then In use in Up
   await addFiles(page, NEW_TYPES.map(([f]) => fileOf(f)));
   const rows = page.getByTestId("preview-row");
   await expect(rows).toHaveCount(5);
-  await expect(rows.getByText("Ready", { exact: true })).toHaveCount(5);
+  // Lists start empty: decide each file's new businesses (Billing names 13) as new.
+  for (const [f] of NEW_TYPES) await addBusinessesAsNew(page, rows.filter({ hasText: f }));
+  await expect(ready(rows)).toHaveCount(5);
   for (const [f, label] of NEW_TYPES) {
     await expect(rows.filter({ hasText: f }).getByText(label), f).toBeVisible();
   }

@@ -1,4 +1,3 @@
-import { resolveDigitalBusiness } from "../brands";
 import { monthLabel, round, xstr } from "../cells";
 import { NeedsBusinessError, ReadError, type ReaderContext, type ReadResult } from "../read-result";
 import type { CellValue, Workbook } from "../workbook";
@@ -47,7 +46,7 @@ export function dNorm(b: string): string {
 }
 
 /** Every brand named in column A of the three platform sheets, normalised the way his reader names them. */
-function brandsIn(wb: Workbook): string[] {
+export function digitalBrands(wb: Workbook): string[] {
   const out: string[] = [];
   for (const plat of PLATFORMS) {
     const ws = wb.sheet(plat);
@@ -62,10 +61,10 @@ function brandsIn(wb: Workbook): string[] {
   return out;
 }
 
+/** Reads one business's Digital file. The business comes from the caller. */
 export function readDigital(wb: Workbook, ctx: ReaderContext): ReadResult<DigitalData> {
-  const resolved = resolveDigitalBusiness({ brands: brandsIn(wb), fileName: ctx.fileName, chosen: ctx.business ?? null });
-  if (!resolved) throw new NeedsBusinessError("Pick the business.");
-  const biz = resolved.business;
+  if (!ctx.business) throw new NeedsBusinessError("Pick the business.");
+  const { slug, name: biz } = ctx.business;
 
   const dig: DigitalAd[] = [];
   const raw: DigitalData["raw"] = { Meta: [], YouTube: [], TikTok: [] };
@@ -132,13 +131,12 @@ export function readDigital(wb: Workbook, ctx: ReaderContext): ReadResult<Digita
   const months = [...new Set(dig.map((o) => o.m).filter((x): x is string => !!x))].sort();
   return {
     type: "digital",
-    datasetKey: `digital:${biz}`,
+    datasetKey: `digital:${slug}`,
     label: months.length ? `Digital, ${biz}, ${monthLabel(months[0])} to ${monthLabel(months[months.length - 1])}` : `Digital, ${biz}`,
     summary: `${biz}: ${dig.length} ads · $${Math.round(spend).toLocaleString("en-US")} spend · ${months.map(monthLabel).join(", ")}`,
     months,
     rowCount: dig.length,
     data: { dig, raw },
     warnings: warn,
-    business: { name: biz, source: resolved.source },
   };
 }

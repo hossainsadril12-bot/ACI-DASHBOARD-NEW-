@@ -1,12 +1,13 @@
 import { monthLabel, pad2, round, sum, xstr } from "../cells";
-import { ReadError, type ReadResult } from "../read-result";
-import type { Workbook } from "../workbook";
+import { normName } from "@/lib/names-normal";
+import { NeedsCategoryError, ReadError, type ReaderContext, type ReadResult } from "../read-result";
+import type { Sheet, Workbook } from "../workbook";
 
 export type AtlRow = { b: string; grp: number; acd: number; ngrp: number; sp: number; sov: number; soe: number; reach: number; spots: number; cprp: number };
 export type AtlCategory = { name: string; biz: string; title: string; category: string; tg: string; pop: number; own: string[]; brands: string[]; months: Record<string, AtlRow[]> };
 
-/** [key, dashboard name, business, title pattern, own-brand pattern]: his ATLCATS. */
-const ATL_CATEGORIES: [string, string, string, RegExp, RegExp][] = [
+/** [key, dashboard name, business, title pattern, own-brand pattern]: his ATLCATS. Only suggestions read it; the reader takes its category from the caller. */
+export const ATL_CATEGORIES: [string, string, string, RegExp, RegExp][] = [
   ["soap", "Savlon Soap", "Toiletries", /savlon soap/i, /^savlon soap/i],
   ["septex", "Septex Antiseptic Bar", "Toiletries", /septex/i, /septex/i],
   ["handwash", "Savlon Hand Wash", "Toiletries", /hand ?wash/i, /^savlon/i],
@@ -24,11 +25,10 @@ const ATL_CATEGORIES: [string, string, string, RegExp, RegExp][] = [
 const MON3 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const MAX_MONTH_GRP = 3000;
 
-export function readAtl(wb: Workbook): ReadResult<AtlCategory> {
+/** The sheet his reader reads, and its top lines. Throws when the "Brand Name:" title is missing. */
+function readTop(wb: Workbook) {
   const ws = wb.visibleSheets()[0] ?? wb.sheet(0);
   if (!ws) throw new ReadError("The file has no sheets.");
-  const warnings: string[] = [];
-
   let title = "", category = "", tg = "", pop = 0;
   for (let r = 1; r <= 8; r++) for (let c = 1; c <= 3; c++) {
     const t = xstr(ws.v(r, c));
@@ -38,16 +38,51 @@ export function readAtl(wb: Workbook): ReadResult<AtlCategory> {
     else if (/population|tg size/i.test(t)) { const n = Number(t.replace(/[^\d]/g, "")); if (n) pop = n; }
   }
   if (!title) throw new ReadError(`Couldn't find the "Brand Name:" line at the top of sheet "${ws.name}".`);
-  const C = ATL_CATEGORIES.find((c) => c[3].test(title) && !(c[0] === "antiseptic" && /septex/i.test(title)));
-  if (!C) throw new ReadError(`"${title}" doesn't match any ATL category on the dashboard (Savlon Soap, Septex, Hand Wash, Antiseptic Liquid, Baby Soft, Savlon/Twinkle Baby Wipes, Freedom, Diaper, Salt, Mustard Oil, Rice, Spices).`);
+  return { ws, title, category, tg, pop };
+}
 
-  // Header row: "Brand Name" in column A (dashboard format) or "Brand" in column B (category format).
+/** The file's "Brand Name:" title. */
+export function readAtlTitle(wb: Workbook): string {
+  return readTop(wb).title;
+}
+
+/** Header row: "Brand Name" in column A (dashboard format) or "Brand" in column B (category format). */
+function findHeader(ws: Sheet) {
   let hr = 0, bc = 1, mr = 0;
   for (let r = 1; r <= 15 && !hr; r++) {
     if (/^brand name$/i.test(xstr(ws.v(r, 1)))) { hr = r + 1; bc = 1; mr = r; }
     else if (/^brand$/i.test(xstr(ws.v(r, 2)))) { hr = r; bc = 2; mr = r - 1; }
   }
   if (!hr) throw new ReadError('The header row with "Brand Name" or "Brand" wasn\'t found.');
+  return { hr, bc, mr };
+}
+
+/** Every brand row under the header, in row order, until Total / Note / Source. */
+function brandRows(ws: Sheet, hr: number, bc: number): string[] {
+  const allB: string[] = [];
+  for (let r = hr + 1; r <= ws.maxRow; r++) {
+    const b = xstr(ws.v(r, bc)).replace(/\s+/g, " ").trim();
+    if (/^(total|note|source)/i.test(b)) break;
+    if (b && !allB.includes(b)) allB.push(b);
+  }
+  return allB;
+}
+
+/** The file's brand rows (ours and competitors), the same list the reader stores as `brands`. No category needed. */
+export function atlBrands(wb: Workbook): string[] {
+  const { ws } = readTop(wb);
+  const { hr, bc } = findHeader(ws);
+  return brandRows(ws, hr, bc);
+}
+
+/** Reads one ATL dashboard file. The category (key, name, business, our brands) comes from the caller. */
+export function readAtl(wb: Workbook, ctx: ReaderContext): ReadResult<AtlCategory> {
+  const { ws, title, category, tg, pop } = readTop(wb);
+  const C = ctx.atlCategory;
+  if (!C) throw new NeedsCategoryError(title);
+  const warnings: string[] = [];
+
+  const { hr, bc, mr } = findHeader(ws);
 
   const blocks: { c: number; m: string }[] = [];
   let yr: number | null = null;
@@ -107,14 +142,10 @@ export function readAtl(wb: Workbook): ReadResult<AtlCategory> {
   const ms = Object.keys(months).sort();
   if (!ms.length) throw new ReadError(`No months with TV activity were found for ${title}.`);
 
-  const allB: string[] = [];
-  for (let r = hr + 1; r <= ws.maxRow; r++) {
-    const b = xstr(ws.v(r, bc)).replace(/\s+/g, " ").trim();
-    if (/^(total|note|source)/i.test(b)) break;
-    if (b && !allB.includes(b)) allB.push(b);
-  }
-  const own = allB.filter((b) => C[4].test(b));
-  if (!own.length) warnings.push(`Couldn't find ${C[1]}'s own row in the brand list; every brand is treated as a competitor.`);
+  const allB = brandRows(ws, hr, bc);
+  const ours = new Set(C.ownBrands.map(normName));
+  const own = allB.filter((b) => ours.has(normName(b)));
+  if (!own.length) warnings.push(`Couldn't find ${C.name}'s own row in the brand list; every brand is treated as a competitor.`);
 
   for (const m of ms) for (const r of months[m]) {
     if (r.grp > MAX_MONTH_GRP) warnings.push(`${r.b} has ${r.grp.toLocaleString("en-US")} GRP in ${monthLabel(m)}, more than 3,000 in one month. Please check the file.`);
@@ -124,12 +155,12 @@ export function readAtl(wb: Workbook): ReadResult<AtlCategory> {
   const brandsOnAir = new Set(ms.flatMap((m) => months[m].map((r) => r.b))).size;
   return {
     type: "atl",
-    datasetKey: `atl:${C[0]}`,
-    label: `ATL, ${C[1]}, ${monthLabel(ms[0])} to ${monthLabel(ms[ms.length - 1])}`,
-    summary: `${C[1]} · ${ms.length} months (${monthLabel(ms[0])} – ${monthLabel(ms[ms.length - 1])}) · ${brandsOnAir} brands on air`,
+    datasetKey: `atl:${C.slug}`,
+    label: `ATL, ${C.name}, ${monthLabel(ms[0])} to ${monthLabel(ms[ms.length - 1])}`,
+    summary: `${C.name} · ${ms.length} months (${monthLabel(ms[0])} – ${monthLabel(ms[ms.length - 1])}) · ${brandsOnAir} brands on air`,
     months: ms,
     rowCount: sum(ms, (m) => months[m].length),
-    data: { name: C[1], biz: C[2], title, category, tg, pop, own, brands: allB, months },
+    data: { name: C.name, biz: C.business, title, category, tg, pop, own, brands: allB, months },
     warnings,
   };
 }

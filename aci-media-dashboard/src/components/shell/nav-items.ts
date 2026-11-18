@@ -11,5 +11,6 @@ export const NAV_ITEMS: { href: string; label: string; group: (typeof NAV_GROUPS
   { href: "/competitors", label: "Competitor Tracking", group: "Results" },
   { href: "/data-entry", label: "Data Entry", group: "Data" },
   { href: "/uploads", label: "Uploads & History", group: "Data" },
+  { href: "/businesses", label: "Businesses & Brands", group: "Data" },
   { href: "/settings", label: "Settings", group: "Data" },
 ];

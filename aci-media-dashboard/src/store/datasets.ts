@@ -55,15 +55,19 @@ async function insertVersion(tx: StoreTx, input: PublishInput): Promise<number> 
   return v.id;
 }
 
-/** Saves new versions (with their original files) and makes them the ones the pages show. All of them or none. */
-export async function publishVersions(store: Store, inputs: PublishInput[]): Promise<{ versionIds: number[] }> {
+/** Saves new versions inside the caller's transaction, so other changes (the name lists) commit with them. */
+export async function publishVersionsTx(tx: StoreTx, inputs: PublishInput[]): Promise<number[]> {
   if (inputs.length === 0) throw new ValidationError("Nothing to publish.");
   const clean = inputs.map(checkInput); // validate everything before writing anything
-  return store.transaction(async (tx) => {
-    const versionIds: number[] = [];
-    for (const input of clean) versionIds.push(await insertVersion(tx, input));
-    return { versionIds };
-  });
+  const versionIds: number[] = [];
+  for (const input of clean) versionIds.push(await insertVersion(tx, input));
+  return versionIds;
+}
+
+/** Saves new versions (with their original files) and makes them the ones the pages show. All of them or none. */
+export async function publishVersions(store: Store, inputs: PublishInput[]): Promise<{ versionIds: number[] }> {
+  // publishVersionsTx checks every input before it writes anything, so a refusal rolls back an empty transaction.
+  return { versionIds: await store.transaction((tx) => publishVersionsTx(tx, inputs)) };
 }
 
 /** Saves a new version (and its original file) and makes it the one the pages show. All or nothing. */

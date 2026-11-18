@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readDigital, type DigitalData } from "./digital";
+import { digitalBrands, readDigital, type DigitalData } from "./digital";
 import { NeedsBusinessError, ReadError } from "../read-result";
 import { openWorkbook } from "../workbook";
 import { answerKey, clientFile, hasClientFiles, makeXlsx } from "../test-workbooks";
@@ -42,9 +42,8 @@ describe.skipIf(!hasClientFiles)("Digital: the 3 real files match his built-in d
     expect(hits.map((x) => x.ob)).toEqual(Object.keys(LINE_602_FILL));
   });
   it.each(FILES)("%s is %s and equals his data", (file, biz) => {
-    const r = readDigital(open(clientFile(file)), { fileName: "renamed.xlsx" }); // business must come from the brands, not the name
-    expect(r.business).toEqual({ name: biz, source: "brands" });
-    expect(r.datasetKey).toBe(`digital:${biz}`);
+    const r = readDigital(open(clientFile(file)), { fileName: "renamed.xlsx", business: { slug: biz.toLowerCase(), name: biz } });
+    expect(r.datasetKey).toBe(`digital:${biz.toLowerCase()}`);
     expect(r.label).toMatch(new RegExp(`^Digital, ${biz}, \\w{3}'\\d{2} to \\w{3}'\\d{2}$`));
     expect(r.data.dig).toEqual(dig3.filter((x) => x.bz === biz));
     for (const p of ["Meta", "YouTube", "TikTok"] as const) expect(r.data.raw[p], p).toEqual(expectedRaw(digraw.rows[p], biz, p));
@@ -54,22 +53,32 @@ describe.skipIf(!hasClientFiles)("Digital: the 3 real files match his built-in d
 describe("Digital read errors", () => {
   const sheet = (name: string, rows: unknown[][]) => ({ name, rows });
   const head = ["Brand", "Month", "Content Type", "Content Link", "Bid Type", "Reach", "Impressions", "Spent (USD)"];
-  it("asks for the business when brands and file name don't settle it", () => {
+  const SALT = { slug: "salt", name: "Salt" };
+  it("asks for the business whenever the caller has none, even when the brands would settle it", () => {
+    const b = makeXlsx([sheet("Meta", [head, [], ["Freedom Sanitary Napkin", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
+    expect(() => readDigital(open(b), { fileName: "Hygiene_Business.xlsx" })).toThrow(new NeedsBusinessError("Pick the business."));
+    expect(() => readDigital(open(b), { fileName: "Hygiene_Business.xlsx", business: null })).toThrow(NeedsBusinessError);
+  });
+  it("uses the caller's business for the key, label and every row", () => {
     const b = makeXlsx([sheet("Meta", [head, [], ["Mystery Brand", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
-    expect(() => readDigital(open(b), { fileName: "digital.xlsx" })).toThrow(NeedsBusinessError);
-    expect(readDigital(open(b), { fileName: "digital.xlsx", business: "Salt" }).datasetKey).toBe("digital:Salt");
+    const r = readDigital(open(b), { fileName: "digital.xlsx", business: { slug: "home-care", name: "Home Care" } });
+    expect(r.datasetKey).toBe("digital:home-care");
+    expect(r.label).toBe("Digital, Home Care, Jul'26 to Jul'26");
+    expect(r.summary).toMatch(/^Home Care: 1 ads/);
+    expect(r.data.dig.map((o) => o.bz)).toEqual(["Home Care"]);
+    expect(r.data.raw.Meta.map((o) => o.bz)).toEqual(["Home Care"]);
   });
   it("does not throw on a brand cell named like a prototype key", () => {
     const b = makeXlsx([sheet("Meta", [head, [], ["constructor", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
-    expect(readDigital(open(b), { fileName: "digital.xlsx", business: "Salt" }).datasetKey).toBe("digital:Salt");
+    expect(readDigital(open(b), { fileName: "digital.xlsx", business: SALT }).datasetKey).toBe("digital:salt");
   });
-  it("skips a percentage sub-header row 2 when counting brands", () => {
+  it("lists the brands, skipping a percentage sub-header row 2", () => {
     const sub = ["Savlon Soap", null, null, null, null, null, null, 0.25];
     const b = makeXlsx([sheet("Meta", [head, sub, ["Freedom Sanitary Napkin", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
-    expect(readDigital(open(b), { fileName: "digital.xlsx" }).business).toEqual({ name: "Hygiene", source: "brands" });
+    expect(digitalBrands(open(b))).toEqual(["Freedom Sanitary Napkin"]);
   });
   it("refuses a file with no ad rows", () => {
     const b = makeXlsx([sheet("Meta", [head]), sheet("YouTube", [head]), sheet("TikTok", [head])]);
-    expect(() => readDigital(open(b), { fileName: "Salt.xlsx", business: "Salt" })).toThrow(new ReadError("No ad rows were found in the Meta, YouTube or TikTok sheets."));
+    expect(() => readDigital(open(b), { fileName: "Salt.xlsx", business: SALT })).toThrow(new ReadError("No ad rows were found in the Meta, YouTube or TikTok sheets."));
   });
 });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Store } from "@/store/client";
 import { createTestStore } from "@/store/test-store";
 import { listHistory } from "@/store/datasets";
+import { createBusiness, getCatalog } from "@/store/catalog";
 import { MAX_FILE_BYTES } from "@/store/files";
 import { makeXlsx } from "@/lib/ingest/test-workbooks";
 
@@ -35,7 +36,8 @@ async function post(fd: FormData, extra: Record<string, string> = {}, lengthOver
 const form = (...files: File[]) => { const fd = new FormData(); for (const f of files) fd.append("files", f); return fd; };
 const asAdmin = async () => { h.jar.set(SESSION_COOKIE, (await createSession(h.store)).token); };
 
-beforeEach(async () => { h.store = await createTestStore(); h.jar.clear(); });
+// The calendar test file's business is on the list, so it previews as Ready.
+beforeEach(async () => { h.store = await createTestStore(); await createBusiness(h.store, "Toiletries"); h.jar.clear(); });
 
 describe("upload routes: refusals happen before the body is read", () => {
   it("refuses a viewer and never reads the body", async () => {
@@ -132,22 +134,37 @@ describe("upload routes: admin", () => {
     expect(j.previews[0]).toMatchObject({ fileName: "a.xlsx", type: null, canPublish: false });
     expect(j.previews[1]).toMatchObject({ fileName: "b.xlsx", type: "calendar", canPublish: true });
   });
-  it("passes business-0 to the service and ignores a value that isn't a business", async () => {
+  it("passes decisions-0 to the service, ignores malformed decisions, and saves them on publish", async () => {
     await asAdmin();
     const digital = makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
       ["Brand", "Month", "Content Type", "Content Link", "Bid Type", "Reach", "Impressions", "Spent (USD)"], [],
       ...(p === "Meta" ? [["Mystery Brand", "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]] : []),
     ] })));
     const salt = form(xlsx(digital, "digital.xlsx"));
-    salt.set("business-0", "Salt");
+    salt.set("decisions-0", JSON.stringify({ business: "new:Salt" }));
     const ok = await (await preview.POST(await post(salt))).json();
-    expect(ok.previews[0]).toMatchObject({ type: "digital", canPublish: true, business: "Salt", businessSource: "admin", datasetKey: "digital:Salt" });
-    const evil = form(xlsx(digital, "digital.xlsx"));
-    evil.set("business-0", "evil");
-    const bad = await (await preview.POST(await post(evil))).json();
-    expect(bad.previews[0]).toMatchObject({ canPublish: false, needsBusiness: true, business: null, blockReason: "Pick the business." });
+    expect(ok.previews[0]).toMatchObject({ type: "digital", canPublish: true, business: { slug: null, name: "Salt" }, businessSource: "admin", datasetKey: "digital:salt" });
+    expect((await getCatalog(h.store)).businessOf("Salt")).toBeNull(); // preview writes nothing
+    for (const junk of ["{bad json", JSON.stringify({ business: 5 }), JSON.stringify({ business: "x".repeat(121) }), JSON.stringify([1]), "null"]) {
+      const evil = form(xlsx(digital, "digital.xlsx"));
+      evil.set("decisions-0", junk);
+      const bad = await (await preview.POST(await post(evil))).json();
+      expect(bad.previews[0], junk).toMatchObject({ canPublish: false, needsBusiness: true, business: null, blockReason: "Pick the business." });
+    }
     const pub = await (await publish.POST(await post(salt))).json();
-    expect(pub).toMatchObject({ ok: true, published: [{ datasetKey: "digital:Salt" }] });
+    expect(pub).toMatchObject({ ok: true, published: [{ datasetKey: "digital:salt" }] });
+    expect((await getCatalog(h.store)).businessOf("Salt")?.slug).toBe("salt");
+  });
+  it("applies decisions-1 to the second file only", async () => {
+    await asAdmin();
+    const book = makeXlsx([{ name: "Nov'26", rows: [
+      ["CB Media Activity Nov'26"], ["Business", "Brand", "Media"], [null, null, "TV", "Digital", "Print", "OOH", "Total"], ["CB Core", "Coil", 1, 0, 0, 0, 1], ["Grand Total", null, 1, 0, 0, 0, 1],
+    ] }]);
+    const fd = form(xlsx(book, "a.xlsx"), xlsx(book, "b.xlsx"));
+    fd.set("decisions-1", JSON.stringify({ businesses: [{ name: "CB Core", action: "new" }] }));
+    const j = await (await preview.POST(await post(fd))).json();
+    expect(j.previews[0]).toMatchObject({ blockReason: "Decide the new businesses.", pendingChanges: [] });
+    expect(j.previews[1].pendingChanges).toEqual([{ op: "addBusiness", name: "CB Core" }]);
   });
   it("refuses an empty file by name", async () => {
     await asAdmin();
