@@ -251,6 +251,10 @@ test.describe("6. viewer", () => {
     await page.getByRole("link", { name: VIEWER_BIZ, exact: true }).click();
     await expect(page.getByRole("heading", { name: VIEWER_BIZ, exact: true })).toBeVisible();
     await expect(page.getByText("No brands yet.")).toBeVisible();
+    // A page with a slug still marks where you are after a full load (the shell reads the path inside Suspense).
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Businesses & Brands" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Businesses & Brands");
     await expect(page.getByRole("button", { name: ADMIN_CONTROLS })).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
