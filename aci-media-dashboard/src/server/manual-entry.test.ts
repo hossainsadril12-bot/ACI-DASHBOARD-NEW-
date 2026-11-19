@@ -8,6 +8,7 @@ import type { Store } from "@/store/client";
 import * as datasets from "@/store/datasets";
 import { STALE_MESSAGE, getActiveData, listHistory, publishVersion, restoreVersion } from "@/store/datasets";
 import { createTestStore as openTestStore } from "@/store/test-store";
+import { ValidationError } from "./errors";
 import { INVALID_INPUT, changeBillboard, saveChannel, saveFy } from "./manual-entry";
 
 const opened: Store[] = [];
@@ -85,6 +86,11 @@ describe("saveChannel", () => {
     // libSQL says TRANSACTION_ACTIVE; a file store says "database is locked"). Not by the stale check, so not its message.
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
     expect(await versions()).toBe(1);
+    const loser = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(loser.reason).toBeInstanceOf(ValidationError);
+    expect(loser.reason.message).toBe(STALE_MESSAGE);
+    const winner = results.findIndex((r) => r.status === "fulfilled");
+    expect((await getActiveData<ChannelData>(store, "channel"))?.data.elec.rows.map((r) => r.n)).toEqual([winner === 0 ? "ATN Bangla" : "NTV"]);
     // The same save retried once the winner committed is refused by the stale check.
     await expect(saveChannel(store, { baseVersionId: null, data: channel() }, NOW)).rejects.toThrow(STALE_MESSAGE);
     expect(await versions()).toBe(1);
@@ -118,6 +124,8 @@ describe("saveFy", () => {
     await saveFy(store, { baseVersionId: null, rows: [fyRow("SAVLON", "TV", 1)], newBrands: [{ name: "SAVLON", businessSlug: "hygiene" }] }, NOW);
     const cat = await getCatalog(store);
     expect(cat.brands.map((b) => [b.name, b.businessSlug])).toEqual([["Savlon", "toiletries"]]);
+    // Its rows stay under the business it already has, not the one sent.
+    expect((await getActiveData<FyRow[]>(store, "fy"))?.data.map((r) => r.biz)).toEqual(["Toiletries"]);
   });
 
   it("does not add a new brand whose rows are all 0 (they are dropped)", async () => {
@@ -186,6 +194,12 @@ describe("changeBillboard", () => {
     await expect(changeBillboard(store, { baseVersionId: null, op: "add", bill: bill({ biz: "AI" }) })).rejects.toThrow("That business doesn't exist.");
     await expect(changeBillboard(store, { baseVersionId: null, op: "add", bill: bill({ biz: "Old Co" }) })).rejects.toThrow("That business doesn't exist.");
     expect(await versions()).toBe(0);
+  });
+
+  it("refuses an edit of an SL that is not in the data, and stores nothing", async () => {
+    const a = await changeBillboard(store, { baseVersionId: null, op: "add", bill: bill() });
+    await expect(changeBillboard(store, { baseVersionId: a.versionId, op: "edit", sl: 2, bill: bill() })).rejects.toThrow(NO_BILL);
+    expect(await versions()).toBe(1);
   });
 
   it("refuses an SL that is not in the data, and a stale version", async () => {

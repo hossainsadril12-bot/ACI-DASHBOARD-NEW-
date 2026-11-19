@@ -8,7 +8,7 @@ import {
   type ManualVersion,
 } from "@/lib/manual/rules";
 import { applyCatalogChanges, cleanName, getCatalog, type Catalog, type CatalogChange } from "@/store/catalog";
-import { activeIfCurrentTx, publishVersionsTx } from "@/store/datasets";
+import { STALE_MESSAGE, activeIfCurrentTx, publishVersionsTx } from "@/store/datasets";
 import type { Store, StoreTx } from "@/store/client";
 import { ValidationError } from "./errors";
 
@@ -63,10 +63,27 @@ async function publishManual<T>(tx: StoreTx, v: ManualVersion<T>): Promise<Manua
   return { versionId, summary: v.summary.summary };
 }
 
+/** True for the libSQL errors a second overlapping write transaction gets while the first holds the lock. */
+function isLockError(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  const msg = e instanceof Error ? e.message : "";
+  return code === "TRANSACTION_ACTIVE" || code === "SQLITE_BUSY" || /database is locked/i.test(msg);
+}
+
+/** Runs a save's transaction; the loser of two overlapping saves gets the same refusal as a stale version. */
+async function saveTx<T>(store: Store, fn: (tx: StoreTx) => Promise<T>): Promise<T> {
+  try {
+    return await store.transaction(fn);
+  } catch (e) {
+    if (isLockError(e)) throw new ValidationError(STALE_MESSAGE);
+    throw e;
+  }
+}
+
 /** The three Channel cost sheets as one new `channel` version, if nobody published it since `baseVersionId`. */
 export async function saveChannel(store: Store, input: unknown, now: Date = new Date()): Promise<ManualSaved> {
   const { baseVersionId: base, data } = parse(ChannelSaveSchema, input);
-  return store.transaction(async (tx) => {
+  return saveTx(store, async (tx) => {
     const active = await activeIfCurrentTx<ChannelData>(tx, "channel", base);
     return publishManual(tx, channelVersion(data, fyStartOf(active, now)));
   });
@@ -89,12 +106,15 @@ function addedBrands(catalog: Catalog, list: { name: string; businessSlug: strin
 /** The FY rows as one new `fy` version, with any new brand added to the list in the same transaction. */
 export async function saveFy(store: Store, input: unknown, now: Date = new Date()): Promise<ManualSaved> {
   const { baseVersionId: base, rows, newBrands } = parse(FySaveSchema, input);
-  return store.transaction(async (tx) => {
+  return saveTx(store, async (tx) => {
     const active = await activeIfCurrentTx<FyRow[]>(tx, "fy", base);
     const catalog = await getCatalog(tx);
     const added = addedBrands(catalog, newBrands);
     // A new brand's rows sit under the business it was added to.
+    // A brand already on the list keeps the business it has there.
     const placed = rows.map((r) => {
+      const own = catalog.brandOf(r.b);
+      if (own) return { ...r, biz: catalog.businesses.find((b) => b.slug === own.businessSlug)?.name ?? r.biz };
       const a = added.get(normName(r.b));
       return a ? { ...r, biz: a.businessName } : r;
     });
@@ -122,7 +142,7 @@ function billBusiness(catalog: Catalog, raw: string, prev: BillboardRow | null):
 /** One bill added, edited or deleted, published as the whole `billboard` dataset. */
 export async function changeBillboard(store: Store, input: unknown): Promise<ManualSaved> {
   const change = parse(BillChangeSchema, input);
-  return store.transaction(async (tx) => {
+  return saveTx(store, async (tx) => {
     const active = await activeIfCurrentTx<BillboardData>(tx, "billboard", change.baseVersionId);
     const catalog = await getCatalog(tx);
     const { data, summary } = applyBillChange(active?.data ?? null, change, (raw, prev) => billBusiness(catalog, raw, prev));
