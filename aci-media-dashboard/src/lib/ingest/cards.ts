@@ -14,18 +14,18 @@ export type UploadCard = { key: CardKey; type: FileType; title: string; fileText
 export const UPLOAD_CARDS: readonly UploadCard[] = [
   {
     key: "atl", type: "atl", title: "ATL (TV) performance", multiple: true,
-    fileText: "2026 Dash Board file, one per TV category.",
+    fileText: "2026 Dash Board files, one per TV category.",
     updates: "ATL and Home",
   },
   {
     key: "digital", type: "digital", title: "Digital performance", multiple: false,
-    fileText: "Meta, YouTube and TikTok file.",
-    updates: "Digital, Influencer, Calendar and Home",
+    fileText: "Digital file with Meta, YouTube and TikTok sheets.",
+    updates: "Digital, Influencer, Activity Calendar and Home",
   },
   {
     key: "fy", type: "fy", title: "FY media spend", multiple: false,
     fileText: "CB Media Spent Report.",
-    updates: "Home, FY Spend, Calendar and OOH",
+    updates: "Home, FY Spend, Activity Calendar and OOH",
   },
   {
     key: "channel", type: "channel", title: "Channel cost", multiple: false,

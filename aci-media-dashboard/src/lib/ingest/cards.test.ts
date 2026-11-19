@@ -21,8 +21,8 @@ describe("UPLOAD_CARDS", () => {
   });
   it("says which file each card expects and which pages it updates", () => {
     expect(UPLOAD_CARDS.map((c) => c.fileText)).toEqual([
-      "2026 Dash Board file, one per TV category.",
-      "Meta, YouTube and TikTok file.",
+      "2026 Dash Board files, one per TV category.",
+      "Digital file with Meta, YouTube and TikTok sheets.",
       "CB Media Spent Report.",
       "Channel Cost file.",
       "Dashboard Media Final file.",
@@ -31,8 +31,8 @@ describe("UPLOAD_CARDS", () => {
     ]);
     expect(UPLOAD_CARDS.map((c) => c.updates)).toEqual([
       "ATL and Home",
-      "Digital, Influencer, Calendar and Home",
-      "Home, FY Spend, Calendar and OOH",
+      "Digital, Influencer, Activity Calendar and Home",
+      "Home, FY Spend, Activity Calendar and OOH",
       "Channel Spend",
       "Billing and Vendor Statement",
       "Activity Calendar",

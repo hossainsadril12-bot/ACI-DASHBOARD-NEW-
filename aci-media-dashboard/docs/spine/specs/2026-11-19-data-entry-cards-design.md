@@ -30,7 +30,7 @@ The client asked for something simpler:
 
 ### 3.2 Upload Data: the cards
 
-A grid of cards: two columns on a laptop, one on a phone. In this order:
+A grid of cards: two columns on a laptop, one on a phone. In this order (the table describes each file; the short text the cards show is in `src/lib/ingest/cards.ts`):
 
 | Card | File it expects | Updates |
 |---|---|---|
@@ -44,7 +44,7 @@ A grid of cards: two columns on a laptop, one on a phone. In this order:
 
 Each card shows (shortened on 19 Nov 2026 after Sadril found the first text too long; modelled on the import cards in HubSpot and Wix):
 - the title in bold;
-- one short grey line: the file in a few words, then "Updates <pages>.", for example "2026 Dash Board file, one per TV category. Updates ATL and Home.";
+- one short grey line: the file in a few words, then "Updates <pages>.", for example "2026 Dash Board files, one per TV category. Updates ATL and Home.";
 - "In use: <file name> · <date and time>", or "In use: nothing yet". The ATL card says "In use: N categories · <last file name> · <date and time>". "In use" is the word Upload History uses;
 - the **Upload Excel** button (admin only). A file can also be dropped onto the card.
 

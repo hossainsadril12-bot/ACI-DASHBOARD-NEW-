@@ -12,7 +12,7 @@ describe("CardFace", () => {
     expect(html).toContain('data-testid="upload-card"');
     expect(html).toContain('data-card-id="atl"');
     expect(html).toContain("ATL (TV) performance");
-    expect(html).toContain("2026 Dash Board file, one per TV category. Updates ATL and Home.");
+    expect(html).toContain("2026 Dash Board files, one per TV category. Updates ATL and Home.");
     expect(html).toContain("In use: ");
     expect(html).toContain("nothing yet");
   });
