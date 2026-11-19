@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { dataset, uploadFile, datasetVersion } from "./schema";
 import { createTestStore } from "./test-store";
 import { getFile } from "./files";
-import { getActiveData, getActiveFileHashes, listActiveVersions, listHistory, publishVersion, publishVersions, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
+import { STALE_MESSAGE, activeIfCurrentTx, getActiveData, getActiveFileHashes, listActiveVersions, listHistory, publishVersion, publishVersions, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
 
 const input = (over: Partial<PublishInput> = {}): PublishInput => ({
   datasetKey: "billing",
@@ -197,5 +197,40 @@ describe("getActiveFileHashes", () => {
     const map = await getActiveFileHashes(store, ["calendar", "atl:soap"]);
     expect(map.get("calendar")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     expect(map.has("atl:soap")).toBe(false);
+  });
+});
+
+describe("getActiveData", () => {
+  it("returns the version's summary with its data", async () => {
+    const store = await createTestStore();
+    await publishVersion(store, input({ summary: { months: ["2026-07"] } }));
+    expect((await getActiveData(store, "billing"))?.summary).toEqual({ months: ["2026-07"] });
+  });
+});
+
+describe("activeIfCurrentTx", () => {
+  const check = (store: Awaited<ReturnType<typeof createTestStore>>, base: number | null) =>
+    store.transaction((tx) => activeIfCurrentTx(tx, "billing", base));
+
+  it("passes with null before anything is published, and returns null", async () => {
+    expect(await check(await createTestStore(), null)).toBeNull();
+  });
+  it("returns the active version when it is the one opened", async () => {
+    const store = await createTestStore();
+    const { versionId } = await publishVersion(store, input());
+    expect((await check(store, versionId))?.versionId).toBe(versionId);
+  });
+  it("refuses once something was published after opening (null base)", async () => {
+    const store = await createTestStore();
+    await publishVersion(store, input());
+    await expect(check(store, null)).rejects.toThrow(STALE_MESSAGE);
+  });
+  it("refuses a newer publish and a restore made after opening", async () => {
+    const store = await createTestStore();
+    const a = await publishVersion(store, input({ label: "A" }));
+    const b = await publishVersion(store, input({ label: "B" }));
+    await expect(check(store, a.versionId)).rejects.toThrow(STALE_MESSAGE);
+    await restoreVersion(store, a.versionId);
+    await expect(check(store, b.versionId)).rejects.toThrow(STALE_MESSAGE);
   });
 });

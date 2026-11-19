@@ -16,7 +16,7 @@ export type PublishInput = {
   file?: { name: string; bytes: Buffer };
 };
 
-export type ActiveData<T> = { versionId: number; label: string; createdAt: Date; data: T };
+export type ActiveData<T> = { versionId: number; label: string; summary: Record<string, unknown>; createdAt: Date; data: T };
 
 export type HistoryRow = {
   versionId: number;
@@ -91,14 +91,29 @@ export async function getActiveFileHashes(store: Store, datasetKeys: string[]): 
   return new Map(rows.map((r) => [r.key, r.sha256]));
 }
 
-export async function getActiveData<T>(store: Store, datasetKey: string): Promise<ActiveData<T> | null> {
-  const [row] = await store
-    .select({ versionId: datasetVersion.id, label: datasetVersion.label, createdAt: datasetVersion.createdAt, data: datasetVersion.data })
+/** The version a dataset shows now, with its data. Works on the store or inside a transaction. */
+export async function getActiveData<T>(store: Store | StoreTx, datasetKey: string): Promise<ActiveData<T> | null> {
+  const db = store as StoreTx; // the same query either way, as getCatalog does
+  const [row] = await db
+    .select({ versionId: datasetVersion.id, label: datasetVersion.label, summary: datasetVersion.summary, createdAt: datasetVersion.createdAt, data: datasetVersion.data })
     .from(dataset)
     .innerJoin(datasetVersion, eq(dataset.activeVersionId, datasetVersion.id))
     .where(eq(dataset.key, datasetKey))
     .limit(1);
   return row ? { ...row, data: row.data as T } : null;
+}
+
+export const STALE_MESSAGE = "This data changed after you opened it. Reload to see the latest, then make your change again.";
+
+/**
+ * Inside a write transaction: the dataset's active version, only while it is still the one the admin opened (null:
+ * nothing published yet). A publish or a restore since then is refused with STALE_MESSAGE, so a save never
+ * overwrites it. The transaction holds the write lock (BEGIN IMMEDIATE), so two saves cannot both pass.
+ */
+export async function activeIfCurrentTx<T>(tx: StoreTx, datasetKey: string, baseVersionId: number | null): Promise<ActiveData<T> | null> {
+  const active = await getActiveData<T>(tx, datasetKey);
+  if ((active?.versionId ?? null) !== baseVersionId) throw new ValidationError(STALE_MESSAGE);
+  return active;
 }
 
 /** Every dataset's active version, by dataset key. Leaves out the data itself. */
