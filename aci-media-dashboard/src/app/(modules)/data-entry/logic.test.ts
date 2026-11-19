@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionsSchema, type FilePreview } from "@/server/ingest";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import {
-  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads, publishButtonLabel,
-  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, tickShown, toDecisions, uploadForm, whenDhaka,
+  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads,
+  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, takeFiles, takeThenReset, tickShown, toDecisions, uploadForm, whenDhaka,
   type RowDraft,
 } from "./logic";
 
@@ -20,8 +20,8 @@ describe("rowStatus", () => {
   it("is ready when the file can be published", () => {
     expect(rowStatus(preview())).toBe("ready");
   });
-  it("needs a type when detection was unsure", () => {
-    expect(rowStatus(preview({ canPublish: false, type: null, blockReason: "Pick the file type." }))).toBe("needs-type");
+  it("is blocked when no type was found", () => {
+    expect(rowStatus(preview({ canPublish: false, type: null, blockReason: "Pick the file type." }))).toBe("blocked");
   });
   it("needs a business when the Digital file's business can't be worked out", () => {
     expect(rowStatus(preview({ type: "digital", canPublish: false, blockReason: "Pick the business.", needsBusiness: true }))).toBe("needs-business");
@@ -329,10 +329,6 @@ describe("texts", () => {
     expect(publishedMessage([{ label: "ATL, Savlon Soap" }, { label: "Activity Calendar" }])).toBe("Published 2 files: ATL, Savlon Soap; Activity Calendar");
     expect(publishedMessage([{ label: "Activity Calendar" }])).toBe("Published 1 file: Activity Calendar");
   });
-  it("counts the files on the publish button", () => {
-    expect(publishButtonLabel(3)).toBe("Publish 3 files");
-    expect(publishButtonLabel(1)).toBe("Publish 1 file");
-  });
   it("shows the time in Dhaka", () => {
     expect(whenDhaka(new Date("2026-11-16T08:05:00Z"))).toBe("16 Nov 2026, 14:05");
   });
@@ -388,9 +384,48 @@ describe("postUploads", () => {
 });
 
 describe("menu", () => {
-  it("puts Data Entry in the Data group before Uploads & History", () => {
+  it("puts Data Entry first in the Data group, before Businesses & Brands", () => {
     const i = NAV_ITEMS.findIndex((n) => n.href === "/data-entry");
     expect(NAV_ITEMS[i]).toEqual({ href: "/data-entry", label: "Data Entry", group: "Data" });
-    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/uploads") - 1);
+    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/businesses") - 1);
+  });
+});
+
+describe("takeFiles", () => {
+  const f = (name: string, size = 10) => ({ name, size });
+  it("takes one file on a single-file card and says which extra files are left out", () => {
+    expect(takeFiles([f("a.xlsx"), f("b.xlsx"), f("c.xlsx")], false)).toEqual({
+      taken: [f("a.xlsx")], leftOut: ["b.xlsx, c.xlsx left out: this card takes one file."],
+    });
+  });
+  it("takes every non-empty file on the ATL card", () => {
+    expect(takeFiles([f("a.xlsx"), f("b.xlsx")], true)).toEqual({ taken: [f("a.xlsx"), f("b.xlsx")], leftOut: [] });
+  });
+  it("leaves out empty files, saying so", () => {
+    expect(takeFiles([f("e.xlsx", 0), f("a.xlsx")], true)).toEqual({ taken: [f("a.xlsx")], leftOut: ["e.xlsx is empty and left out."] });
+    expect(takeFiles([f("e.xlsx", 0), f("z.xlsx", 0)], false)).toEqual({ taken: [], leftOut: ["e.xlsx, z.xlsx are empty and left out."] });
+  });
+  it("gives both messages when there are extra and empty files", () => {
+    expect(takeFiles([f("e.xlsx", 0), f("a.xlsx"), f("b.xlsx")], false).leftOut).toEqual([
+      "b.xlsx left out: this card takes one file.", "e.xlsx is empty and left out.",
+    ]);
+  });
+});
+
+describe("takeThenReset", () => {
+  it("copies the files out before the reset empties a live list (Chromium's input.files)", () => {
+    const a = { name: "a.xlsx", size: 10 };
+    const b = { name: "b.xlsx", size: 20 };
+    const live = [a, b]; // stands in for input.files: clearing the input empties the same object
+    const order: string[] = [];
+    const got = takeThenReset(live, () => { order.push("reset"); live.length = 0; });
+    expect(got).toEqual([a, b]);
+    expect(order).toEqual(["reset"]);
+    expect(live).toHaveLength(0);
+  });
+  it("gives no files for no list, and still resets", () => {
+    const reset = vi.fn();
+    expect(takeThenReset(null, reset)).toEqual([]);
+    expect(reset).toHaveBeenCalledOnce();
   });
 });

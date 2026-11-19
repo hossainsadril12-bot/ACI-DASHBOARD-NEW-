@@ -9,15 +9,20 @@ import { NAV_ITEMS } from "./nav-items";
 
 const noop = () => () => {};
 
+/** Pages with no menu entry that still have a title. */
+const EXTRA_TITLES: Record<string, string> = { "/uploads": "Uploads & History" };
+
 /** The only part that reads the path, so pages with a slug can prerender the rest of the bar. */
 function CurrentPageCrumb() {
   const pathname = usePathname();
   const page = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
-  if (!page || page.href === "/") return null;
+  const extra = Object.entries(EXTRA_TITLES).find(([href]) => pathname.startsWith(href))?.[1];
+  const title = page ? (page.href === "/" ? null : page.label) : (extra ?? null);
+  if (!title) return null;
   return (
     <>
       <ChevronRight className="size-4 text-gray-300" aria-hidden />
-      <span className="truncate font-medium text-gray-900">{page.label}</span>
+      <span className="truncate font-medium text-gray-900">{title}</span>
     </>
   );
 }

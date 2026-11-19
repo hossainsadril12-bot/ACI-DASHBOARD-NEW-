@@ -1,7 +1,8 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { clientFile, makeXlsx } from "../src/lib/ingest/test-workbooks";
 
-// Shared steps for the Data Entry upload specs (phase2a, phase2b, phase2c).
+// Shared steps for the Data Entry upload specs (phase2a, phase2b, phase2c): one card per file, then the
+// Check before publishing dialog.
 
 export const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export type Upload = { name: string; mimeType: string; buffer: Buffer };
@@ -14,25 +15,63 @@ export const sheetFile = (name: string, rows: unknown[][], sheetName = "S"): Upl
 /** Text for use inside a RegExp, matched literally. */
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** Opens Upload Data and waits for its cards. */
 export const openUpload = async (page: Page) => {
   await page.goto("/data-entry");
-  await expect(page.getByTestId("upload-drop")).toBeVisible();
+  await expect(page.getByTestId("upload-card").first()).toBeVisible();
 };
-export const addFiles = (page: Page, files: Upload[]) => page.setInputFiles("input[type=file]", files);
-export const publishBtn = (page: Page) => page.getByRole("button", { name: /Publish \d+ files?/ });
+/**
+ * One Upload Data card by its id: "atl", "digital" (the card for a business with no Digital data yet),
+ * "digital:<business slug>", "fy", "channel", "billing", "calendar" or "billboard".
+ */
+export const card = (page: Page, id: string) => page.locator(`[data-testid="upload-card"][data-card-id="${id}"]`);
+/** The Check before publishing dialog. */
+export const checkDialog = (page: Page) => page.getByRole("dialog");
+/**
+ * Gives the files to a card (`give`) until the dialog opens: a choice made before the page has hydrated is lost.
+ * Returns the dialog once every file has been read (a large real file takes a while).
+ */
+const untilChecked = async (page: Page, files: Upload[], give: () => Promise<void>) => {
+  const dialog = checkDialog(page);
+  await expect(async () => {
+    await give();
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(dialog.getByTestId("preview-row")).toHaveCount(files.length, { timeout: 30_000 });
+  return dialog;
+};
+/** Opens Upload Data, chooses the files on one card, and returns the dialog once every file has been read. */
+export const uploadToCard = async (page: Page, id: string, files: Upload[]) => {
+  await openUpload(page);
+  return untilChecked(page, files, () => card(page, id).locator("input[type=file]").setInputFiles(files));
+};
+/** Opens Upload Data, drops the files on one card, and returns the dialog once every file has been read. */
+export const dropOnCard = async (page: Page, id: string, files: Upload[]) => {
+  await openUpload(page);
+  const dataTransfer = await page.evaluateHandle((list) => {
+    const dt = new DataTransfer();
+    for (const f of list) {
+      const bytes = Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0));
+      dt.items.add(new File([bytes], f.name, { type: f.mimeType }));
+    }
+    return dt;
+  }, files.map((f) => ({ name: f.name, mimeType: f.mimeType, base64: f.buffer.toString("base64") })));
+  return untilChecked(page, files, () => card(page, id).dispatchEvent("drop", { dataTransfer }));
+};
+export const publishBtn = (page: Page) => checkDialog(page).getByRole("button", { name: "Publish", exact: true });
 export const historyRows = async (page: Page) => {
   await page.goto("/data-entry?tab=history");
   return page.getByTestId("history-table").locator("tbody tr");
 };
 
-/** A preview row's Ready chip. */
+/** A file block's Ready chip. */
 export const ready = (row: Locator) => row.getByText("Ready", { exact: true });
-/** Waits until no preview request is running, so the row controls are enabled again. */
+/** Waits until no preview request is running, so the block controls are enabled again. */
 export const settled = (page: Page) => expect(page.locator("ul[aria-busy=true]")).toHaveCount(0);
 
 /**
  * Picks `name` in a Business select when it is on the list, else "New business…" with the name typed in its box
- * and Enter (which sends it on a Digital row, and does nothing in the New category block).
+ * and Enter (which sends it on a Digital file, and does nothing in the New category block).
  */
 export const pickBusiness = async (page: Page, selectLabel: string, boxLabel: string, name: string) => {
   const select = page.getByLabel(selectLabel, { exact: true });

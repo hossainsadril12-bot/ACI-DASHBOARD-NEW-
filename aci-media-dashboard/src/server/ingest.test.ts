@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { READERS } from "@/lib/ingest/readers";
-import { createTestStore } from "@/store/test-store";
+import { createTestStore as openTestStore } from "@/store/test-store";
 import * as datasets from "@/store/datasets";
 import { getActiveData, listHistory } from "@/store/datasets";
 import { applyCatalogChanges, createBrand, createBusiness, getCatalog, setAtlHidden, setBusinessHidden, type CatalogChange } from "@/store/catalog";
@@ -8,9 +8,23 @@ import { ValidationError } from "./errors";
 import { ReadError } from "@/lib/ingest/read-result";
 import { makeXlsx, clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { NOT_USUAL_FILE } from "@/lib/ingest/detect";
+import { OOH_MASTER_MESSAGE, cardForType, notThisFileMessage, wrongCardMessage } from "@/lib/ingest/cards";
+import type { FileType } from "@/lib/ingest/file-types";
 import type { AtlCategory } from "@/lib/ingest/readers/atl";
 import type { Store } from "@/store/client";
 import { DecisionsSchema, previewUploads, publishUploads, type Decisions, type FilePreview, type UploadInput } from "./ingest";
+
+/**
+ * Every store this file opens, closed once its tests are done: libSQL clients left open for the worker's exit can
+ * crash it on Windows (0xC0000005) after every test has passed.
+ */
+const opened: Store[] = [];
+async function createTestStore(): Promise<Store> {
+  const store = await openTestStore();
+  opened.push(store);
+  return store;
+}
+afterAll(() => { for (const s of opened.splice(0)) s.$client.close(); });
 
 const u8 = (b: Buffer) => new Uint8Array(b);
 const calendarBook = (sheet = "Nov'26", grandTotal = true) => makeXlsx([{ name: sheet, rows: [
@@ -96,10 +110,40 @@ describe("previewUploads", () => {
     expect(p.warnings).toContain("This is the same file as the one in use.");
     expect(p.canPublish).toBe(true);
   });
-  it("warns when the admin picks a type different from a sure detection", async () => {
-    const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook(), "channel")]);
-    expect(p.warnings).toContain("Detected as Activity Calendar, but you picked Channel Cost.");
-    expect(p.canPublish).toBe(false);
+  it("blocks a file sent for another card when detection is sure, naming the card to use", async () => {
+    const store = await calStore();
+    const msg = wrongCardMessage(cardForType("channel")!, "calendar");
+    expect(msg).toBe("This looks like an Activity Calendar file, not Channel Cost. Close this and use the Monthly activity calendar card.");
+    const [p] = await previewUploads(store, [file("cal.xlsx", calendarBook(), "channel")]);
+    expect(p).toMatchObject({ canPublish: false, type: null, label: null, datasetKey: null, blockReason: msg, errors: [msg] });
+    expect(p.warnings.join(" ")).not.toMatch(/Detected as/);
+    await expect(publishUploads(store, [file("cal.xlsx", calendarBook(), "channel")])).rejects.toThrow(new ValidationError(`cal.xlsx: ${msg}`));
+    expect(await listHistory(store)).toEqual([]);
+  });
+  it("reads a file sent for its own card as usual, with no detection warning", async () => {
+    const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook(), "calendar")]);
+    expect(p).toMatchObject({ type: "calendar", canPublish: true, errors: [] });
+    expect(p.warnings.join(" ")).not.toMatch(/Detected as/);
+  });
+  it("reads an unsure file as the card's type, and the reader's own errors decide", async () => {
+    const [p] = await previewUploads(await calStore(), [file("c.xlsx", calendarBook("Nov'26", false), "channel")]);
+    expect(p.detection).toEqual({ status: "unsure", candidates: ["calendar"] });
+    expect(p).toMatchObject({ type: "channel", canPublish: false });
+    expect(p.errors).toHaveLength(1);
+    expect(p.errors[0]).not.toMatch(/looks like|This is not/);
+  });
+  it("blocks the OOH master sheet on any card, saying where it is uploaded", async () => {
+    const ooh = makeXlsx([{ name: "Sites", rows: [["SL", "OOH Location", "Latitude", "Longitude"], [1, "Gulshan 1", 23.78, 90.41]] }]);
+    for (const t of ["billboard", "calendar"] as const) {
+      const [p] = await previewUploads(await createTestStore(), [file("ooh.xlsx", ooh, t)]);
+      expect(p, t).toMatchObject({ canPublish: false, type: null, blockReason: OOH_MASTER_MESSAGE, errors: [OOH_MASTER_MESSAGE] });
+    }
+    const [noCard] = await previewUploads(await createTestStore(), [file("ooh.xlsx", ooh)]);
+    expect(noCard.type).toBe("ooh-sites"); // with no card, the API reads it as before
+  });
+  it("still blocks a sure mismatch for a type with no card (the OOH master sheet, API only)", async () => {
+    const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook(), "ooh-sites")]);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: "This looks like Activity Calendar, not OOH master sheet." });
   });
   it("ignores an unknown type override and falls back to detection", async () => {
     const store = await calStore();
@@ -114,14 +158,18 @@ describe("previewUploads", () => {
     const [p] = await previewUploads(await createTestStore(), [file("x.xlsx", makeXlsx([{ name: "S", rows: [["a"]] }]), "constructor" as UploadInput["chosenType"])]);
     expect(p).toMatchObject({ canPublish: false, type: null, blockReason: "This is not one of the usual Media Mind files." });
   });
-  it("keeps a workbook that is none of his files blocked even when the admin picks a type", async () => {
+  it("blocks a workbook that is none of his files on any card, saying what the card expects", async () => {
     // Calendar layout, but no month in the sheet name or A1 alone, so detection says none; the calendar reader could still read it.
     const book = makeXlsx([{ name: "26", rows: [["CB Media Activity Nov"], ["Business", "Brand", "Media"], [null, null, "TV", "Total"], ["T", "Savlon Soap", 1, 1], ["Grand Total", null, 1, 1]] }]);
     const store = await createTestStore();
+    const msg = notThisFileMessage(cardForType("calendar")!);
     const [p] = await previewUploads(store, [file("x.xlsx", book, "calendar")]);
     expect(p.detection?.status).toBe("none");
-    expect(p).toMatchObject({ canPublish: false, blockReason: "This is not one of the usual Media Mind files.", errors: [NOT_USUAL_FILE] });
-    await expect(publishUploads(store, [file("x.xlsx", book, "calendar")])).rejects.toThrow(/not one of the usual Media Mind files/);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: msg, errors: [msg] });
+    await expect(publishUploads(store, [file("x.xlsx", book, "calendar")])).rejects.toThrow(new ValidationError(`x.xlsx: ${msg}`));
+    // With no card (the API without type-<i>), the old message stays.
+    const [noCard] = await previewUploads(store, [file("x.xlsx", book)]);
+    expect(noCard).toMatchObject({ canPublish: false, blockReason: "This is not one of the usual Media Mind files.", errors: [NOT_USUAL_FILE] });
   });
   it("only warns about the file in use on publishable previews", async () => {
     const store = await calStore();
@@ -185,9 +233,10 @@ describe("publishUploads", () => {
   });
 });
 
-const digitalBook = (brand = "Mystery Brand") => makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
+/** A Digital file with one Meta row per brand (Mystery Brand when none is given). */
+const digitalBook = (...brands: string[]) => makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
   ["Brand", "Month", "Content Type", "Content Link", "Bid Type", "Reach", "Impressions", "Spent (USD)"], [],
-  ...(p === "Meta" ? [[brand, "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]] : []),
+  ...(p === "Meta" ? (brands.length ? brands : ["Mystery Brand"]).map((b) => [b, "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]) : []),
 ] })));
 
 describe("file business (Digital)", () => {
@@ -354,6 +403,74 @@ describe("file business (Digital)", () => {
         spy.mockRestore();
       }
       expect(await listHistory(store)).toEqual([]);
+    });
+  });
+  describe("a business picked for a file whose brands belong to another (spec 3.5: the card decides, a wrong card is blocked)", () => {
+    // No business has Digital data in these stores, so the card to use is the one Digital card.
+    const wrongCard = "This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.";
+    /** Salt and Hygiene on the list, Salt's brand Mystery Brand on it too, no Digital data. One store: every test here leaves it as it was. */
+    let shared: Promise<Store> | null = null;
+    const saltStore = () => (shared ??= (async () => {
+      const store = await storeWith("Salt", "Hygiene");
+      await createBrand(store, "salt", "Mystery Brand");
+      return store;
+    })());
+    it("blocks Salt's file on Hygiene's card, naming the card to use, and adds nothing", async () => {
+      const store = await saltStore();
+      const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
+      expect(p).toMatchObject({ type: "digital", canPublish: false, blockReason: wrongCard, errors: [wrongCard], datasetKey: null, pendingChanges: [] });
+    });
+    it("refuses to publish it too, and saves nothing", async () => {
+      const store = await saltStore();
+      await expect(publishUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })])).rejects.toThrow(new ValidationError(`d.xlsx: ${wrongCard}`));
+      expect(await listHistory(store)).toEqual([]);
+    });
+    it("blocks a brand-new business name picked for it the same way, and adds no business", async () => {
+      const store = await saltStore();
+      const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "new:Hygiene Two" })]);
+      const msg = "This file's brands belong to Salt, not Hygiene Two. Use the Digital performance card and pick Salt.";
+      expect(p).toMatchObject({ canPublish: false, blockReason: msg, errors: [msg], pendingChanges: [] });
+      await expect(publishUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "new:Hygiene Two" })])).rejects.toThrow(new ValidationError(`d.xlsx: ${msg}`));
+      expect((await getCatalog(store)).businesses.map((b) => b.slug).sort()).toEqual(["hygiene", "salt"]);
+    });
+    it("passes when the picked business is the brands' own", async () => {
+      const store = await saltStore();
+      for (const business of ["salt", "new:SALT"]) {
+        const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business })]);
+        expect(p, business).toMatchObject({ canPublish: true, business: { slug: "salt", name: "Salt" }, businessSource: "admin", datasetKey: "digital:salt" });
+      }
+    });
+    it("passes when the brands are on no list, or belong to a hidden business", async () => {
+      const store = await storeWith("Salt", "Hygiene");
+      const [none] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
+      expect(none).toMatchObject({ canPublish: true, datasetKey: "digital:hygiene" });
+      await createBrand(store, "salt", "Mystery Brand");
+      await setBusinessHidden(store, "salt", true);
+      const [hidden] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
+      expect(hidden).toMatchObject({ canPublish: true, datasetKey: "digital:hygiene" });
+    });
+    it("passes when the brands belong to several businesses, one of them the pick", async () => {
+      const store = await storeWith("Salt", "Hygiene");
+      await createBrand(store, "salt", "Mystery Brand");
+      await createBrand(store, "hygiene", "Freedom");
+      const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook("Mystery Brand", "Freedom")), { business: "hygiene" })]);
+      expect(p).toMatchObject({ canPublish: true, business: { slug: "hygiene", name: "Hygiene" }, datasetKey: "digital:hygiene" });
+    });
+    it("names the card the Upload Data page shows for the brands' business", async () => {
+      const store = await storeWith("Salt", "Hygiene", "Spices", "Rice");
+      await createBrand(store, "salt", "Mystery Brand");
+      const saltOnHygiene = () => previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]).then(([p]) => p.blockReason);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.");
+      // A hidden business's Digital data gives it no card, so the page still shows the one Digital card.
+      await publishUploads(store, [decide(file("r.xlsx", digitalBook("Rice Brand")), { business: "rice" })]);
+      await setBusinessHidden(store, "rice", true);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.");
+      // Another business has its own card; Salt does not yet.
+      await publishUploads(store, [decide(file("s.xlsx", digitalBook("Spices Brand")), { business: "spices" })]);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital · another business card and pick Salt.");
+      // Salt has its own card.
+      await publishUploads(store, [decide(file("salt.xlsx", digitalBook()), { business: "salt" })]);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital · Salt card.");
     });
   });
   it("leaves the business fields empty for a file that has a business column", async () => {
@@ -745,5 +862,30 @@ describe.skipIf(!hasClientFiles)("the real new-type files in the service", () =>
     expect(res.published.map((p) => p.datasetKey.split(":")[0]).sort()).toEqual(["billboard", "billing", "channel", "digital", "fy", "ooh-sites"]);
     const history = await listHistory(store);
     for (const p of res.published) expect(history.map((h) => h.label), p.datasetKey).toContain(p.label);
+  });
+});
+
+describe.skipIf(!hasClientFiles)("his real files on the wrong card", () => {
+  // [file, the type detection is sure of, a card of another type]
+  const CASES: [string, FileType, FileType][] = [
+    ["atl/1._2026_Dash_Board_-_Savlon_Soap_-_Oct26.xlsx", "atl", "digital"],
+    ["Hygiene_Business.xlsx", "digital", "atl"],
+    ["CB_media_Spent_Report_2026-27_V4_-_Oct_26_Updated_27.10.26.xlsx", "fy", "channel"],
+    ["Channel_Cost_26-27_Nov26_Updated_V5_11.11.26.xlsx", "channel", "billing"],
+    ["Dashboard_Media_Final_Fixed_26th_October_2026.xlsx", "billing", "calendar"],
+    ["All_Activity_Calender_FY_26-27.xlsx", "calendar", "billboard"],
+    ["Billboard_Billing_Status_Updated_10th_Nov26.xlsx", "billboard", "fy"],
+    ["ACI_CB_Media_Billboard_Master_Sheet_02_Nov_Updated_2026.xlsx", "ooh-sites", "billboard"],
+  ];
+  it.each(CASES)("%s (%s) on the %s card is blocked, naming the card to use", async (rel, detected, cardType) => {
+    const [p] = await previewUploads(await createTestStore(), [file("f.xlsx", clientFile(rel), cardType)]);
+    expect(p.detection).toEqual({ status: "sure", type: detected });
+    const msg = wrongCardMessage(cardForType(cardType)!, detected);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: msg, errors: [msg] });
+  });
+  it.each(CASES.filter(([, detected]) => detected !== "ooh-sites"))("%s is read on its own (%s) card", async (rel, detected) => {
+    const [p] = await previewUploads(await createTestStore(), [file("f.xlsx", clientFile(rel), detected)]);
+    expect(p.type).toBe(detected);
+    expect(p.errors).toEqual([]);
   });
 });

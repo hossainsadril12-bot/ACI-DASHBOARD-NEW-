@@ -4,15 +4,14 @@ import type { Decisions, FilePreview } from "@/server/ingest";
 
 // Pure helpers for the Data Entry page. Safe for the browser: types only from the server.
 
-export type RowStatus = "ready" | "needs-type" | "needs-business" | "new-business" | "new-category" | "blocked";
-export const NEEDS_TYPE = "Pick the file type.";
+export type RowStatus = "ready" | "needs-business" | "new-business" | "new-category" | "blocked";
 
 export function rowStatus(p: FilePreview): RowStatus {
   if (p.canPublish) return "ready";
   if (p.needsBusiness) return "needs-business";
   if (p.newCategory) return "new-category";
   if (p.newBusinesses.length > 0) return "new-business";
-  return p.blockReason === NEEDS_TYPE ? "needs-type" : "blocked";
+  return "blocked";
 }
 
 // ---- List decisions -------------------------------------------------------------------------------------------
@@ -235,13 +234,34 @@ export function greyReason(p: FilePreview): string | null {
   return p.blockReason && !p.errors.includes(p.blockReason) ? p.blockReason : null;
 }
 
+/**
+ * The files of a pick or a drop, copied out before reset clears the file input. Chromium's input.files is a live
+ * FileList: clearing the input first would empty it, and Upload Excel would open nothing.
+ */
+export function takeThenReset<F>(list: ArrayLike<F> | null, reset: () => void): F[] {
+  const chosen = Array.from(list ?? []);
+  reset();
+  return chosen;
+}
+
+/** The files a card takes from a pick or a drop (only the ATL card takes several), and what to say about the ones left out. */
+export function takeFiles<F extends { name: string; size: number }>(chosen: F[], multiple: boolean): { taken: F[]; leftOut: string[] } {
+  const empty = chosen.filter((f) => f.size === 0).map((f) => f.name);
+  const usable = chosen.filter((f) => f.size > 0); // the server refuses empty files
+  const taken = multiple ? usable : usable.slice(0, 1);
+  const extra = usable.slice(taken.length).map((f) => f.name);
+  const leftOut: string[] = [];
+  if (extra.length) leftOut.push(`${extra.join(", ")} left out: this card takes one file.`);
+  if (empty.length) leftOut.push(`${empty.join(", ")} ${empty.length === 1 ? "is" : "are"} empty and left out.`);
+  return { taken, leftOut };
+}
+
 /** Publish only when every chosen file has a preview and every one is ready. */
 export function canPublishAll(previews: FilePreview[] | null, fileCount: number): boolean {
   return previews !== null && fileCount > 0 && previews.length === fileCount && previews.every((p) => p.canPublish);
 }
 
 const files = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
-export const publishButtonLabel = (n: number) => `Publish ${files(n)}`;
 export const publishedMessage = (published: { label: string }[]) =>
   `Published ${files(published.length)}: ${published.map((p) => p.label).join("; ")}`;
 

@@ -31,6 +31,9 @@ export type HistoryRow = {
   isActive: boolean;
 };
 
+/** The version a dataset shows now, for the Upload Data cards' "Now showing" line. */
+export type ActiveVersion = { datasetKey: string; kind: string; label: string; fileName: string | null; createdAt: Date; source: DatasetSource };
+
 function checkInput(input: PublishInput): PublishInput {
   const datasetKey = input.datasetKey.trim();
   if (!datasetKey || datasetKey.length > 120) throw new ValidationError("Dataset key must be 1 to 120 characters.");
@@ -96,6 +99,23 @@ export async function getActiveData<T>(store: Store, datasetKey: string): Promis
     .where(eq(dataset.key, datasetKey))
     .limit(1);
   return row ? { ...row, data: row.data as T } : null;
+}
+
+/** Every dataset's active version, by dataset key. Leaves out the data itself. */
+export async function listActiveVersions(store: Store): Promise<ActiveVersion[]> {
+  return store
+    .select({
+      datasetKey: dataset.key,
+      kind: datasetVersion.kind,
+      label: datasetVersion.label,
+      fileName: uploadFile.name,
+      createdAt: datasetVersion.createdAt,
+      source: datasetVersion.source,
+    })
+    .from(dataset)
+    .innerJoin(datasetVersion, eq(dataset.activeVersionId, datasetVersion.id))
+    .leftJoin(uploadFile, eq(datasetVersion.fileId, uploadFile.id))
+    .orderBy(dataset.key);
 }
 
 /** Upload History, newest first. Leaves out the data itself. */

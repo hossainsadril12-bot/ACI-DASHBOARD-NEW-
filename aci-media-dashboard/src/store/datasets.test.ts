@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { dataset, uploadFile, datasetVersion } from "./schema";
 import { createTestStore } from "./test-store";
 import { getFile } from "./files";
-import { getActiveData, getActiveFileHashes, listHistory, publishVersion, publishVersions, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
+import { getActiveData, getActiveFileHashes, listActiveVersions, listHistory, publishVersion, publishVersions, restoreVersion, type DatasetSource, type PublishInput } from "./datasets";
 
 const input = (over: Partial<PublishInput> = {}): PublishInput => ({
   datasetKey: "billing",
@@ -57,6 +57,26 @@ describe("datasets", () => {
 
   it("refuses to restore a version that does not exist", async () => {
     await expect(restoreVersion(await createTestStore(), 42)).rejects.toThrow(/no longer exists/);
+  });
+
+  it("lists nothing in use before anything is published", async () => {
+    expect(await listActiveVersions(await createTestStore())).toEqual([]);
+  });
+
+  it("lists the version each dataset shows now, with its file name and source", async () => {
+    const store = await createTestStore();
+    const old = await publishVersion(store, input({ label: "Billing A", file: { name: "billing-a.xlsx", bytes: Buffer.from("PK bytes a") } }));
+    await publishVersion(store, input({ label: "Billing B", file: { name: "billing-b.xlsx", bytes: Buffer.from("PK bytes b") } }));
+    await publishVersion(store, input({ datasetKey: "calendar", kind: "calendar", label: "Calendar, typed", source: "manual" }));
+    expect(await listActiveVersions(store)).toEqual([
+      { datasetKey: "billing", kind: "billing", label: "Billing B", fileName: "billing-b.xlsx", createdAt: expect.any(Date), source: "upload" },
+      { datasetKey: "calendar", kind: "calendar", label: "Calendar, typed", fileName: null, createdAt: expect.any(Date), source: "manual" },
+    ]);
+    await restoreVersion(store, old.versionId);
+    expect((await listActiveVersions(store)).map((v) => [v.datasetKey, v.label, v.fileName])).toEqual([
+      ["billing", "Billing A", "billing-a.xlsx"],
+      ["calendar", "Calendar, typed", null],
+    ]);
   });
 
   it("writes nothing when the file is refused", async () => {
