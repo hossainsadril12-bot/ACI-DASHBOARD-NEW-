@@ -21,7 +21,7 @@ const CHIP: Record<RowStatus, { label: string; className: string }> = {
 /** A file while the server reads it. */
 export function SkeletonBlock({ name }: { name: string }) {
   return (
-    <li className="min-w-0 space-y-2 px-4 py-6">
+    <li className="min-w-0 space-y-2 px-4 py-9">
       <div className="flex items-center gap-3">
         <FileSpreadsheet className="size-4 shrink-0 text-gray-300" aria-hidden />
         <p className="min-w-0 flex-1 truncate text-sm text-gray-500">Reading {name}…</p>
@@ -61,8 +61,8 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
     : (pickBusinesses ?? businesses);
   const categoryAdded = cardType === "atl" && draft.atl && p && !p.newCategory;
   return (
-    // 24px above and below a file block, and 56px between its sections: name, What was read, Please check, the questions.
-    <li data-testid="preview-row" className="min-w-0 space-y-14 px-4 py-6">
+    // 36px above and below a file block, and 56px between its sections: name, What was read, Please check, the questions.
+    <li data-testid="preview-row" className="min-w-0 space-y-14 px-4 py-9">
       <div className="flex items-center gap-3">
         <FileSpreadsheet className="size-4 shrink-0 text-gray-400" aria-hidden />
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900" title={name}>{name}</p>
