@@ -125,7 +125,7 @@ export function DataCard({ state, businesses, pickBusinesses }: {
     }
     toast.success(publishedMessage(res.published ?? []));
     clear();
-    router.refresh(); // the cards' Now showing lines
+    router.refresh(); // the cards' In use lines
   }
 
   const blocksReady = previews !== null && previews.length === files.length;

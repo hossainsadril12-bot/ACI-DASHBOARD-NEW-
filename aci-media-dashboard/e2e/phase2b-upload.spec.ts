@@ -80,7 +80,7 @@ test("1. Digital from brands: once its brands are added, Hygiene gets its own ca
 
   // Hygiene now has its own card; the open card is for another business.
   await expect(card(page, "digital:hygiene")).toContainText("Digital · Hygiene");
-  await expect(card(page, "digital:hygiene")).toContainText("Now showing: digital.xlsx · ");
+  await expect(card(page, "digital:hygiene")).toContainText("In use: digital.xlsx · ");
   await expect(card(page, "digital")).toContainText("Digital · another business");
 
   // Second upload on the card for another business: the business now comes from the brands.
@@ -135,10 +135,10 @@ test("4. Digital for a new business: added in the dialog, then it has its own ca
   await expect(page.getByText(/^Published 1 file: Digital, E2E Digital Co/)).toBeVisible();
   const own = card(page, "digital:e2e-digital-co");
   await expect(own).toContainText(`Digital · ${NAME}`);
-  await expect(own).toContainText("Now showing: digital-new.xlsx · ");
+  await expect(own).toContainText("In use: digital-new.xlsx · ");
 });
 
-test("5. each new type on its own card: Ready with its label, published, Now showing, then In use", async ({ page }) => {
+test("5. each new type on its own card: Ready with its label, published, In use, then In use", async ({ page }) => {
   test.skip(!hasClientFiles, "client files not present");
   for (const [id, f, label] of NEW_TYPES) {
     const dialog = await uploadToCard(page, id, [fileOf(f)]);
@@ -147,7 +147,7 @@ test("5. each new type on its own card: Ready with its label, published, Now sho
     await expect(dialog.getByText(label), f).toBeVisible();
     await publishBtn(page).click();
     await expect(page.getByText(`Published 1 file: ${label}`)).toBeVisible();
-    await expect(card(page, id), f).toContainText(`Now showing: ${f} · `);
+    await expect(card(page, id), f).toContainText(`In use: ${f} · `);
   }
   const history = await historyRows(page);
   for (const [, , label] of NEW_TYPES) {
@@ -178,7 +178,7 @@ test("7. a Salt Digital file dropped on Hygiene's card is blocked, naming the Di
   await addAllBrands(page, row);
   await publishBtn(page).click();
   await expect(page.getByText(/^Published 1 file: Digital, Salt/)).toBeVisible();
-  await expect(card(page, "digital:salt")).toContainText("Now showing: salt-digital.xlsx · ");
+  await expect(card(page, "digital:salt")).toContainText("In use: salt-digital.xlsx · ");
 
   // The same file dropped on Hygiene's own card: its brands belong to Salt, so it is blocked before anything is added.
   const wrong = await dropOnCard(page, "digital:hygiene", [fileOf(SALT, "salt-digital.xlsx")]);

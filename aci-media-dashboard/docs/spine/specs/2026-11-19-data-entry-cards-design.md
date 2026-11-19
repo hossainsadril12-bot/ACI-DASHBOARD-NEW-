@@ -42,11 +42,10 @@ A grid of cards: two columns on a laptop, one on a phone. In this order:
 | Monthly activity calendar | The All Activity Calendar file, one sheet per month. | Monthly Activity Calendar |
 | OOH / billboard bill status | The Billboard Billing Status file. | OOH Media Bill Details |
 
-Each card shows:
+Each card shows (shortened on 19 Nov 2026 after Sadril found the first text too long; modelled on the import cards in HubSpot and Wix):
 - the title in bold;
-- the file it expects, in grey;
-- "Updates: <pages>";
-- "Now showing: <file name> · <date and time>", or "Now showing: nothing uploaded yet". The ATL card says "Now showing: N categories · last upload <file name> · <date and time>";
+- one short grey line: the file in a few words, then "Updates <pages>.", for example "2026 Dash Board file, one per TV category. Updates ATL and Home.";
+- "In use: <file name> · <date and time>", or "In use: nothing yet". The ATL card says "In use: N categories · <last file name> · <date and time>". "In use" is the word Upload History uses;
 - the **Upload Excel** button (admin only). A file can also be dropped onto the card.
 
 A viewer sees the same cards without buttons, and one note above them: "Only the admin can upload. Sign in to upload." with a Sign in link.

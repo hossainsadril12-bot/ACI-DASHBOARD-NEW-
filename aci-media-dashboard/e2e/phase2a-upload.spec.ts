@@ -94,7 +94,7 @@ test("6. Cancel changes nothing in Upload History", async ({ page }) => {
   expect(await (await historyRows(page)).count()).toBe(rowsBefore);
 });
 
-test("7. publish two ATL files on the ATL card: toast, Now showing, two In use rows", async ({ page }) => {
+test("7. publish two ATL files on the ATL card: toast, In use, two In use rows", async ({ page }) => {
   test.skip(!hasClientFiles, "client files not present");
   const dialog = await uploadToCard(page, "atl", [fileOf(SAVLON), fileOf(SEPTEX)]);
   for (const f of [SAVLON, SEPTEX]) await addCategoryIfAsked(dialog.getByTestId("preview-row").filter({ hasText: fileOf(f).name }));
@@ -102,7 +102,7 @@ test("7. publish two ATL files on the ATL card: toast, Now showing, two In use r
   await publishBtn(page).click();
   await expect(page.getByText(/^Published 2 files/)).toBeVisible();
   await expect(checkDialog(page)).toHaveCount(0);
-  await expect(card(page, "atl")).toContainText(/Now showing: \d+ categories · last upload \d+\._2026_Dash_Board_-_\w+_-_Oct26\.xlsx · /);
+  await expect(card(page, "atl")).toContainText(/In use: \d+ categories · \d+\._2026_Dash_Board_-_\w+_-_Oct26\.xlsx · /);
   const rows = await historyRows(page);
   await expect(rows.filter({ hasText: SAVLON_LABEL }).filter({ hasText: "In use" })).toHaveCount(1);
   await expect(rows.filter({ hasText: "Septex" }).filter({ hasText: "In use" })).toHaveCount(1);
@@ -184,7 +184,7 @@ test.describe("10. viewer", () => {
     await expect(cards.first()).toBeVisible();
     expect(await cards.count()).toBeGreaterThanOrEqual(UPLOAD_CARDS.length);
     await expect(card(page, "atl")).toContainText("ATL (TV) performance");
-    await expect(card(page, "calendar")).toContainText(/Now showing: .+\.xlsx · /); // the seeded calendar
+    await expect(card(page, "calendar")).toContainText(/In use: .+\.xlsx · /); // the seeded calendar
     await expect(page.getByRole("button", { name: /Upload Excel/ })).toHaveCount(0);
     await expect(page.locator("input[type=file]")).toHaveCount(0);
   });

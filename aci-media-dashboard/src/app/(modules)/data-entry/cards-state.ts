@@ -6,7 +6,7 @@ import { emptyDraft, whenDhaka, type BusinessOption, type RowDraft } from "./log
 
 export type CardState = { id: string; card: UploadCard; title: string; business: { slug: string; name: string } | null; nowShowing: string };
 
-export const NOTHING_YET = "nothing uploaded yet";
+export const NOTHING_YET = "nothing yet";
 
 /** "<file> · <date and time>", or "Manual edit · <date and time>" for a typed version. */
 function shown(v: ActiveVersion): string {
@@ -14,12 +14,12 @@ function shown(v: ActiveVersion): string {
   return v.source === "manual" ? `Manual edit · ${when}` : `${v.fileName ?? v.label} · ${when}`;
 }
 
-/** "N categories · last upload <file> · <date and time>" from the active ATL versions. */
+/** "N categories · <last file> · <date and time>" from the active ATL versions. */
 function atlLine(list: ActiveVersion[]): string {
   if (list.length === 0) return NOTHING_YET;
   const last = list.reduce((a, v) => (v.createdAt > a.createdAt ? v : a));
   const n = `${list.length} ${list.length === 1 ? "category" : "categories"}`;
-  return last.source === "manual" ? `${n} · ${shown(last)}` : `${n} · last upload ${shown(last)}`;
+  return `${n} · ${shown(last)}`;
 }
 
 /**

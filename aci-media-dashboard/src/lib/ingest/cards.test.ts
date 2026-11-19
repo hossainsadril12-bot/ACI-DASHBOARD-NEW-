@@ -20,21 +20,23 @@ describe("UPLOAD_CARDS", () => {
     expect(UPLOAD_CARDS.filter((c) => c.multiple).map((c) => c.key)).toEqual(["atl"]);
   });
   it("says which file each card expects and which pages it updates", () => {
-    expect(card("atl").fileText).toBe('A "2026 Dash Board" file, one per TV category. The category is read from its "Brand Name:" line. You can choose several files at once.');
-    expect(card("digital").fileText).toBe("The business's digital data file, with sheets Meta, YouTube and TikTok.");
-    expect(card("fy").fileText).toBe('The CB Media Spent Report (its "Final Report" sheet).');
-    expect(card("channel").fileText).toBe("The Channel Cost file, with sheets Electronic, Digital and Press & Radio.");
-    expect(card("billing").fileText).toBe('Dashboard Media Final, sheet "Master".');
-    expect(card("calendar").fileText).toBe("The All Activity Calendar file, one sheet per month.");
-    expect(card("billboard").fileText).toBe("The Billboard Billing Status file.");
+    expect(UPLOAD_CARDS.map((c) => c.fileText)).toEqual([
+      "2026 Dash Board file, one per TV category.",
+      "Meta, YouTube and TikTok file.",
+      "CB Media Spent Report.",
+      "Channel Cost file.",
+      "Dashboard Media Final file.",
+      "All Activity Calendar file.",
+      "Billboard Billing Status file.",
+    ]);
     expect(UPLOAD_CARDS.map((c) => c.updates)).toEqual([
-      "ATL Media Performance, Home",
-      "Digital Media Performance, Influencer, Activity Calendar, Home",
-      "Home, FY Media Spend, Activity Calendar, OOH",
-      "Channel Wise Spend",
-      "Billing Overview, Vendor Statement, Billing Data Sheet",
-      "Monthly Activity Calendar",
-      "OOH Media Bill Details",
+      "ATL and Home",
+      "Digital, Influencer, Calendar and Home",
+      "Home, FY Spend, Calendar and OOH",
+      "Channel Spend",
+      "Billing and Vendor Statement",
+      "Activity Calendar",
+      "OOH Bills",
     ]);
   });
 });
@@ -62,8 +64,8 @@ describe("safety messages", () => {
     expect(wrongCardMessage(card("billboard"), "ooh-sites")).toBe(OOH_MASTER_MESSAGE);
   });
   it("says what the card expects for a file that is none of his", () => {
-    expect(notThisFileMessage(card("calendar"))).toBe("This is not an Activity Calendar file. Expected: The All Activity Calendar file, one sheet per month.");
-    expect(notThisFileMessage(card("fy"))).toBe('This is not an FY spend file. Expected: The CB Media Spent Report (its "Final Report" sheet).');
+    expect(notThisFileMessage(card("calendar"))).toBe("This is not an Activity Calendar file. Expected: All Activity Calendar file.");
+    expect(notThisFileMessage(card("fy"))).toBe("This is not an FY spend file. Expected: CB Media Spent Report.");
   });
 });
 
