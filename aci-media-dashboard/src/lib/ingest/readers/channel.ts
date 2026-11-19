@@ -13,6 +13,16 @@ const f2 = (n: number): string => n.toLocaleString("en-US", { minimumFractionDig
 const MON_LABEL = /^([a-z]{3})[a-z]*\s*['’]?\s*(\d{2,4})$/i;
 const MON_NUM: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 
+/** "Electronic x Mn · Digital y Mn · Press & Radio z Mn": the upload's summary line. Manual Entry uses it too. */
+export function channelSummary(data: ChannelData): string {
+  const T = (k: keyof ChannelData) => data[k].rows.reduce((t, r) => t + r.m.reduce((a, b) => a + b, 0), 0);
+  return `Electronic ${f2(T("elec") / 1e6)} Mn · Digital ${f2(T("dig") / 1e6)} Mn · Press & Radio ${f2(T("press") / 1e6)} Mn`;
+}
+
+/** "Channel Cost, Jul'26 to Nov'26" for sorted "YYYY-MM" months; "Channel Cost" for none. */
+export const channelLabel = (months: string[]): string =>
+  months.length ? `Channel Cost, ${monthLabel(months[0])} to ${monthLabel(months[months.length - 1])}` : "Channel Cost";
+
 export function readChannel(wb: Workbook): ReadResult<ChannelData> {
   const out = {} as ChannelData;
   const warn: string[] = [];
@@ -42,7 +52,6 @@ export function readChannel(wb: Workbook): ReadResult<ChannelData> {
     }
   }
   if (!out.elec.rows.length && !out.dig.rows.length && !out.press.rows.length) throw new ReadError("None of the Electronic, Digital or Press & Radio sheets had rows.");
-  const T = (k: keyof ChannelData) => out[k].rows.reduce((t, r) => t + r.m.reduce((a, b) => a + b, 0), 0);
 
   // Months: parse the header labels (columns 3-14), keep those with any non-zero value in any sheet.
   const allRows = [...out.elec.rows, ...out.dig.rows, ...out.press.rows];
@@ -59,8 +68,8 @@ export function readChannel(wb: Workbook): ReadResult<ChannelData> {
   return {
     type: "channel",
     datasetKey: "channel",
-    label: months.length ? `Channel Cost, ${monthLabel(months[0])} to ${monthLabel(months[months.length - 1])}` : "Channel Cost",
-    summary: `Electronic ${f2(T("elec") / 1e6)} Mn · Digital ${f2(T("dig") / 1e6)} Mn · Press & Radio ${f2(T("press") / 1e6)} Mn`,
+    label: channelLabel(months),
+    summary: channelSummary(out),
     months,
     rowCount,
     data: out,
