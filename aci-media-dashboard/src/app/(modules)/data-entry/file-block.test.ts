@@ -84,6 +84,8 @@ describe("FileBlock", () => {
     expect(html).toContain(">New<");
     expect(html).toContain("bg-emerald-50");
     expect(html).toContain("bg-orange-50");
+    expect(html).toContain(">Add as new</button>"); // one new name: the button names it singly
+    expect(html).not.toContain("Add all as new");
   });
   it("adds a green line for the brands on the list next to the orange one", () => {
     const html = render({ preview: preview({

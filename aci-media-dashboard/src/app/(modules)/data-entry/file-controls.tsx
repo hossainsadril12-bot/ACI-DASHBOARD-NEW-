@@ -80,9 +80,11 @@ export function NewBusinesses({ preview: p, draft, businesses, disabled, onDraft
           <p className="text-sm font-medium break-words text-gray-900">Businesses in this file</p>
           <p className="text-xs text-gray-500">{businessCountLine(rows)}</p>
         </div>
-        {p.newBusinesses.length >= 2 && (
+        {p.newBusinesses.length > 0 && (
           <Button variant="outline" size="sm" disabled={disabled}
-            onClick={() => onDraft({ ...draft, businesses: addAllAsNew(p, draft.businesses) })}>Add all as new</Button>
+            onClick={() => onDraft({ ...draft, businesses: addAllAsNew(p, draft.businesses) })}>
+            {p.newBusinesses.length === 1 ? "Add as new" : "Add all as new"}
+          </Button>
         )}
       </div>
       <ul className="space-y-2">
