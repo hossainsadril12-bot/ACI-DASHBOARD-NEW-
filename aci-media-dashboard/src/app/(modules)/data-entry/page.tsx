@@ -11,7 +11,7 @@ import { getCatalog } from "@/store/catalog";
 import { listActiveVersions, listHistory } from "@/store/datasets";
 import { getStore } from "@/store/client";
 import { CardFace } from "./card-face";
-import { cardStates } from "./cards-state";
+import { anotherBusinessOptions, cardStates } from "./cards-state";
 import { DataCard } from "./data-card";
 import { HistoryTable } from "./history-table";
 
@@ -59,6 +59,8 @@ async function DataEntryContent({ searchParams }: { searchParams: Search }) {
   const cards = cardStates(await listActiveVersions(store), catalog.businesses);
   // The visible businesses for the pickers; the server checks every pick again.
   const businesses = catalog.businesses.filter((b) => !b.hidden).map(({ slug, name }) => ({ slug, name }));
+  // The Digital card for another business never offers a business with its own card.
+  const pickBusinesses = anotherBusinessOptions(cards, businesses);
   return (
     <div className="space-y-4">
       {!admin && (
@@ -69,7 +71,7 @@ async function DataEntryContent({ searchParams }: { searchParams: Search }) {
         </p>
       )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {cards.map((c) => (admin ? <DataCard key={c.id} state={c} businesses={businesses} /> : <CardFace key={c.id} state={c} />))}
+        {cards.map((c) => (admin ? <DataCard key={c.id} state={c} businesses={businesses} pickBusinesses={pickBusinesses} /> : <CardFace key={c.id} state={c} />))}
       </div>
     </div>
   );

@@ -131,23 +131,50 @@ class FileChanges {
     return this.added.get(value) ?? null;
   }
 
+  /** What `resolve` would give, adding nothing: slug null for a business it would add. */
+  peek(value: string | null | undefined): { slug: string | null; name: string } | null {
+    if (!value) return null;
+    if (value.startsWith("new:")) {
+      const name = tidy(value.slice(4));
+      if (!name) return null;
+      const existing = this.catalog.businessOf(name);
+      if (existing) return existing.hidden ? null : { slug: existing.slug, name: existing.name };
+      return { slug: null, name };
+    }
+    const b = this.catalog.businesses.find((x) => x.slug === value && !x.hidden) ?? this.added.get(value);
+    return b ? { slug: b.slug, name: b.name } : null;
+  }
+
   /** The slug Publish will give a new ATL category. */
   atlSlug(title: string): string {
     return predict(this.plan.atl, this.catalog.atl.map((a) => a.slug), title, "atl");
   }
 }
 
-/** Digital: the admin's valid pick, else the one business all known brands belong to, else exactly one business named in the file name. */
-function digitalBusiness(fc: FileChanges, decisions: Decisions | null, brands: string[], fileName: string): { biz: Biz; source: BusinessSource } | null {
+/** The one visible business all the file's brands on the list belong to; null for none, several or a hidden one. */
+function brandsBusiness(catalog: Catalog, brands: string[]): Biz | null {
+  const owners = new Set(brands.map((b) => catalog.brandOf(b)?.businessSlug).filter((s): s is string => !!s));
+  if (owners.size !== 1) return null;
+  const slug = [...owners][0];
+  const b = catalog.businesses.find((x) => x.slug === slug && !x.hidden);
+  return b ? { slug: b.slug, name: b.name, isNew: false } : null;
+}
+
+/**
+ * Digital: the admin's valid pick, else the one business all known brands belong to, else exactly one business named
+ * in the file name. A pick (the card's own business, or the one chosen) that the file's brands say is another
+ * business on the list is the wrong card (spec 3.5): `wrong` names the card to use, and nothing is added.
+ */
+function digitalBusiness(fc: FileChanges, decisions: Decisions | null, brands: string[], fileName: string): { biz: Biz; source: BusinessSource } | { wrong: string } | null {
+  const { catalog } = fc;
+  const owner = brandsBusiness(catalog, brands);
+  const pick = fc.peek(decisions?.business);
+  if (pick && owner && pick.slug !== owner.slug) {
+    return { wrong: `This file's brands belong to ${owner.name}, not ${pick.name}. Use the Digital · ${owner.name} card.` };
+  }
   const picked = fc.resolve(decisions?.business);
   if (picked) return { biz: picked, source: "admin" };
-  const { catalog } = fc;
-  const visible = (slug: string) => catalog.businesses.find((b) => b.slug === slug && !b.hidden);
-  const owners = new Set(brands.map((b) => catalog.brandOf(b)?.businessSlug).filter((s): s is string => !!s));
-  if (owners.size === 1) {
-    const b = visible([...owners][0]);
-    if (b) return { biz: { slug: b.slug, name: b.name, isNew: false }, source: "brands" };
-  }
+  if (owner) return { biz: owner, source: "brands" };
   const inName = ` ${words(fileName)} `;
   const hits = catalog.businesses.filter((b) => !b.hidden && b.names.some((n) => { const w = words(n); return !!w && inName.includes(` ${w} `); }));
   if (hits.length === 1) return { biz: { slug: hits[0].slug, name: hits[0].name, isNew: false }, source: "file name" };
@@ -251,6 +278,7 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   try {
     if (type === "digital") {
       const found = digitalBusiness(fc, decisions, digitalBrands(wb), preview.fileName);
+      if (found && "wrong" in found) return block(found.wrong);
       ctx.business = found ? { slug: found.biz.slug, name: found.biz.name } : null; // never a business that isn't on the list or decided
       if (found) {
         preview.business = { slug: found.biz.isNew ? null : found.biz.slug, name: found.biz.name };

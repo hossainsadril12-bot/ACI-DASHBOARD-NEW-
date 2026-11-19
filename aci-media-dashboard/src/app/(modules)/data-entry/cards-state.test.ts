@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveVersion } from "@/store/datasets";
-import { cardStates, startDraft } from "./cards-state";
+import { anotherBusinessOptions, cardStates, startDraft } from "./cards-state";
 import { emptyDraft, toDecisions } from "./logic";
 
 const v = (datasetKey: string, fileName: string | null, iso: string, source: ActiveVersion["source"] = "upload"): ActiveVersion => ({
@@ -73,5 +73,17 @@ describe("startDraft", () => {
     expect(toDecisions(startDraft(hygiene), BIZ)).toEqual({ business: "hygiene", businesses: [], brands: [] });
     expect(startDraft(other)).toEqual(emptyDraft());
     expect(startDraft(atl)).toEqual(emptyDraft());
+  });
+});
+
+describe("anotherBusinessOptions", () => {
+  it("leaves out the businesses that have their own Digital card, so a pick there never replaces their data", () => {
+    const visible = [{ slug: "salt", name: "Salt" }, { slug: "hygiene", name: "Hygiene" }, { slug: "spices", name: "Spices" }];
+    const states = cardStates([v("digital:hygiene", "h.xlsx", "2026-11-17T04:30:00Z")], visible);
+    expect(anotherBusinessOptions(states, visible)).toEqual([{ slug: "salt", name: "Salt" }, { slug: "spices", name: "Spices" }]);
+  });
+  it("offers every business when none has its own card", () => {
+    const visible = [{ slug: "salt", name: "Salt" }];
+    expect(anotherBusinessOptions(cardStates([], visible), visible)).toEqual(visible);
   });
 });

@@ -23,6 +23,23 @@ describe("FileBlock", () => {
   it("asks for the business on the Digital card for another business", () => {
     expect(render()).toContain('aria-label="Business for digital.xlsx"');
   });
+  it("offers only pickBusinesses for the file's business when given", () => {
+    const html = render({
+      businesses: [{ slug: "salt", name: "Salt" }, { slug: "hygiene", name: "Hygiene" }], pickBusinesses: [{ slug: "salt", name: "Salt" }],
+      preview: preview({ business: null, needsBusiness: true, canPublish: false }),
+    });
+    const select = html.slice(html.indexOf('aria-label="Business for digital.xlsx"'), html.indexOf("</select>"));
+    expect(select).toContain('value="salt"');
+    expect(select).not.toContain('value="hygiene"');
+  });
+  it("still shows the business the server took from the brands, even one left out of pickBusinesses", () => {
+    const html = render({
+      businesses: [{ slug: "salt", name: "Salt" }, { slug: "hygiene", name: "Hygiene" }], pickBusinesses: [{ slug: "hygiene", name: "Hygiene" }],
+      preview: preview({ businessSource: "brands" }),
+    });
+    const select = html.slice(html.indexOf('aria-label="Business for digital.xlsx"'), html.indexOf("</select>"));
+    expect(select).toContain('<option value="salt" selected="">Salt</option>');
+  });
   it("never asks for the business on a business's own Digital card", () => {
     expect(render({ fixedBusiness: true })).not.toContain("Business for digital.xlsx");
   });

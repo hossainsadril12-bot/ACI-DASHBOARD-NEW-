@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { READERS } from "@/lib/ingest/readers";
-import { createTestStore } from "@/store/test-store";
+import { createTestStore as openTestStore } from "@/store/test-store";
 import * as datasets from "@/store/datasets";
 import { getActiveData, listHistory } from "@/store/datasets";
 import { applyCatalogChanges, createBrand, createBusiness, getCatalog, setAtlHidden, setBusinessHidden, type CatalogChange } from "@/store/catalog";
@@ -13,6 +13,18 @@ import type { FileType } from "@/lib/ingest/file-types";
 import type { AtlCategory } from "@/lib/ingest/readers/atl";
 import type { Store } from "@/store/client";
 import { DecisionsSchema, previewUploads, publishUploads, type Decisions, type FilePreview, type UploadInput } from "./ingest";
+
+/**
+ * Every store this file opens, closed once its tests are done: libSQL clients left open for the worker's exit can
+ * crash it on Windows (0xC0000005) after every test has passed.
+ */
+const opened: Store[] = [];
+async function createTestStore(): Promise<Store> {
+  const store = await openTestStore();
+  opened.push(store);
+  return store;
+}
+afterAll(() => { for (const s of opened.splice(0)) s.$client.close(); });
 
 const u8 = (b: Buffer) => new Uint8Array(b);
 const calendarBook = (sheet = "Nov'26", grandTotal = true) => makeXlsx([{ name: sheet, rows: [
@@ -390,6 +402,50 @@ describe("file business (Digital)", () => {
         spy.mockRestore();
       }
       expect(await listHistory(store)).toEqual([]);
+    });
+  });
+  describe("a business picked for a file whose brands belong to another (spec 3.5: the card decides, a wrong card is blocked)", () => {
+    const wrongCard = "This file's brands belong to Salt, not Hygiene. Use the Digital · Salt card.";
+    /** Salt and Hygiene on the list, Salt's brand Mystery Brand on it too. One store: every test here leaves it as it was. */
+    let shared: Promise<Store> | null = null;
+    const saltStore = () => (shared ??= (async () => {
+      const store = await storeWith("Salt", "Hygiene");
+      await createBrand(store, "salt", "Mystery Brand");
+      return store;
+    })());
+    it("blocks Salt's file on Hygiene's card, naming the card to use, and adds nothing", async () => {
+      const store = await saltStore();
+      const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
+      expect(p).toMatchObject({ type: "digital", canPublish: false, blockReason: wrongCard, errors: [wrongCard], datasetKey: null, pendingChanges: [] });
+    });
+    it("refuses to publish it too, and saves nothing", async () => {
+      const store = await saltStore();
+      await expect(publishUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })])).rejects.toThrow(new ValidationError(`d.xlsx: ${wrongCard}`));
+      expect(await listHistory(store)).toEqual([]);
+    });
+    it("blocks a brand-new business name picked for it the same way, and adds no business", async () => {
+      const store = await saltStore();
+      const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "new:Hygiene Two" })]);
+      const msg = "This file's brands belong to Salt, not Hygiene Two. Use the Digital · Salt card.";
+      expect(p).toMatchObject({ canPublish: false, blockReason: msg, errors: [msg], pendingChanges: [] });
+      await expect(publishUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "new:Hygiene Two" })])).rejects.toThrow(new ValidationError(`d.xlsx: ${msg}`));
+      expect((await getCatalog(store)).businesses.map((b) => b.slug).sort()).toEqual(["hygiene", "salt"]);
+    });
+    it("passes when the picked business is the brands' own", async () => {
+      const store = await saltStore();
+      for (const business of ["salt", "new:SALT"]) {
+        const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business })]);
+        expect(p, business).toMatchObject({ canPublish: true, business: { slug: "salt", name: "Salt" }, businessSource: "admin", datasetKey: "digital:salt" });
+      }
+    });
+    it("passes when the brands are on no list, or belong to a hidden business", async () => {
+      const store = await storeWith("Salt", "Hygiene");
+      const [none] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
+      expect(none).toMatchObject({ canPublish: true, datasetKey: "digital:hygiene" });
+      await createBrand(store, "salt", "Mystery Brand");
+      await setBusinessHidden(store, "salt", true);
+      const [hidden] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
+      expect(hidden).toMatchObject({ canPublish: true, datasetKey: "digital:hygiene" });
     });
   });
   it("leaves the business fields empty for a file that has a business column", async () => {

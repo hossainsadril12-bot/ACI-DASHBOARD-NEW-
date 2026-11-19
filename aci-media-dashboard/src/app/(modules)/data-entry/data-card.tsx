@@ -11,13 +11,22 @@ import type { FilePreview } from "@/server/ingest";
 import { CardFace } from "./card-face";
 import { startDraft, type CardState } from "./cards-state";
 import { FileBlock, SkeletonBlock } from "./file-block";
-import { afterPreview, canPublishAll, postUploads, publishedMessage, toDecisions, uploadForm, type BusinessOption, type RowDraft } from "./logic";
+import { afterPreview, canPublishAll, postUploads, publishedMessage, takeFiles, toDecisions, uploadForm, type BusinessOption, type RowDraft } from "./logic";
+
+/** The files left out of a pick or a drop, and why. */
+function LeftOut({ notes }: { notes: string[] }) {
+  return <ul className="w-full space-y-0.5 text-sm text-amber-800">{notes.map((n) => <li key={n}>{n}</li>)}</ul>;
+}
 
 /**
  * One Upload Data card for the admin: Upload Excel or a drop opens "Check before publishing", which previews the
  * files as this card's type, asks the Part C questions, and publishes. The server checks every file again.
  */
-export function DataCard({ state, businesses }: { state: CardState; businesses: BusinessOption[] }) {
+export function DataCard({ state, businesses, pickBusinesses }: {
+  state: CardState; businesses: BusinessOption[];
+  /** The businesses offered for a file's own business (the Digital card for another business); default: businesses. */
+  pickBusinesses?: BusinessOption[];
+}) {
   const { card } = state;
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -74,11 +83,9 @@ export function DataCard({ state, businesses }: { state: CardState; businesses: 
   const typeDraft = (i: number, d: RowDraft) => setDrafts(drafts.map((x, j) => (j === i ? d : x))); // typing: sent on blur
 
   function add(list: FileList | null) {
-    const chosen = Array.from(list ?? []);
     if (inputRef.current) inputRef.current.value = "";
-    setLeftOut(chosen.filter((f) => f.size === 0).map((f) => f.name));
-    const usable = chosen.filter((f) => f.size > 0); // the server refuses empty files
-    const taken = card.multiple ? usable : usable.slice(0, 1); // only the ATL card takes several files
+    const { taken, leftOut: notes } = takeFiles(Array.from(list ?? []), card.multiple);
+    setLeftOut(notes); // shown in the dialog; on the card only when no file was taken (no dialog)
     if (taken.length === 0) return;
     setIds(taken.map(() => ++nextId.current));
     void check(taken, taken.map(() => startDraft(state)), false);
@@ -133,15 +140,14 @@ export function DataCard({ state, businesses }: { state: CardState; businesses: 
         <input ref={inputRef} type="file" accept=".xlsx" multiple={card.multiple} tabIndex={-1} className="sr-only"
           aria-label={`Choose Excel ${card.multiple ? "files" : "file"} for ${state.title}`}
           onChange={(e) => add(e.target.files)} />
-        {leftOut.length > 0 && (
-          <p className="w-full text-sm text-amber-800">{leftOut.join(", ")} {leftOut.length === 1 ? "is" : "are"} empty and left out.</p>
-        )}
+        {leftOut.length > 0 && files.length === 0 && <LeftOut notes={leftOut} />}
       </CardFace>
       <Dialog open={files.length > 0} onOpenChange={(open) => { if (!open && !publishing) clear(); }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" showCloseButton={!publishing}>
           <DialogHeader>
             <DialogTitle className="pr-8">Check before publishing · {state.title}</DialogTitle>
           </DialogHeader>
+          {leftOut.length > 0 && <LeftOut notes={leftOut} />}
           {checking && <span role="status" className="sr-only">Reading the files…</span>}
           <ul className={cn("divide-y divide-gray-200 rounded-xl border border-gray-200", checking && blocksReady && "opacity-60")} aria-busy={checking}>
             {files.map((f, i) => {
@@ -150,7 +156,7 @@ export function DataCard({ state, businesses }: { state: CardState; businesses: 
               if (checking && !p) return <SkeletonBlock key={key} name={f.name} />;
               return (
                 <FileBlock key={key} name={f.name} cardType={card.type} fixedBusiness={state.business !== null} preview={p}
-                  draft={drafts[i] ?? startDraft(state)} businesses={businesses} disabled={busy}
+                  draft={drafts[i] ?? startDraft(state)} businesses={businesses} pickBusinesses={pickBusinesses} disabled={busy}
                   onDraft={(d) => setDraft(i, d)}
                   onTyping={(d) => typeDraft(i, d)}
                   onCommit={() => apply(drafts)}

@@ -1,6 +1,6 @@
 import { UPLOAD_CARDS, type UploadCard } from "@/lib/ingest/cards";
 import type { ActiveVersion } from "@/store/datasets";
-import { emptyDraft, whenDhaka, type RowDraft } from "./logic";
+import { emptyDraft, whenDhaka, type BusinessOption, type RowDraft } from "./logic";
 
 // Pure: which cards Upload Data shows (spec 3.2, 3.3) and what each one shows now.
 
@@ -58,4 +58,13 @@ export function cardStates(active: ActiveVersion[], businesses: { slug: string; 
 /** A new file's draft on this card: a business's own Digital card sends that business, so it is never asked. */
 export function startDraft(state: CardState): RowDraft {
   return state.business ? { ...emptyDraft(), business: { value: state.business.slug, newName: "" } } : emptyDraft();
+}
+
+/**
+ * The businesses the Digital card for another business offers for a file: not one with its own Digital card, as a
+ * pick there would replace that business's data from the wrong card. The server still checks the file's brands.
+ */
+export function anotherBusinessOptions(states: CardState[], businesses: BusinessOption[]): BusinessOption[] {
+  const own = new Set(states.flatMap((s) => (s.business ? [s.business.slug] : [])));
+  return businesses.filter((b) => !own.has(b.slug));
 }

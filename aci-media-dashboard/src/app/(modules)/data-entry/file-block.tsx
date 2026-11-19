@@ -35,6 +35,8 @@ export function SkeletonBlock({ name }: { name: string }) {
 
 export type FileBlockProps = {
   name: string; cardType: FileType; fixedBusiness: boolean; preview: FilePreview | null; draft: RowDraft; businesses: BusinessOption[]; disabled: boolean;
+  /** The businesses offered for the file's own business (default: businesses); the other questions offer every business. */
+  pickBusinesses?: BusinessOption[];
   onDraft: (d: RowDraft) => void; onTyping: (d: RowDraft) => void; onCommit: () => void; onRemove: (() => void) | null;
 };
 
@@ -43,7 +45,7 @@ export type FileBlockProps = {
  * the Part C questions. The card decides the type, so there is no type select. The business is asked only on the
  * Digital card for another business.
  */
-export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, businesses, disabled, onDraft, onTyping, onCommit, onRemove }: FileBlockProps) {
+export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, businesses, pickBusinesses, disabled, onDraft, onTyping, onCommit, onRemove }: FileBlockProps) {
   const [lastCategory, setLastCategory] = useState<RowDraft["atl"]>(null); // the picks before Change, to start the block from
   const [reviewing, setReviewing] = useState(false); // the Review and add panel is open
   const brandLine = p ? brandWarning(p) : null;
@@ -54,6 +56,10 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
   const grey = p ? greyReason(p) : null;
   const askBusiness = cardType === "digital" && !fixedBusiness;
   const pick: BusinessPick = draft.business.value ? draft.business : { value: p?.business?.slug ?? "", newName: "" };
+  // The picker's list; a business the server took from the brands stays shown even when it is not offered.
+  const pickList = pickBusinesses && !pickBusinesses.some((b) => b.slug === pick.value)
+    ? [...pickBusinesses, ...businesses.filter((b) => b.slug === pick.value)]
+    : (pickBusinesses ?? businesses);
   const categoryAdded = cardType === "atl" && draft.atl && p && !p.newCategory;
   return (
     <li data-testid="preview-row" className="space-y-2 px-4 py-3">
@@ -66,7 +72,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
       {(askBusiness || p?.label) && (
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-4 md:pl-7">
           {askBusiness && (
-            <BusinessSelect label={`Business for ${name}`} newLabel={`New business name for ${name}`} pick={pick} businesses={businesses}
+            <BusinessSelect label={`Business for ${name}`} newLabel={`New business name for ${name}`} pick={pick} businesses={pickList}
               disabled={disabled}
               onPick={(b) => onDraft({ ...draft, business: b })}
               onTyping={(b) => onTyping({ ...draft, business: b })}

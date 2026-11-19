@@ -3,7 +3,7 @@ import { DecisionsSchema, type FilePreview } from "@/server/ingest";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import {
   MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads,
-  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, tickShown, toDecisions, uploadForm, whenDhaka,
+  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, takeFiles, tickShown, toDecisions, uploadForm, whenDhaka,
   type RowDraft,
 } from "./logic";
 
@@ -388,5 +388,26 @@ describe("menu", () => {
     const i = NAV_ITEMS.findIndex((n) => n.href === "/data-entry");
     expect(NAV_ITEMS[i]).toEqual({ href: "/data-entry", label: "Data Entry", group: "Data" });
     expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/uploads") - 1);
+  });
+});
+
+describe("takeFiles", () => {
+  const f = (name: string, size = 10) => ({ name, size });
+  it("takes one file on a single-file card and says which extra files are left out", () => {
+    expect(takeFiles([f("a.xlsx"), f("b.xlsx"), f("c.xlsx")], false)).toEqual({
+      taken: [f("a.xlsx")], leftOut: ["b.xlsx, c.xlsx left out: this card takes one file."],
+    });
+  });
+  it("takes every non-empty file on the ATL card", () => {
+    expect(takeFiles([f("a.xlsx"), f("b.xlsx")], true)).toEqual({ taken: [f("a.xlsx"), f("b.xlsx")], leftOut: [] });
+  });
+  it("leaves out empty files, saying so", () => {
+    expect(takeFiles([f("e.xlsx", 0), f("a.xlsx")], true)).toEqual({ taken: [f("a.xlsx")], leftOut: ["e.xlsx is empty and left out."] });
+    expect(takeFiles([f("e.xlsx", 0), f("z.xlsx", 0)], false)).toEqual({ taken: [], leftOut: ["e.xlsx, z.xlsx are empty and left out."] });
+  });
+  it("gives both messages when there are extra and empty files", () => {
+    expect(takeFiles([f("e.xlsx", 0), f("a.xlsx"), f("b.xlsx")], false).leftOut).toEqual([
+      "b.xlsx left out: this card takes one file.", "e.xlsx is empty and left out.",
+    ]);
   });
 });
