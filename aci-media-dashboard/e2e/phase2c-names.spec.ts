@@ -132,8 +132,9 @@ test("4. Review and add: Savlon HW is added as Savlon Handwash, and the same fil
   const row = dialog.getByTestId("preview-row");
   await expect(newBusinessChip(row)).toBeVisible();
   await expect(row.getByText("Businesses in this file", { exact: true })).toBeVisible();
-  await expect(row.getByRole("button", { name: "Add all as new" })).toHaveCount(0); // one name only
-  await decision(row, BIZ).selectOption({ label: "Add as new" });
+  await expect(row.getByRole("button", { name: "Add all as new" })).toHaveCount(0); // one name only: the button says Add as new
+  await row.getByRole("button", { name: "Add as new", exact: true }).click();
+  await expect(decision(row, BIZ)).toHaveValue("add");
   await expect(ready(row)).toBeVisible();
   await settled(page);
 
