@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionsSchema, type FilePreview } from "@/server/ingest";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import {
-  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads,
+  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, businessCountLine, businessRows, canPublishAll, categoryDefaults, emptyDraft, greyReason, knownBrandLine, pickValue, postUploads,
   publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, takeFiles, takeThenReset, tickShown, toDecisions, uploadForm, whenDhaka,
   type RowDraft,
 } from "./logic";
@@ -13,7 +13,7 @@ const preview = (over: Partial<FilePreview> = {}): FilePreview => ({
   label: "ATL, Savlon Soap, Jul'26 to Oct'26", summary: "4 months", datasetKey: "atl:soap",
   rowCount: 12, warnings: [], errors: [], canPublish: true, blockReason: null,
   business: null, businessSource: null, needsBusiness: false,
-  newBusinesses: [], newCategory: null, newBrands: [], pendingChanges: [], ...over,
+  newBusinesses: [], newCategory: null, newBrands: [], knownBusinesses: [], knownBrands: [], pendingChanges: [], ...over,
 });
 
 describe("rowStatus", () => {
@@ -261,6 +261,51 @@ describe("a brand's business pick (no business on its row)", () => {
   });
   it("shows nothing picked when that name is undecided", () => {
     expect(brandPickValue("new:Mosquito", d)).toBe("");
+  });
+});
+
+describe("businessRows", () => {
+  const draft = (over: Partial<RowDraft>): RowDraft => ({ ...emptyDraft(), ...over });
+  it("lists undecided names, then decided ones, then the ones on the list", () => {
+    const p = preview({ knownBusinesses: [{ name: "ACI Salt", listName: "Salt" }, { name: "toiletries", listName: "Toiletries" }, { name: "Foods", listName: "Foods" }] });
+    const d = draft({
+      bizNames: ["CB Core", "Hygiene", "CB", "Rice"],
+      businesses: [{ name: "CB Core", action: "new" }, { name: "CB", action: "same", slug: "salt" }],
+    });
+    expect(businessRows(p, d)).toEqual([
+      { name: "Hygiene", state: "new", listName: null },
+      { name: "Rice", state: "new", listName: null },
+      { name: "CB Core", state: "decided", listName: null },
+      { name: "CB", state: "decided", listName: null },
+      { name: "ACI Salt", state: "known", listName: "Salt" },
+      { name: "toiletries", state: "known", listName: null },
+      { name: "Foods", state: "known", listName: null },
+    ]);
+  });
+  it("shows a name once when it is both one of the row's names and on the list", () => {
+    const p = preview({ knownBusinesses: [{ name: "cb core", listName: "CB Core" }] });
+    expect(businessRows(p, draft({ bizNames: ["CB Core"] }))).toEqual([{ name: "CB Core", state: "new", listName: null }]);
+  });
+});
+
+describe("businessCountLine", () => {
+  const row = (state: "new" | "decided" | "known") => ({ name: state, state, listName: null });
+  it("counts the names on the list and the ones still new", () => {
+    expect(businessCountLine([row("new"), row("new"), row("decided"), row("known")])).toBe("1 on your list · 2 new");
+    expect(businessCountLine([row("decided"), row("known"), row("known")])).toBe("2 on your list · all decided");
+    expect(businessCountLine([row("new"), row("decided")])).toBe("1 new");
+    expect(businessCountLine([row("decided")])).toBe("all decided");
+  });
+});
+
+describe("knownBrandLine", () => {
+  const b = (name: string) => ({ name, business: null, suggestion: null });
+  const k = (name: string) => ({ name, listName: name });
+  it("says how many brands are on the list, only next to the brands that are not", () => {
+    expect(knownBrandLine(preview({ newBrands: [b("Neem")], knownBrands: [k("Lux")] }))).toBe("1 brand already on your list.");
+    expect(knownBrandLine(preview({ newBrands: [b("Neem")], knownBrands: [k("Lux"), k("Savlon")] }))).toBe("2 brands already on your list.");
+    expect(knownBrandLine(preview({ newBrands: [b("Neem")] }))).toBeNull();
+    expect(knownBrandLine(preview({ knownBrands: [k("Lux")] }))).toBeNull();
   });
 });
 

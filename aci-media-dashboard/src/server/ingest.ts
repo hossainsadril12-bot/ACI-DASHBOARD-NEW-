@@ -50,6 +50,10 @@ export type FilePreview = {
   newCategory: { title: string; suggestion: { business: string | null; ownBrands: string[] }; brands: string[] } | null;
   /** Brands not on the list. Never blocks. */
   newBrands: { name: string; business: string | null; suggestion: string | null }[];
+  /** Business names in the file already on the list (hidden ones included), once each: the file's spelling and the list's name. */
+  knownBusinesses: { name: string; listName: string }[];
+  /** Brands in the file already on the list, once each. */
+  knownBrands: { name: string; listName: string }[];
   /**
    * What Publish will add to the lists for this file, after valid decisions. A blocked preview may list only part
    * of its changes (the check stopped early); Publish re-reads every file and works all of them out again.
@@ -218,6 +222,17 @@ function wrongFile(chosen: FileType, detection: Detection): string | null {
   return null;
 }
 
+/** The file's names found on the list, once each (first spelling), with the list's name. */
+function known<T>(items: T[], nameOf: (x: T) => string, lookup: (name: string) => { name: string } | null): { name: string; listName: string }[] {
+  const out = new Map<string, { name: string; listName: string }>();
+  for (const x of items) {
+    const name = nameOf(x);
+    const hit = lookup(name);
+    if (hit && !out.has(normName(name))) out.set(normName(name), { name, listName: hit.name });
+  }
+  return [...out.values()];
+}
+
 /** Reads one file and checks its names against the catalog snapshot. No store, no network; only the batch's slug plan is shared. */
 function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: SlugPlan, digitalCards: ReadonlySet<string>): Prepared {
   const fc = new FileChanges(catalog, plan);
@@ -229,7 +244,7 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
     detection: null, type: null, label: null, summary: null, datasetKey: null,
     rowCount: 0, warnings: [], errors: [], canPublish: false, blockReason: null,
     business: null, businessSource: null, needsBusiness: false,
-    newBusinesses: [], newCategory: null, newBrands: [], pendingChanges: fc.changes,
+    newBusinesses: [], newCategory: null, newBrands: [], knownBusinesses: [], knownBrands: [], pendingChanges: fc.changes,
   };
   const block = (reason: string, error: string | null = reason): Prepared => {
     if (error !== null) preview.errors = [error];
@@ -359,6 +374,10 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   // A name too long for the list could never be decided: a read error, not a question.
   const tooLong = fileBusinesses.find((n) => !tidy(n));
   if (tooLong) return block("Fix the read error first.", `The business name "${tooLong.replace(/\s+/g, " ").slice(0, 40)}…" is longer than 120 characters.`);
+
+  // The names already on the list, once each, for the dialog's green rows.
+  preview.knownBusinesses = known(fileBusinesses, (n) => n, (n) => catalog.businessOf(n));
+  preview.knownBrands = known(fileBrands, (b) => b.name, (n) => catalog.brandOf(n));
 
   // Business names: "new" first, so a "same as" a business added here comes after it.
   const unknownBiz = new Map(fileBusinesses.filter((n) => !catalog.businessOf(n)).map((n) => [normName(n), n] as const));

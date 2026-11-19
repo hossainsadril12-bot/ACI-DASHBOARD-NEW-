@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { FilePreview } from "@/server/ingest";
 import {
-  MAX_NEW_BUSINESS_NAME, MAX_OWN_BRANDS, NEW_BUSINESS, addAllAsNew, brandMatches, brandPickValue, categoryDefaults, decisionValue,
-  sameAsOptions, setBusinessDecision, tickShown, type BrandDraft, type BusinessOption, type BusinessPick, type RowDraft,
+  MAX_NEW_BUSINESS_NAME, MAX_OWN_BRANDS, NEW_BUSINESS, addAllAsNew, brandMatches, brandPickValue, businessCountLine, businessRows, categoryDefaults,
+  decisionValue, otherListName, sameAsOptions, setBusinessDecision, tickShown,
+  type BrandDraft, type BusinessOption, type BusinessPick, type BusinessRow, type RowDraft,
 } from "./logic";
 
 // The Part C questions for one file (business, new businesses, new category, new brands). Moved from upload-box.tsx unchanged.
@@ -41,27 +43,53 @@ export function BusinessSelect({ label, newLabel, pick, businesses, disabled, on
   );
 }
 
+// Green: on the list or settled. Orange: still to decide. The tag says which, so colour is never the only signal.
+const GREEN_ROW = "bg-emerald-50";
+const ORANGE_ROW = "bg-orange-50";
+const GREEN_TAG = "bg-emerald-100 text-emerald-800";
+const ORANGE_TAG = "bg-orange-100 text-orange-800";
+const ROW = "flex min-w-0 flex-col gap-1 rounded-md px-2 py-1.5 md:flex-row md:items-center md:gap-3";
+
+/** A row's name, its tag, and the list's name when it differs ("= Salt"). */
+function NameTag({ name, tag, green, listName }: { name: string; tag: string; green: boolean; listName?: string | null }) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <p className="min-w-0 truncate text-sm text-gray-900" title={name}>{name}</p>
+      <Badge className={green ? GREEN_TAG : ORANGE_TAG}>{tag}</Badge>
+      {listName && <p className="min-w-0 truncate text-sm text-gray-500" title={listName}>= {listName}</p>}
+    </div>
+  );
+}
+
+const TAG: Record<BusinessRow["state"], string> = { new: "New", decided: "Decided", known: "On your list" };
+
 export function NewBusinesses({ preview: p, draft, businesses, disabled, onDraft }: {
   preview: FilePreview; draft: RowDraft; businesses: BusinessOption[]; disabled: boolean; onDraft: (d: RowDraft) => void;
 }) {
+  const rows = businessRows(p, draft);
   return (
     <Panel>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 text-sm font-medium break-words text-gray-900">New businesses in this file</p>
+        <div className="min-w-0">
+          <p className="text-sm font-medium break-words text-gray-900">Businesses in this file</p>
+          <p className="text-xs text-gray-500">{businessCountLine(rows)}</p>
+        </div>
         {p.newBusinesses.length >= 2 && (
           <Button variant="outline" size="sm" disabled={disabled}
             onClick={() => onDraft({ ...draft, businesses: addAllAsNew(p, draft.businesses) })}>Add all as new</Button>
         )}
       </div>
       <ul className="space-y-2">
-        {draft.bizNames.map((n) => (
-          <li key={n} className="flex min-w-0 flex-col gap-1 md:flex-row md:items-center md:gap-3">
-            <p className="min-w-0 flex-1 truncate text-sm text-gray-900" title={n}>{n}</p>
-            <select aria-label={`Decision for ${n}`} value={decisionValue(draft.businesses, n)} disabled={disabled} className={SELECT}
-              onChange={(e) => onDraft({ ...draft, businesses: setBusinessDecision(draft.businesses, draft.bizNames, n, e.target.value) })}>
-              <option value="">Decide…</option>
-              {sameAsOptions(n, draft, businesses).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+        {rows.map(({ name: n, state, listName }) => (
+          <li key={n} className={`${ROW} ${state === "new" ? ORANGE_ROW : GREEN_ROW}`}>
+            <NameTag name={n} tag={TAG[state]} green={state !== "new"} listName={listName} />
+            {state !== "known" && (
+              <select aria-label={`Decision for ${n}`} value={decisionValue(draft.businesses, n)} disabled={disabled} className={SELECT}
+                onChange={(e) => onDraft({ ...draft, businesses: setBusinessDecision(draft.businesses, draft.bizNames, n, e.target.value) })}>
+                <option value="">Decide…</option>
+                {sameAsOptions(n, draft, businesses).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            )}
           </li>
         ))}
       </ul>
@@ -112,8 +140,9 @@ export function NewCategory({ category, businesses, start, disabled, onAdd }: {
  * Review and add: a copy of the row's brands, saved by Done. fileBusiness: the row's business now (Digital, ATL),
  * shown instead of the name an earlier preview gave.
  */
-export function NewBrands({ draft, businesses, disabled, fileBusiness, onDone }: {
-  draft: RowDraft; businesses: BusinessOption[]; disabled: boolean; fileBusiness: string | null; onDone: (brands: BrandDraft[]) => void;
+export function NewBrands({ draft, known, businesses, disabled, fileBusiness, onDone }: {
+  draft: RowDraft; known: FilePreview["knownBrands"]; businesses: BusinessOption[]; disabled: boolean; fileBusiness: string | null;
+  onDone: (brands: BrandDraft[]) => void;
 }) {
   const [rows, setRows] = useState<BrandDraft[]>(draft.brands);
   const [query, setQuery] = useState("");
@@ -121,6 +150,7 @@ export function NewBrands({ draft, businesses, disabled, fileBusiness, onDone }:
   const adding = draft.bizNames.filter((n) => decisionValue(draft.businesses, n) === "add");
   const set = (k: number, b: Partial<BrandDraft>) => setRows(rows.map((x, j) => (j === k ? { ...x, ...b } : x)));
   const shown = rows.filter((b) => brandMatches(b, query)).length;
+  const knownShown = known.filter((b) => brandMatches(b, query));
   const actions = (
     <div className="flex shrink-0 flex-wrap justify-end gap-2">
       <Button variant="outline" size="sm" disabled={disabled || shown === 0} onClick={() => setRows(tickShown(rows, query))}>Tick all</Button>
@@ -134,22 +164,23 @@ export function NewBrands({ draft, businesses, disabled, fileBusiness, onDone }:
           onChange={(e) => setQuery(e.target.value)} />
         {actions}
       </div>
-      {shown === 0 && <p className="text-sm text-gray-500">No brand matches the search.</p>}
+      {shown === 0 && knownShown.length === 0 && <p className="text-sm text-gray-500">No brand matches the search.</p>}
       <ul className="space-y-3">
         {rows.map((b, k) => {
           if (!brandMatches(b, query)) return null;
           const business = b.business !== null ? (fileBusiness ?? b.business) : null;
           return (
-            <li key={b.name} className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:gap-3">
-              <label className="flex min-w-0 items-center gap-2 text-sm text-gray-900 md:w-40">
+            <li key={b.name} className={`flex min-w-0 flex-col gap-2 rounded-md px-2 py-1.5 md:flex-row md:items-center md:gap-3 ${b.ticked ? GREEN_ROW : ORANGE_ROW}`}>
+              <label className="flex min-w-0 items-center gap-2 text-sm text-gray-900 md:w-56">
                 <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
                   onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />
                 <span className="min-w-0 truncate" title={b.name}>{b.name}</span>
+                <Badge className={`shrink-0 ${b.ticked ? GREEN_TAG : ORANGE_TAG}`}>{b.ticked ? "Will add" : "New"}</Badge>
               </label>
-              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="md:flex-1"
+              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="md:min-w-40 md:flex-1"
                 onChange={(e) => set(k, { fullName: e.target.value })} />
               {business !== null ? (
-                <p className="min-w-0 truncate text-sm text-gray-500 md:w-56" title={business}>{business}</p>
+                <p className="min-w-0 truncate text-sm text-gray-500 md:w-28 md:shrink-0" title={business}>{business}</p>
               ) : (
                 <select aria-label={`Business for ${b.name}`} value={brandPickValue(b.pick, draft)} disabled={disabled} className={SELECT}
                   onChange={(e) => set(k, { pick: e.target.value })}>
@@ -162,6 +193,18 @@ export function NewBrands({ draft, businesses, disabled, fileBusiness, onDone }:
           );
         })}
       </ul>
+      {knownShown.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-500">Already on your list ({known.length})</p>
+          <ul className="space-y-2">
+            {knownShown.map((b) => (
+              <li key={b.name} className={`${ROW} ${GREEN_ROW}`}>
+                <NameTag name={b.name} tag="On your list" green listName={otherListName(b)} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {shown > 0 && actions}
     </Panel>
   );

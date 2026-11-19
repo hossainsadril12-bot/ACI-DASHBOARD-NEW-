@@ -69,6 +69,7 @@ describe("previewUploads", () => {
   it("blocks a file that is not Excel", async () => {
     const [p] = await previewUploads(await createTestStore(), [file("x.xlsx", Buffer.from("not excel"))]);
     expect(p).toMatchObject({ canPublish: false, detection: null, errors: ["This is not an Excel (.xlsx) file. Save it as Excel Workbook (.xlsx) and try again."] });
+    expect(p).toMatchObject({ knownBusinesses: [], knownBrands: [] });
   });
   it("blocks a workbook that is none of his files", async () => {
     const [p] = await previewUploads(await createTestStore(), [file("x.xlsx", makeXlsx([{ name: "S", rows: [["a"]] }]))]);
@@ -492,6 +493,13 @@ describe("business names in a file", () => {
     ]);
     expect(p).toMatchObject({ canPublish: false, blockReason: "Decide the new businesses.", errors: [], label: "Activity Calendar, Nov'26 to Nov'26" });
   });
+  it("lists the names already on the list once each, with the list's name, and only the others as new", async () => {
+    const store = await storeWith("Salt");
+    await addAll(store, [{ op: "businessSameAs", name: "ACI Salt", slug: "salt" }]);
+    const [p] = await previewUploads(store, [file("cal.xlsx", calBook([["ACI Salt", "A"], ["CB Core", "B"], ["aci  salt", "C"]]))]);
+    expect(p.knownBusinesses).toEqual([{ name: "ACI Salt", listName: "Salt" }]);
+    expect(p.newBusinesses.map((n) => n.name)).toEqual(["CB Core"]);
+  });
   it("is Ready once every name is decided", async () => {
     const store = await createTestStore();
     const [first] = await previewUploads(store, [file("cal.xlsx", book())]);
@@ -641,6 +649,14 @@ describe("brands not on the list", () => {
       { name: "Savlon HW", business: "Toiletries", suggestion: "Savlon Handwash" },
       { name: "Mystery", business: "Toiletries", suggestion: null },
     ]);
+  });
+  it("lists the brands already on the list once each, with the list's name, and only the others as new", async () => {
+    const store = await storeWith("Toiletries");
+    await addAll(store, [{ op: "addBrand", name: "Savlon Handwash", businessSlug: "toiletries", alsoMatches: ["Savlon HW"] }]);
+    const [p] = await previewUploads(store, [file("cal.xlsx", calBook([["Toiletries", "Savlon HW"], ["Toiletries", "Mystery"], ["Toiletries", "savlon  hw"]]))]);
+    expect(p.knownBrands).toEqual([{ name: "Savlon HW", listName: "Savlon Handwash" }]);
+    expect(p.newBrands.map((b) => b.name)).toEqual(["Mystery"]);
+    expect(p.knownBusinesses).toEqual([{ name: "Toiletries", listName: "Toiletries" }]);
   });
   it("says 'brand' for one, and nothing when every brand is on the list", async () => {
     const store = await storeWith("Toiletries");

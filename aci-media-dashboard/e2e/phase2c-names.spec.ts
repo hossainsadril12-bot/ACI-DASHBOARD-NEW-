@@ -63,7 +63,7 @@ test("2. real Billing file on its card: decide 13 new businesses with Add all as
   await expect(dialog).toContainText("Check before publishing · Media billing");
   const row = dialog.getByTestId("preview-row");
   await expect(newBusinessChip(row)).toBeVisible();
-  await expect(row.getByText("New businesses in this file")).toBeVisible();
+  await expect(row.getByText("Businesses in this file", { exact: true })).toBeVisible();
   expect((await askedNames(row)).sort()).toEqual([...BILLING_NAMES].sort());
   await expect(publishBtn(page)).toBeDisabled();
 
@@ -131,7 +131,7 @@ test("4. Review and add: Savlon HW is added as Savlon Handwash, and the same fil
   const dialog = await uploadToCard(page, "calendar", [file]);
   const row = dialog.getByTestId("preview-row");
   await expect(newBusinessChip(row)).toBeVisible();
-  await expect(row.getByText("New businesses in this file")).toBeVisible();
+  await expect(row.getByText("Businesses in this file", { exact: true })).toBeVisible();
   await expect(row.getByRole("button", { name: "Add all as new" })).toHaveCount(0); // one name only
   await decision(row, BIZ).selectOption({ label: "Add as new" });
   await expect(ready(row)).toBeVisible();
@@ -159,7 +159,7 @@ test("4. Review and add: Savlon HW is added as Savlon Handwash, and the same fil
   await uploadToCard(page, "calendar", [file]);
   await expect(ready(row)).toBeVisible();
   await expect(brandWarning(row)).toHaveCount(0);
-  await expect(row.getByText("New businesses in this file")).toHaveCount(0);
+  await expect(row.getByText("Businesses in this file", { exact: true })).toHaveCount(0);
   await expect(row.getByRole("button", { name: "Review and add" })).toHaveCount(0);
 });
 
@@ -279,7 +279,7 @@ test.describe("7. phone width (375 px)", () => {
     const names: [string, string][] = [["E2E Phone Business", "E2E Phone Brand"], ["E2E Phone Business With A Rather Long Name For A Small Screen", "E2E Phone Brand Two"]];
     const dialog = await uploadToCard(page, "calendar", [calendar("cal-phone-with-a-long-file-name.xlsx", names)]);
     const row = dialog.getByTestId("preview-row");
-    await expect(row.getByText("New businesses in this file")).toBeVisible();
+    await expect(row.getByText("Businesses in this file", { exact: true })).toBeVisible();
     await expect(row.getByRole("button", { name: "Add all as new" })).toBeVisible();
     expect(await noSideScroll(page)).toBeLessThanOrEqual(375);
     for (const [n] of names) {

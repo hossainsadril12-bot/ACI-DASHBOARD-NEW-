@@ -56,7 +56,7 @@ test("3. a file on the wrong card is blocked, naming the card to use", async ({ 
   const row = dialog.getByTestId("preview-row");
   await expect(row.getByText(wrongCardMessage(cardOf("channel"), "calendar"))).toBeVisible();
   await expect(row.getByText("Can't publish")).toBeVisible();
-  await expect(row.getByText("New businesses in this file")).toHaveCount(0); // blocked before any question
+  await expect(row.getByText("Businesses in this file", { exact: true })).toHaveCount(0); // blocked before any question
   await expect(publishBtn(page)).toBeDisabled();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(checkDialog(page)).toHaveCount(0);

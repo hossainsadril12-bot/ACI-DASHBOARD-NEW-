@@ -11,7 +11,7 @@ const preview = (over: Partial<FilePreview> = {}): FilePreview => ({
   label: "Digital, Salt", summary: "3 platforms", datasetKey: "digital:salt",
   rowCount: 12, warnings: [], errors: [], canPublish: true, blockReason: null,
   business: { slug: "salt", name: "Salt" }, businessSource: "admin", needsBusiness: false,
-  newBusinesses: [], newCategory: null, newBrands: [], pendingChanges: [], ...over,
+  newBusinesses: [], newCategory: null, newBrands: [], knownBusinesses: [], knownBrands: [], pendingChanges: [], ...over,
 });
 const render = (over: Partial<FileBlockProps> = {}) => renderToStaticMarkup(createElement(FileBlock, {
   name: "digital.xlsx", cardType: "digital", fixedBusiness: false, preview: preview(), draft: emptyDraft(),
@@ -69,6 +69,28 @@ describe("FileBlock", () => {
   it("offers Remove only when the card takes several files", () => {
     expect(render({ onRemove: () => {} })).toContain('aria-label="Remove digital.xlsx"');
     expect(render()).not.toContain("Remove digital.xlsx");
+  });
+  it("marks the businesses on the list in green and the new ones in orange", () => {
+    const html = render({
+      cardType: "calendar", name: "cal.xlsx",
+      preview: preview({ type: "calendar", canPublish: false, newBusinesses: [{ name: "CB Core", suggestion: null }], knownBusinesses: [{ name: "ACI Salt", listName: "Salt" }] }),
+      draft: { ...emptyDraft(), bizNames: ["CB Core"] },
+    });
+    expect(html).toContain("Businesses in this file");
+    expect(html).not.toContain("New businesses in this file");
+    expect(html).toContain("1 on your list · 1 new");
+    expect(html).toContain("On your list");
+    expect(html).toContain("= Salt");
+    expect(html).toContain(">New<");
+    expect(html).toContain("bg-emerald-50");
+    expect(html).toContain("bg-orange-50");
+  });
+  it("adds a green line for the brands on the list next to the orange one", () => {
+    const html = render({ preview: preview({
+      warnings: ["1 brand not on your list."], newBrands: [{ name: "Neem", business: "Salt", suggestion: null }], knownBrands: [{ name: "Lux", listName: "Lux" }],
+    }) });
+    expect(html).toContain("1 brand already on your list.");
+    expect(html).toContain("text-emerald-700");
   });
   it("keeps the preview-row test id", () => {
     expect(render()).toContain('data-testid="preview-row"');

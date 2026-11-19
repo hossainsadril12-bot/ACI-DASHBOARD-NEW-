@@ -185,7 +185,7 @@ export function brandPickValue(pick: string, draft: RowDraft): string {
 }
 
 /** Review and add search: any part of the brand's name, ignoring case and spaces. An empty search shows every brand. */
-export const brandMatches = (b: BrandDraft, query: string) => normName(b.name).includes(normName(query));
+export const brandMatches = (b: { name: string }, query: string) => normName(b.name).includes(normName(query));
 
 /** Tick all: ticks the brands the search shows, and leaves the others as they are. */
 export const tickShown = (rows: BrandDraft[], query: string) => rows.map((b) => (brandMatches(b, query) ? { ...b, ticked: true } : b));
@@ -227,6 +227,41 @@ export function toDecisions(draft: RowDraft, businesses: BusinessOption[]): Deci
 export function brandWarning(p: FilePreview): string | null {
   const n = p.newBrands.length;
   return n ? `${n} ${n === 1 ? "brand" : "brands"} not on your list.` : null;
+}
+
+/** The green line next to the orange one: the file's brands already on the list. Null when there are none, or no orange line. */
+export function knownBrandLine(p: FilePreview): string | null {
+  const k = p.knownBrands.length;
+  return k && p.newBrands.length ? `${k} ${k === 1 ? "brand" : "brands"} already on your list.` : null;
+}
+
+/** The list's name to show after a known name ("= Salt"), or null when it is the file's name in another case or spacing. */
+export const otherListName = (k: { name: string; listName: string }) => (same(k.name, k.listName) ? null : k.listName);
+
+export type BusinessRow = { name: string; state: "new" | "decided" | "known"; listName: string | null };
+
+/**
+ * The Businesses in this file rows: undecided names, then decided ones, then the ones already on the list.
+ * listName: the list's name for a known row, only when it differs from the file's.
+ */
+export function businessRows(p: FilePreview, draft: RowDraft): BusinessRow[] {
+  const decided = (n: string) => decisionValue(draft.businesses, n) !== "";
+  const row = (state: BusinessRow["state"]) => (name: string): BusinessRow => ({ name, state, listName: null });
+  return [
+    ...draft.bizNames.filter((n) => !decided(n)).map(row("new")),
+    ...draft.bizNames.filter(decided).map(row("decided")),
+    ...p.knownBusinesses
+      .filter((k) => !draft.bizNames.some((n) => same(n, k.name)))
+      .map((k): BusinessRow => ({ name: k.name, state: "known", listName: otherListName(k) })),
+  ];
+}
+
+/** The count under the Businesses in this file heading. */
+export function businessCountLine(rows: BusinessRow[]): string {
+  const k = rows.filter((r) => r.state === "known").length;
+  const n = rows.filter((r) => r.state === "new").length;
+  const left = n ? `${n} new` : "all decided";
+  return k ? `${k} on your list · ${left}` : left;
 }
 
 /** The block reason in grey, unless it is already shown in the red error list. */
