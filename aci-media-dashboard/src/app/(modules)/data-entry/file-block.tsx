@@ -61,7 +61,8 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
     : (pickBusinesses ?? businesses);
   const categoryAdded = cardType === "atl" && draft.atl && p && !p.newCategory;
   return (
-    <li data-testid="preview-row" className="min-w-0 space-y-2 px-4 py-3">
+    // 56px between the sections of a file block (Sadril, 19 Nov 2026): name, What was read, Please check, the questions.
+    <li data-testid="preview-row" className="min-w-0 space-y-14 px-4 py-4">
       <div className="flex items-center gap-3">
         <FileSpreadsheet className="size-4 shrink-0 text-gray-400" aria-hidden />
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900" title={name}>{name}</p>
@@ -69,7 +70,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
         {onRemove && <Button variant="ghost" size="xs" disabled={disabled} aria-label={`Remove ${name}`} onClick={onRemove}>Remove</Button>}
       </div>
       {(askBusiness || p?.label) && (
-        <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:gap-4 md:pl-7">
+        <div className="flex min-w-0 flex-col gap-14 md:flex-row md:items-start md:gap-4 md:pl-7">
           {askBusiness && (
             <BusinessSelect label={`Business for ${name}`} newLabel={`New business name for ${name}`} pick={pick} businesses={pickList}
               disabled={disabled}
