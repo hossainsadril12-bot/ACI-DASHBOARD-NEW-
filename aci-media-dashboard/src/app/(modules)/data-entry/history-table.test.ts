@@ -17,4 +17,11 @@ describe("HistoryTable", () => {
   it("says nothing about a limit when there are fewer rows", () => {
     expect(render(3)).not.toContain("Showing the latest 200 uploads.");
   });
+  it("shows Manual edit for a manual version, and the file name for an upload", () => {
+    const html = renderToStaticMarkup(createElement(HistoryTable, {
+      rows: [{ ...row(1), source: "manual" }, { ...row(2), fileName: "cal.xlsx", fileId: 7 }], admin: false,
+    }));
+    expect(html.match(/Manual edit/g)).toHaveLength(1);
+    expect(html).toContain("cal.xlsx");
+  });
 });
