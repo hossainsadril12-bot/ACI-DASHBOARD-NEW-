@@ -1,4 +1,4 @@
-import { UPLOAD_CARDS, type UploadCard } from "@/lib/ingest/cards";
+import { ANOTHER_BUSINESS, UPLOAD_CARDS, digitalCardTitle, type UploadCard } from "@/lib/ingest/cards";
 import type { ActiveVersion } from "@/store/datasets";
 import { emptyDraft, whenDhaka, type BusinessOption, type RowDraft } from "./logic";
 
@@ -7,8 +7,6 @@ import { emptyDraft, whenDhaka, type BusinessOption, type RowDraft } from "./log
 export type CardState = { id: string; card: UploadCard; title: string; business: { slug: string; name: string } | null; nowShowing: string };
 
 export const NOTHING_YET = "nothing uploaded yet";
-/** The title of the Digital card for a business with no Digital data, once another business has its own card. */
-export const ANOTHER_BUSINESS = "Digital · another business";
 
 /** "<file> · <date and time>", or "Manual edit · <date and time>" for a typed version. */
 function shown(v: ActiveVersion): string {
@@ -44,7 +42,7 @@ export function cardStates(active: ActiveVersion[], businesses: { slug: string; 
         const v = byKey.get(`digital:${b.slug}`);
         if (!v) continue;
         own++;
-        out.push({ id: `digital:${b.slug}`, card, title: `Digital · ${b.name}`, business: { slug: b.slug, name: b.name }, nowShowing: shown(v) });
+        out.push({ id: `digital:${b.slug}`, card, title: digitalCardTitle(b.name), business: { slug: b.slug, name: b.name }, nowShowing: shown(v) });
       }
       out.push({ id: card.key, card, title: own ? ANOTHER_BUSINESS : card.title, business: null, nowShowing: NOTHING_YET });
       continue;

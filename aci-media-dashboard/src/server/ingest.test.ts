@@ -233,9 +233,10 @@ describe("publishUploads", () => {
   });
 });
 
-const digitalBook = (brand = "Mystery Brand") => makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
+/** A Digital file with one Meta row per brand (Mystery Brand when none is given). */
+const digitalBook = (...brands: string[]) => makeXlsx(["Meta", "YouTube", "TikTok"].map((p) => ({ name: p, rows: [
   ["Brand", "Month", "Content Type", "Content Link", "Bid Type", "Reach", "Impressions", "Spent (USD)"], [],
-  ...(p === "Meta" ? [[brand, "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]] : []),
+  ...(p === "Meta" ? (brands.length ? brands : ["Mystery Brand"]).map((b) => [b, "Jul'26", "Video", "https://facebook.com/x", "CPV", 10, 100, 5]) : []),
 ] })));
 
 describe("file business (Digital)", () => {
@@ -405,8 +406,9 @@ describe("file business (Digital)", () => {
     });
   });
   describe("a business picked for a file whose brands belong to another (spec 3.5: the card decides, a wrong card is blocked)", () => {
-    const wrongCard = "This file's brands belong to Salt, not Hygiene. Use the Digital · Salt card.";
-    /** Salt and Hygiene on the list, Salt's brand Mystery Brand on it too. One store: every test here leaves it as it was. */
+    // No business has Digital data in these stores, so the card to use is the one Digital card.
+    const wrongCard = "This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.";
+    /** Salt and Hygiene on the list, Salt's brand Mystery Brand on it too, no Digital data. One store: every test here leaves it as it was. */
     let shared: Promise<Store> | null = null;
     const saltStore = () => (shared ??= (async () => {
       const store = await storeWith("Salt", "Hygiene");
@@ -426,7 +428,7 @@ describe("file business (Digital)", () => {
     it("blocks a brand-new business name picked for it the same way, and adds no business", async () => {
       const store = await saltStore();
       const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "new:Hygiene Two" })]);
-      const msg = "This file's brands belong to Salt, not Hygiene Two. Use the Digital · Salt card.";
+      const msg = "This file's brands belong to Salt, not Hygiene Two. Use the Digital performance card and pick Salt.";
       expect(p).toMatchObject({ canPublish: false, blockReason: msg, errors: [msg], pendingChanges: [] });
       await expect(publishUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "new:Hygiene Two" })])).rejects.toThrow(new ValidationError(`d.xlsx: ${msg}`));
       expect((await getCatalog(store)).businesses.map((b) => b.slug).sort()).toEqual(["hygiene", "salt"]);
@@ -446,6 +448,29 @@ describe("file business (Digital)", () => {
       await setBusinessHidden(store, "salt", true);
       const [hidden] = await previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]);
       expect(hidden).toMatchObject({ canPublish: true, datasetKey: "digital:hygiene" });
+    });
+    it("passes when the brands belong to several businesses, one of them the pick", async () => {
+      const store = await storeWith("Salt", "Hygiene");
+      await createBrand(store, "salt", "Mystery Brand");
+      await createBrand(store, "hygiene", "Freedom");
+      const [p] = await previewUploads(store, [decide(file("d.xlsx", digitalBook("Mystery Brand", "Freedom")), { business: "hygiene" })]);
+      expect(p).toMatchObject({ canPublish: true, business: { slug: "hygiene", name: "Hygiene" }, datasetKey: "digital:hygiene" });
+    });
+    it("names the card the Upload Data page shows for the brands' business", async () => {
+      const store = await storeWith("Salt", "Hygiene", "Spices", "Rice");
+      await createBrand(store, "salt", "Mystery Brand");
+      const saltOnHygiene = () => previewUploads(store, [decide(file("d.xlsx", digitalBook()), { business: "hygiene" })]).then(([p]) => p.blockReason);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.");
+      // A hidden business's Digital data gives it no card, so the page still shows the one Digital card.
+      await publishUploads(store, [decide(file("r.xlsx", digitalBook("Rice Brand")), { business: "rice" })]);
+      await setBusinessHidden(store, "rice", true);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.");
+      // Another business has its own card; Salt does not yet.
+      await publishUploads(store, [decide(file("s.xlsx", digitalBook("Spices Brand")), { business: "spices" })]);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital · another business card and pick Salt.");
+      // Salt has its own card.
+      await publishUploads(store, [decide(file("salt.xlsx", digitalBook()), { business: "salt" })]);
+      expect(await saltOnHygiene()).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital · Salt card.");
     });
   });
   it("leaves the business fields empty for a file that has a business column", async () => {

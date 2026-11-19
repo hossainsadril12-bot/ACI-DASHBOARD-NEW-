@@ -4,7 +4,7 @@ import { checkXlsxBytes } from "@/lib/ingest/xlsx-check";
 import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
 import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
-import { cardForType, notThisFileMessage, wrongCardMessage } from "@/lib/ingest/cards";
+import { cardForType, notThisFileMessage, wrongBusinessMessage, wrongCardMessage } from "@/lib/ingest/cards";
 import { READERS, READER_NEEDS_STYLES } from "@/lib/ingest/readers";
 import { NeedsBusinessError, NeedsCategoryError, ReadError, type ReaderContext, type ReadResult } from "@/lib/ingest/read-result";
 import type { BusinessSource } from "@/lib/ingest/brands";
@@ -14,7 +14,7 @@ import { digitalBrands } from "@/lib/ingest/readers/digital";
 import { FY_STANDARD_ORDER } from "@/lib/ingest/readers/fy";
 import { suggestAtlCategory, suggestBusiness, suggestFullName, suggestOwnBrands } from "@/lib/ingest/suggestions";
 import { applyCatalogChanges, getCatalog, makeSlug, normName, type Catalog, type CatalogChange } from "@/store/catalog";
-import { getActiveFileHashes, publishVersionsTx, type PublishInput } from "@/store/datasets";
+import { getActiveFileHashes, listActiveVersions, publishVersionsTx, type PublishInput } from "@/store/datasets";
 import type { Store, StoreTx } from "@/store/client";
 import { ValidationError } from "./errors";
 
@@ -100,6 +100,8 @@ function predict(plan: Map<string, string>, existing: string[], name: string, fa
 }
 
 type Biz = { slug: string; name: string; isNew: boolean };
+/** What a business pick names: a business ({ biz }), or a name Publish would add ({ add }). */
+type Lookup = { biz: Biz } | { add: string };
 
 /** One file's list decisions: the catalog snapshot, the batch's slug plan, and the changes this file adds. */
 class FileChanges {
@@ -108,12 +110,33 @@ class FileChanges {
 
   constructor(readonly catalog: Catalog, private readonly plan: SlugPlan) {}
 
-  /** A business this file adds (once). A name already on the list gives that business, or null when it is hidden. */
-  addBusiness(raw: string): Biz | null {
+  /** A name: the business on the list with it (null when hidden), else the tidy name Publish would add. Adds nothing. */
+  private lookupName(raw: string): Lookup | null {
     const name = tidy(raw);
     if (!name) return null;
     const existing = this.catalog.businessOf(name);
-    if (existing) return existing.hidden ? null : { slug: existing.slug, name: existing.name, isNew: false };
+    if (existing) return existing.hidden ? null : { biz: { slug: existing.slug, name: existing.name, isNew: false } };
+    return { add: name };
+  }
+
+  /**
+   * A business pick, adding nothing: "new:<name>", a slug on the list that is not hidden, or a slug this file adds.
+   * Anything else is null. `resolve` and the Digital wrong-card check both read picks through this.
+   */
+  lookup(value: string | null | undefined): Lookup | null {
+    if (!value) return null;
+    if (value.startsWith("new:")) return this.lookupName(value.slice(4));
+    const b = this.catalog.businesses.find((x) => x.slug === value && !x.hidden);
+    if (b) return { biz: { slug: b.slug, name: b.name, isNew: false } };
+    const added = this.added.get(value);
+    return added ? { biz: added } : null;
+  }
+
+  /** The business a lookup names, adding a new name to the changes (once). */
+  private take(found: Lookup | null): Biz | null {
+    if (!found) return null;
+    if ("biz" in found) return found.biz;
+    const name = found.add;
     const slug = predict(this.plan.business, this.catalog.businesses.map((b) => b.slug), name, "business");
     if (!this.added.has(slug)) {
       this.changes.push({ op: "addBusiness", name });
@@ -122,27 +145,14 @@ class FileChanges {
     return this.added.get(slug)!;
   }
 
-  /** A business pick: "new:<name>", a slug on the list that is not hidden, or a slug this file adds. Anything else is null. */
-  resolve(value: string | null | undefined): Biz | null {
-    if (!value) return null;
-    if (value.startsWith("new:")) return this.addBusiness(value.slice(4));
-    const b = this.catalog.businesses.find((x) => x.slug === value && !x.hidden);
-    if (b) return { slug: b.slug, name: b.name, isNew: false };
-    return this.added.get(value) ?? null;
+  /** A business this file adds (once). A name already on the list gives that business, or null when it is hidden. */
+  addBusiness(raw: string): Biz | null {
+    return this.take(this.lookupName(raw));
   }
 
-  /** What `resolve` would give, adding nothing: slug null for a business it would add. */
-  peek(value: string | null | undefined): { slug: string | null; name: string } | null {
-    if (!value) return null;
-    if (value.startsWith("new:")) {
-      const name = tidy(value.slice(4));
-      if (!name) return null;
-      const existing = this.catalog.businessOf(name);
-      if (existing) return existing.hidden ? null : { slug: existing.slug, name: existing.name };
-      return { slug: null, name };
-    }
-    const b = this.catalog.businesses.find((x) => x.slug === value && !x.hidden) ?? this.added.get(value);
-    return b ? { slug: b.slug, name: b.name } : null;
+  /** A business pick (see `lookup`), adding a new name to the changes. Anything else is null. */
+  resolve(value: string | null | undefined): Biz | null {
+    return this.take(this.lookup(value));
   }
 
   /** The slug Publish will give a new ATL category. */
@@ -164,13 +174,17 @@ function brandsBusiness(catalog: Catalog, brands: string[]): Biz | null {
  * Digital: the admin's valid pick, else the one business all known brands belong to, else exactly one business named
  * in the file name. A pick (the card's own business, or the one chosen) that the file's brands say is another
  * business on the list is the wrong card (spec 3.5): `wrong` names the card to use, and nothing is added.
+ * digitalCards: the visible businesses with Digital data, which have their own card on the page.
  */
-function digitalBusiness(fc: FileChanges, decisions: Decisions | null, brands: string[], fileName: string): { biz: Biz; source: BusinessSource } | { wrong: string } | null {
+function digitalBusiness(
+  fc: FileChanges, decisions: Decisions | null, brands: string[], fileName: string, digitalCards: ReadonlySet<string>,
+): { biz: Biz; source: BusinessSource } | { wrong: string } | null {
   const { catalog } = fc;
   const owner = brandsBusiness(catalog, brands);
-  const pick = fc.peek(decisions?.business);
-  if (pick && owner && pick.slug !== owner.slug) {
-    return { wrong: `This file's brands belong to ${owner.name}, not ${pick.name}. Use the Digital · ${owner.name} card.` };
+  const pick = fc.lookup(decisions?.business);
+  if (pick && owner && !("biz" in pick && pick.biz.slug === owner.slug)) {
+    const picked = "biz" in pick ? pick.biz.name : pick.add;
+    return { wrong: wrongBusinessMessage(owner.name, picked, { ownerHasCard: digitalCards.has(owner.slug), anyHasCard: digitalCards.size > 0 }) };
   }
   const picked = fc.resolve(decisions?.business);
   if (picked) return { biz: picked, source: "admin" };
@@ -205,7 +219,7 @@ function wrongFile(chosen: FileType, detection: Detection): string | null {
 }
 
 /** Reads one file and checks its names against the catalog snapshot. No store, no network; only the batch's slug plan is shared. */
-function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: SlugPlan): Prepared {
+function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: SlugPlan, digitalCards: ReadonlySet<string>): Prepared {
   const fc = new FileChanges(catalog, plan);
   const preview: FilePreview = {
     index,
@@ -277,7 +291,7 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   const ctx: ReaderContext = { fileName: preview.fileName };
   try {
     if (type === "digital") {
-      const found = digitalBusiness(fc, decisions, digitalBrands(wb), preview.fileName);
+      const found = digitalBusiness(fc, decisions, digitalBrands(wb), preview.fileName, digitalCards);
       if (found && "wrong" in found) return block(found.wrong);
       ctx.business = found ? { slug: found.biz.slug, name: found.biz.name } : null; // never a business that isn't on the list or decided
       if (found) {
@@ -408,7 +422,11 @@ function checkBatch(inputs: UploadInput[]) {
 async function prepareAll(store: Store, inputs: UploadInput[]): Promise<{ prepared: Prepared[]; plan: SlugPlan }> {
   const catalog = await getCatalog(store);
   const plan: SlugPlan = { business: new Map(), atl: new Map() };
-  const prepared = inputs.map((input, i) => prepareFile(input, i, catalog, plan));
+  // The businesses with their own Digital card on the page (cardStates): visible, with an active digital:<slug> version.
+  const visible = new Set(catalog.businesses.filter((b) => !b.hidden).map((b) => b.slug));
+  const digitalCards = new Set((await listActiveVersions(store)).map((v) => v.datasetKey)
+    .filter((k) => k.startsWith("digital:")).map((k) => k.slice("digital:".length)).filter((slug) => visible.has(slug)));
+  const prepared = inputs.map((input, i) => prepareFile(input, i, catalog, plan, digitalCards));
 
   const counts = new Map<string, number>();
   for (const p of prepared) {

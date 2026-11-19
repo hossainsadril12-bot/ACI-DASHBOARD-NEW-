@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FILE_TYPES } from "./file-types";
-import { OOH_MASTER_MESSAGE, UPLOAD_CARDS, cardForType, notThisFileMessage, wrongCardMessage, type CardKey } from "./cards";
+import { ANOTHER_BUSINESS, OOH_MASTER_MESSAGE, UPLOAD_CARDS, cardForType, digitalCardTitle, notThisFileMessage, wrongBusinessMessage, wrongCardMessage, type CardKey } from "./cards";
 
 const card = (key: CardKey) => UPLOAD_CARDS.find((c) => c.key === key)!;
 
@@ -64,5 +64,21 @@ describe("safety messages", () => {
   it("says what the card expects for a file that is none of his", () => {
     expect(notThisFileMessage(card("calendar"))).toBe("This is not an Activity Calendar file. Expected: The All Activity Calendar file, one sheet per month.");
     expect(notThisFileMessage(card("fy"))).toBe('This is not an FY spend file. Expected: The CB Media Spent Report (its "Final Report" sheet).');
+  });
+});
+
+describe("wrongBusinessMessage", () => {
+  it("names the Digital card the page shows for the brands' business", () => {
+    expect(wrongBusinessMessage("Salt", "Hygiene", { ownerHasCard: true, anyHasCard: true })).toBe("This file's brands belong to Salt, not Hygiene. Use the Digital · Salt card.");
+    expect(wrongBusinessMessage("Salt", "Hygiene", { ownerHasCard: false, anyHasCard: true })).toBe(
+      "This file's brands belong to Salt, not Hygiene. Use the Digital · another business card and pick Salt.",
+    );
+    expect(wrongBusinessMessage("Salt", "Hygiene", { ownerHasCard: false, anyHasCard: false })).toBe(
+      "This file's brands belong to Salt, not Hygiene. Use the Digital performance card and pick Salt.",
+    );
+  });
+  it("uses the same titles as the cards", () => {
+    expect(digitalCardTitle("Salt")).toBe("Digital · Salt");
+    expect(ANOTHER_BUSINESS).toBe("Digital · another business");
   });
 });

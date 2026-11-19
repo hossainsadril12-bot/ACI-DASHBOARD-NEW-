@@ -71,6 +71,22 @@ export function wrongCardMessage(card: UploadCard, detected: FileType): string {
   return `This looks like ${A_TYPE[detected]} file, not ${FILE_TYPE_LABEL[card.type]}. Close this and use ${use}.`;
 }
 
+/** The Digital card of a business with Digital data (spec 3.3). */
+export const digitalCardTitle = (business: string) => `Digital · ${business}`;
+/** The Digital card for a business with no Digital data, once another business has its own card. */
+export const ANOTHER_BUSINESS = "Digital · another business";
+
+/**
+ * Spec 3.5: a Digital file whose brands belong to another business than the one picked. Names the card the page
+ * shows for that business: its own, else the card for another business, else the one Digital card.
+ */
+export function wrongBusinessMessage(owner: string, picked: string, cards: { ownerHasCard: boolean; anyHasCard: boolean }): string {
+  const use = cards.ownerHasCard
+    ? `Use the ${digitalCardTitle(owner)} card.`
+    : `Use the ${cards.anyHasCard ? ANOTHER_BUSINESS : cardForType("digital")!.title} card and pick ${owner}.`;
+  return `This file's brands belong to ${owner}, not ${picked}. ${use}`;
+}
+
 /** Spec 3.5: detection says the file is none of his files. */
 export function notThisFileMessage(card: UploadCard): string {
   return `This is not ${A_TYPE[card.type]} file. Expected: ${card.fileText}`;
