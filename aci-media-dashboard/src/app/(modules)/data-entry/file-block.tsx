@@ -22,7 +22,7 @@ const CHIP: Record<RowStatus, { label: string; className: string }> = {
 /** A file while the server reads it. */
 export function SkeletonBlock({ name }: { name: string }) {
   return (
-    <li className="space-y-2 px-4 py-3">
+    <li className="min-w-0 space-y-2 px-4 py-3">
       <div className="flex items-center gap-3">
         <FileSpreadsheet className="size-4 shrink-0 text-gray-300" aria-hidden />
         <p className="min-w-0 flex-1 truncate text-sm text-gray-500">Reading {name}…</p>
@@ -62,7 +62,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
     : (pickBusinesses ?? businesses);
   const categoryAdded = cardType === "atl" && draft.atl && p && !p.newCategory;
   return (
-    <li data-testid="preview-row" className="space-y-2 px-4 py-3">
+    <li data-testid="preview-row" className="min-w-0 space-y-2 px-4 py-3">
       <div className="flex items-center gap-3">
         <FileSpreadsheet className="size-4 shrink-0 text-gray-400" aria-hidden />
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900" title={name}>{name}</p>
@@ -70,7 +70,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
         {onRemove && <Button variant="ghost" size="xs" disabled={disabled} aria-label={`Remove ${name}`} onClick={onRemove}>Remove</Button>}
       </div>
       {(askBusiness || p?.label) && (
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-4 md:pl-7">
+        <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:gap-4 md:pl-7">
           {askBusiness && (
             <BusinessSelect label={`Business for ${name}`} newLabel={`New business name for ${name}`} pick={pick} businesses={pickList}
               disabled={disabled}
@@ -81,14 +81,14 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
           {p?.label && (
             <div className="min-w-0 text-sm">
               <p className="text-xs font-medium text-gray-500">What was read</p>
-              <p className="text-gray-900">{p.label}</p>
+              <p className="break-words text-gray-900">{p.label}</p>
               {p.summary && <p className="text-xs text-gray-500">{p.summary}</p>}
             </div>
           )}
         </div>
       )}
       {p && (p.errors.length > 0 || p.warnings.length > 0 || grey) && (
-        <div className="space-y-1 text-sm md:pl-7">
+        <div className="min-w-0 space-y-1 text-sm break-words md:pl-7">
           {p.errors.length > 0 && <ul className="list-disc space-y-0.5 pl-5 text-red-700">{p.errors.map((m, k) => <li key={k}>{m}</li>)}</ul>}
           {p.warnings.length > 0 && (
             <div className="space-y-0.5">

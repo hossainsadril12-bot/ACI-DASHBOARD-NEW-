@@ -3,7 +3,7 @@ import { DecisionsSchema, type FilePreview } from "@/server/ingest";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import {
   MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads,
-  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, takeFiles, tickShown, toDecisions, uploadForm, whenDhaka,
+  publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, takeFiles, takeThenReset, tickShown, toDecisions, uploadForm, whenDhaka,
   type RowDraft,
 } from "./logic";
 
@@ -409,5 +409,23 @@ describe("takeFiles", () => {
     expect(takeFiles([f("e.xlsx", 0), f("a.xlsx"), f("b.xlsx")], false).leftOut).toEqual([
       "b.xlsx left out: this card takes one file.", "e.xlsx is empty and left out.",
     ]);
+  });
+});
+
+describe("takeThenReset", () => {
+  it("copies the files out before the reset empties a live list (Chromium's input.files)", () => {
+    const a = { name: "a.xlsx", size: 10 };
+    const b = { name: "b.xlsx", size: 20 };
+    const live = [a, b]; // stands in for input.files: clearing the input empties the same object
+    const order: string[] = [];
+    const got = takeThenReset(live, () => { order.push("reset"); live.length = 0; });
+    expect(got).toEqual([a, b]);
+    expect(order).toEqual(["reset"]);
+    expect(live).toHaveLength(0);
+  });
+  it("gives no files for no list, and still resets", () => {
+    const reset = vi.fn();
+    expect(takeThenReset(null, reset)).toEqual([]);
+    expect(reset).toHaveBeenCalledOnce();
   });
 });

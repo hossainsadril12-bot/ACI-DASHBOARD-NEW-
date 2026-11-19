@@ -11,11 +11,11 @@ import {
 
 // The Part C questions for one file (business, new businesses, new category, new brands). Moved from upload-box.tsx unchanged.
 
-const SELECT = "h-9 w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm md:w-56";
+const SELECT = "h-9 w-full min-w-0 max-w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm md:w-56";
 
 /** A grey box under the row for list questions, lined up with the row's controls. */
 export function Panel({ children }: { children: ReactNode }) {
-  return <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:ml-7">{children}</div>;
+  return <div className="min-w-0 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:ml-7">{children}</div>;
 }
 
 /** Visible businesses, then New business… with a name box. The name is sent when the box loses focus or on Enter. */
@@ -24,7 +24,7 @@ export function BusinessSelect({ label, newLabel, pick, businesses, disabled, on
   onPick: (p: BusinessPick) => void; onTyping: (p: BusinessPick) => void; onCommit: () => void;
 }) {
   return (
-    <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+    <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row">
       <select aria-label={label} value={pick.value} disabled={disabled} className={SELECT}
         onChange={(e) => onPick({ value: e.target.value, newName: e.target.value === NEW_BUSINESS ? pick.newName : "" })}>
         <option value="">Pick the business…</option>
@@ -47,7 +47,7 @@ export function NewBusinesses({ preview: p, draft, businesses, disabled, onDraft
   return (
     <Panel>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium text-gray-900">New businesses in this file</p>
+        <p className="min-w-0 text-sm font-medium break-words text-gray-900">New businesses in this file</p>
         {p.newBusinesses.length >= 2 && (
           <Button variant="outline" size="sm" disabled={disabled}
             onClick={() => onDraft({ ...draft, businesses: addAllAsNew(p, draft.businesses) })}>Add all as new</Button>
@@ -55,7 +55,7 @@ export function NewBusinesses({ preview: p, draft, businesses, disabled, onDraft
       </div>
       <ul className="space-y-2">
         {draft.bizNames.map((n) => (
-          <li key={n} className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <li key={n} className="flex min-w-0 flex-col gap-1 md:flex-row md:items-center md:gap-3">
             <p className="min-w-0 flex-1 truncate text-sm text-gray-900" title={n}>{n}</p>
             <select aria-label={`Decision for ${n}`} value={decisionValue(draft.businesses, n)} disabled={disabled} className={SELECT}
               onChange={(e) => onDraft({ ...draft, businesses: setBusinessDecision(draft.businesses, draft.bizNames, n, e.target.value) })}>
@@ -81,7 +81,7 @@ export function NewCategory({ category, businesses, start, disabled, onAdd }: {
     setPicks({ ...picks, ownBrands: on ? category.brands.filter((b) => b === r || picks.ownBrands.includes(b)) : picks.ownBrands.filter((b) => b !== r) });
   return (
     <Panel>
-      <p className="text-sm font-medium text-gray-900">New category found: {category.title}</p>
+      <p className="text-sm font-medium break-words text-gray-900">New category found: {category.title}</p>
       <div className="space-y-1">
         <p className="text-xs font-medium text-gray-500">Business</p>
         <BusinessSelect label={`Business for category ${category.title}`} newLabel={`New business name for ${category.title}`} pick={picks.business} businesses={businesses}
@@ -140,7 +140,7 @@ export function NewBrands({ draft, businesses, disabled, fileBusiness, onDone }:
           if (!brandMatches(b, query)) return null;
           const business = b.business !== null ? (fileBusiness ?? b.business) : null;
           return (
-            <li key={b.name} className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <li key={b.name} className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:gap-3">
               <label className="flex min-w-0 items-center gap-2 text-sm text-gray-900 md:w-40">
                 <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
                   onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />

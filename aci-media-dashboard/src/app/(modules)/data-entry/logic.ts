@@ -235,6 +235,16 @@ export function greyReason(p: FilePreview): string | null {
   return p.blockReason && !p.errors.includes(p.blockReason) ? p.blockReason : null;
 }
 
+/**
+ * The files of a pick or a drop, copied out before reset clears the file input. Chromium's input.files is a live
+ * FileList: clearing the input first would empty it, and Upload Excel would open nothing.
+ */
+export function takeThenReset<F>(list: ArrayLike<F> | null, reset: () => void): F[] {
+  const chosen = Array.from(list ?? []);
+  reset();
+  return chosen;
+}
+
 /** The files a card takes from a pick or a drop (only the ATL card takes several), and what to say about the ones left out. */
 export function takeFiles<F extends { name: string; size: number }>(chosen: F[], multiple: boolean): { taken: F[]; leftOut: string[] } {
   const empty = chosen.filter((f) => f.size === 0).map((f) => f.name);

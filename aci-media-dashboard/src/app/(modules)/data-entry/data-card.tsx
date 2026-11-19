@@ -11,11 +11,11 @@ import type { FilePreview } from "@/server/ingest";
 import { CardFace } from "./card-face";
 import { startDraft, type CardState } from "./cards-state";
 import { FileBlock, SkeletonBlock } from "./file-block";
-import { afterPreview, canPublishAll, postUploads, publishedMessage, takeFiles, toDecisions, uploadForm, type BusinessOption, type RowDraft } from "./logic";
+import { afterPreview, canPublishAll, postUploads, publishedMessage, takeFiles, takeThenReset, toDecisions, uploadForm, type BusinessOption, type RowDraft } from "./logic";
 
 /** The files left out of a pick or a drop, and why. */
 function LeftOut({ notes }: { notes: string[] }) {
-  return <ul className="w-full space-y-0.5 text-sm text-amber-800">{notes.map((n) => <li key={n}>{n}</li>)}</ul>;
+  return <ul className="w-full min-w-0 space-y-0.5 text-sm break-words text-amber-800">{notes.map((n) => <li key={n}>{n}</li>)}</ul>;
 }
 
 /**
@@ -83,8 +83,8 @@ export function DataCard({ state, businesses, pickBusinesses }: {
   const typeDraft = (i: number, d: RowDraft) => setDrafts(drafts.map((x, j) => (j === i ? d : x))); // typing: sent on blur
 
   function add(list: FileList | null) {
-    if (inputRef.current) inputRef.current.value = "";
-    const { taken, leftOut: notes } = takeFiles(Array.from(list ?? []), card.multiple);
+    const chosen = takeThenReset(list, () => { if (inputRef.current) inputRef.current.value = ""; });
+    const { taken, leftOut: notes } = takeFiles(chosen, card.multiple);
     setLeftOut(notes); // shown in the dialog; on the card only when no file was taken (no dialog)
     if (taken.length === 0) return;
     setIds(taken.map(() => ++nextId.current));
@@ -145,11 +145,11 @@ export function DataCard({ state, businesses, pickBusinesses }: {
       <Dialog open={files.length > 0} onOpenChange={(open) => { if (!open && !publishing) clear(); }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" showCloseButton={!publishing}>
           <DialogHeader>
-            <DialogTitle className="pr-8">Check before publishing · {state.title}</DialogTitle>
+            <DialogTitle className="pr-8 break-words">Check before publishing · {state.title}</DialogTitle>
           </DialogHeader>
           {leftOut.length > 0 && <LeftOut notes={leftOut} />}
           {checking && <span role="status" className="sr-only">Reading the files…</span>}
-          <ul className={cn("divide-y divide-gray-200 rounded-xl border border-gray-200", checking && blocksReady && "opacity-60")} aria-busy={checking}>
+          <ul className={cn("min-w-0 divide-y divide-gray-200 rounded-xl border border-gray-200", checking && blocksReady && "opacity-60")} aria-busy={checking}>
             {files.map((f, i) => {
               const p = blocksReady && previews ? previews[i] : null;
               const key = ids[i] ?? `f${i}`;
@@ -164,8 +164,8 @@ export function DataCard({ state, businesses, pickBusinesses }: {
               );
             })}
           </ul>
-          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-          <DialogFooter>
+          {error && <p role="alert" className="text-sm break-words text-red-700">{error}</p>}
+          <DialogFooter className="flex-wrap">
             <Button variant="outline" onClick={clear} disabled={publishing}>Cancel</Button>
             <Button onClick={() => void publish()} disabled={!canPublish}>{publishing ? "Publishing…" : "Publish"}</Button>
           </DialogFooter>
