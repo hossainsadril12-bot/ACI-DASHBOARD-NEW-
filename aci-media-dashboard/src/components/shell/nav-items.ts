@@ -10,7 +10,6 @@ export const NAV_ITEMS: { href: string; label: string; group: (typeof NAV_GROUPS
   { href: "/spend", label: "Spend", group: "Plan and money" },
   { href: "/billing", label: "Billing", group: "Plan and money" },
   { href: "/data-entry", label: "Data Entry", group: "Data" },
-  { href: "/uploads", label: "Uploads & History", group: "Data" },
   { href: "/businesses", label: "Businesses & Brands", group: "Data" },
   { href: "/settings", label: "Settings", group: "Data" },
 ];

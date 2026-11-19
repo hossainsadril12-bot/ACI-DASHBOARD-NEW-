@@ -384,10 +384,10 @@ describe("postUploads", () => {
 });
 
 describe("menu", () => {
-  it("puts Data Entry in the Data group before Uploads & History", () => {
+  it("puts Data Entry first in the Data group, before Businesses & Brands", () => {
     const i = NAV_ITEMS.findIndex((n) => n.href === "/data-entry");
     expect(NAV_ITEMS[i]).toEqual({ href: "/data-entry", label: "Data Entry", group: "Data" });
-    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/uploads") - 1);
+    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/businesses") - 1);
   });
 });
 

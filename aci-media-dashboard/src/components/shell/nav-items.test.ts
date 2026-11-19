@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import { NAV_GROUPS, NAV_ITEMS } from "./nav-items";
 
 describe("NAV_ITEMS", () => {
-  it("puts Businesses & Brands in the Data group right after Uploads & History", () => {
+  it("puts Businesses & Brands in the Data group right after Data Entry", () => {
     const i = NAV_ITEMS.findIndex((n) => n.href === "/businesses");
     expect(NAV_ITEMS[i]).toEqual({ href: "/businesses", label: "Businesses & Brands", group: "Data" });
-    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/uploads") + 1);
+    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/data-entry") + 1);
+  });
+
+  it("has no Uploads & History item: Upload History lives in Data Entry", () => {
+    expect(NAV_ITEMS.map((n) => n.href)).not.toContain("/uploads");
+    expect(NAV_ITEMS.filter((n) => n.group === "Data").map((n) => n.label)).toEqual(["Data Entry", "Businesses & Brands", "Settings"]);
   });
 
   it("shows the groups as Home, Results, Plan and money, then Data", () => {
