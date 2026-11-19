@@ -87,6 +87,18 @@ export function wrongBusinessMessage(owner: string, picked: string, cards: { own
   return `This file's brands belong to ${owner}, not ${picked}. ${use}`;
 }
 
+/** The slugs of the visible businesses with an active digital:<slug> key: the ones with their own Digital card (spec 3.3). */
+export function digitalCardSlugs(activeKeys: string[], businesses: { slug: string; hidden?: boolean }[]): Set<string> {
+  const visible = new Set(businesses.filter((b) => !b.hidden).map((b) => b.slug));
+  const out = new Set<string>();
+  for (const k of activeKeys) {
+    if (!k.startsWith("digital:")) continue;
+    const slug = k.slice("digital:".length);
+    if (visible.has(slug)) out.add(slug);
+  }
+  return out;
+}
+
 /** Spec 3.5: detection says the file is none of his files. */
 export function notThisFileMessage(card: UploadCard): string {
   return `This is not ${A_TYPE[card.type]} file. Expected: ${card.fileText}`;

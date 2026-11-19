@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FILE_TYPES } from "./file-types";
-import { ANOTHER_BUSINESS, OOH_MASTER_MESSAGE, UPLOAD_CARDS, cardForType, digitalCardTitle, notThisFileMessage, wrongBusinessMessage, wrongCardMessage, type CardKey } from "./cards";
+import { ANOTHER_BUSINESS, OOH_MASTER_MESSAGE, UPLOAD_CARDS, cardForType, digitalCardSlugs, digitalCardTitle, notThisFileMessage, wrongBusinessMessage, wrongCardMessage, type CardKey } from "./cards";
 
 const card = (key: CardKey) => UPLOAD_CARDS.find((c) => c.key === key)!;
 
@@ -80,5 +80,15 @@ describe("wrongBusinessMessage", () => {
   it("uses the same titles as the cards", () => {
     expect(digitalCardTitle("Salt")).toBe("Digital · Salt");
     expect(ANOTHER_BUSINESS).toBe("Digital · another business");
+  });
+});
+
+describe("digitalCardSlugs", () => {
+  const businesses = [{ slug: "salt", name: "Salt" }, { slug: "hygiene", hidden: true }, { slug: "lux" }].map((b) => ({ slug: b.slug, hidden: (b as { hidden?: boolean }).hidden }));
+  it("returns the visible businesses with an active digital:<slug> key", () => {
+    expect([...digitalCardSlugs(["digital:salt", "digital:hygiene", "digital:ghost", "atl:soap", "fy"], businesses)]).toEqual(["salt"]);
+  });
+  it("is empty when no business has Digital data", () => {
+    expect(digitalCardSlugs(["atl:soap", "digital"], businesses).size).toBe(0);
   });
 });

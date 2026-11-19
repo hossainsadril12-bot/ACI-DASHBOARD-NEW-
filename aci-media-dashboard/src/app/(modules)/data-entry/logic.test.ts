@@ -20,8 +20,8 @@ describe("rowStatus", () => {
   it("is ready when the file can be published", () => {
     expect(rowStatus(preview())).toBe("ready");
   });
-  it("needs a type when detection was unsure", () => {
-    expect(rowStatus(preview({ canPublish: false, type: null, blockReason: "Pick the file type." }))).toBe("needs-type");
+  it("is blocked when no type was found", () => {
+    expect(rowStatus(preview({ canPublish: false, type: null, blockReason: "Pick the file type." }))).toBe("blocked");
   });
   it("needs a business when the Digital file's business can't be worked out", () => {
     expect(rowStatus(preview({ type: "digital", canPublish: false, blockReason: "Pick the business.", needsBusiness: true }))).toBe("needs-business");

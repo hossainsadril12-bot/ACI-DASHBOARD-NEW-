@@ -4,15 +4,14 @@ import type { Decisions, FilePreview } from "@/server/ingest";
 
 // Pure helpers for the Data Entry page. Safe for the browser: types only from the server.
 
-export type RowStatus = "ready" | "needs-type" | "needs-business" | "new-business" | "new-category" | "blocked";
-export const NEEDS_TYPE = "Pick the file type.";
+export type RowStatus = "ready" | "needs-business" | "new-business" | "new-category" | "blocked";
 
 export function rowStatus(p: FilePreview): RowStatus {
   if (p.canPublish) return "ready";
   if (p.needsBusiness) return "needs-business";
   if (p.newCategory) return "new-category";
   if (p.newBusinesses.length > 0) return "new-business";
-  return p.blockReason === NEEDS_TYPE ? "needs-type" : "blocked";
+  return "blocked";
 }
 
 // ---- List decisions -------------------------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { checkXlsxBytes } from "@/lib/ingest/xlsx-check";
 import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
 import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
-import { cardForType, notThisFileMessage, wrongBusinessMessage, wrongCardMessage } from "@/lib/ingest/cards";
+import { cardForType, digitalCardSlugs, notThisFileMessage, wrongBusinessMessage, wrongCardMessage } from "@/lib/ingest/cards";
 import { READERS, READER_NEEDS_STYLES } from "@/lib/ingest/readers";
 import { NeedsBusinessError, NeedsCategoryError, ReadError, type ReaderContext, type ReadResult } from "@/lib/ingest/read-result";
 import type { BusinessSource } from "@/lib/ingest/brands";
@@ -423,9 +423,7 @@ async function prepareAll(store: Store, inputs: UploadInput[]): Promise<{ prepar
   const catalog = await getCatalog(store);
   const plan: SlugPlan = { business: new Map(), atl: new Map() };
   // The businesses with their own Digital card on the page (cardStates): visible, with an active digital:<slug> version.
-  const visible = new Set(catalog.businesses.filter((b) => !b.hidden).map((b) => b.slug));
-  const digitalCards = new Set((await listActiveVersions(store)).map((v) => v.datasetKey)
-    .filter((k) => k.startsWith("digital:")).map((k) => k.slice("digital:".length)).filter((slug) => visible.has(slug)));
+  const digitalCards = digitalCardSlugs((await listActiveVersions(store)).map((v) => v.datasetKey), catalog.businesses);
   const prepared = inputs.map((input, i) => prepareFile(input, i, catalog, plan, digitalCards));
 
   const counts = new Map<string, number>();

@@ -118,7 +118,11 @@ export function DataCard({ state, businesses, pickBusinesses }: {
       "/api/uploads/publish", uploadForm(files, typesOf(files), decisionsOf(drafts)),
     );
     setPublishing(false);
-    if (res.error) return setError(res.error);
+    if (res.error) {
+      // Refused (for example the data changed while uploading): show why, and preview again so the blocks match the server.
+      await check(files, drafts, true);
+      return setError(res.error);
+    }
     toast.success(publishedMessage(res.published ?? []));
     clear();
     router.refresh(); // the cards' Now showing lines

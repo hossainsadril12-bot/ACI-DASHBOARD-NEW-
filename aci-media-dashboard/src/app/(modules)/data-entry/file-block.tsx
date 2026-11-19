@@ -12,7 +12,6 @@ import { brandWarning, greyReason, rowStatus, underFileBusiness, type BusinessOp
 const AMBER = "bg-amber-100 text-amber-900";
 const CHIP: Record<RowStatus, { label: string; className: string }> = {
   ready: { label: "Ready", className: "bg-emerald-100 text-emerald-800" },
-  "needs-type": { label: "Needs a type", className: AMBER },
   "needs-business": { label: "Needs a business", className: AMBER },
   "new-business": { label: "New business", className: AMBER },
   "new-category": { label: "New category", className: AMBER },
@@ -54,7 +53,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
   );
   const status = p ? rowStatus(p) : null;
   const grey = p ? greyReason(p) : null;
-  const askBusiness = cardType === "digital" && !fixedBusiness;
+  const askBusiness = cardType === "digital" && (!fixedBusiness || !!p?.needsBusiness);
   const pick: BusinessPick = draft.business.value ? draft.business : { value: p?.business?.slug ?? "", newName: "" };
   // The picker's list; a business the server took from the brands stays shown even when it is not offered.
   const pickList = pickBusinesses && !pickBusinesses.some((b) => b.slug === pick.value)

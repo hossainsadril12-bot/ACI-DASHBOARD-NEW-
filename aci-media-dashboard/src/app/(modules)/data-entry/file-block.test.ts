@@ -43,6 +43,10 @@ describe("FileBlock", () => {
   it("never asks for the business on a business's own Digital card", () => {
     expect(render({ fixedBusiness: true })).not.toContain("Business for digital.xlsx");
   });
+  it("asks for the business on a business's own card when the server reports needsBusiness", () => {
+    const html = render({ fixedBusiness: true, preview: preview({ business: null, needsBusiness: true, canPublish: false, blockReason: "Pick the business." }) });
+    expect(html).toContain('aria-label="Business for digital.xlsx"');
+  });
   it("has no file type select: the card decides the type", () => {
     expect(render()).not.toContain("File type for");
     expect(render({ cardType: "atl", name: "atl.xlsx" })).not.toContain("Pick the file type");

@@ -1,4 +1,4 @@
-import { ANOTHER_BUSINESS, UPLOAD_CARDS, digitalCardTitle, type UploadCard } from "@/lib/ingest/cards";
+import { ANOTHER_BUSINESS, UPLOAD_CARDS, digitalCardSlugs, digitalCardTitle, type UploadCard } from "@/lib/ingest/cards";
 import type { ActiveVersion } from "@/store/datasets";
 import { emptyDraft, whenDhaka, type BusinessOption, type RowDraft } from "./logic";
 
@@ -37,10 +37,11 @@ export function cardStates(active: ActiveVersion[], businesses: { slug: string; 
     }
     if (card.type === "digital") {
       const visible = businesses.filter((b) => !b.hidden).sort((a, b) => a.name.localeCompare(b.name));
+      const withCard = digitalCardSlugs(active.map((v) => v.datasetKey), businesses);
       let own = 0;
       for (const b of visible) {
         const v = byKey.get(`digital:${b.slug}`);
-        if (!v) continue;
+        if (!v || !withCard.has(b.slug)) continue;
         own++;
         out.push({ id: `digital:${b.slug}`, card, title: digitalCardTitle(b.name), business: { slug: b.slug, name: b.name }, nowShowing: shown(v) });
       }
