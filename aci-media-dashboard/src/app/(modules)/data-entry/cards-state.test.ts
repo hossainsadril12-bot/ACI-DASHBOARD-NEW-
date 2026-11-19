@@ -10,15 +10,15 @@ const BIZ = [{ slug: "salt", name: "Salt" }, { slug: "hygiene", name: "Hygiene" 
 const nowOf = (states: ReturnType<typeof cardStates>) => Object.fromEntries(states.map((c) => [c.id, c.nowShowing]));
 
 describe("cardStates", () => {
-  it("shows the seven cards in order, with nothing uploaded yet, on an empty store", () => {
+  it("shows the seven cards in order, with nothing yet, on an empty store", () => {
     expect(cardStates([], BIZ).map((c) => [c.id, c.title, c.business, c.nowShowing])).toEqual([
-      ["atl", "ATL (TV) performance", null, "nothing uploaded yet"],
-      ["digital", "Digital performance", null, "nothing uploaded yet"],
-      ["fy", "FY media spend", null, "nothing uploaded yet"],
-      ["channel", "Channel cost", null, "nothing uploaded yet"],
-      ["billing", "Media billing", null, "nothing uploaded yet"],
-      ["calendar", "Monthly activity calendar", null, "nothing uploaded yet"],
-      ["billboard", "OOH / billboard bill status", null, "nothing uploaded yet"],
+      ["atl", "ATL (TV) performance", null, "nothing yet"],
+      ["digital", "Digital performance", null, "nothing yet"],
+      ["fy", "FY media spend", null, "nothing yet"],
+      ["channel", "Channel cost", null, "nothing yet"],
+      ["billing", "Media billing", null, "nothing yet"],
+      ["calendar", "Monthly activity calendar", null, "nothing yet"],
+      ["billboard", "OOH / billboard bill status", null, "nothing yet"],
     ]);
   });
 
@@ -32,7 +32,7 @@ describe("cardStates", () => {
     expect(states.filter((c) => c.card.key === "digital").map((c) => [c.id, c.title, c.business, c.nowShowing])).toEqual([
       ["digital:hygiene", "Digital · Hygiene", { slug: "hygiene", name: "Hygiene" }, "Hygiene.xlsx · 17 Nov 2026, 10:30"],
       ["digital:salt", "Digital · Salt", { slug: "salt", name: "Salt" }, "Salt.xlsx · 16 Nov 2026, 14:05"],
-      ["digital", "Digital · another business", null, "nothing uploaded yet"],
+      ["digital", "Digital · another business", null, "nothing yet"],
     ]);
     expect(states.map((c) => c.id)).toEqual(["atl", "digital:hygiene", "digital:salt", "digital", "fy", "channel", "billing", "calendar", "billboard"]);
   });
@@ -43,8 +43,8 @@ describe("cardStates", () => {
       v("atl:septex", "septex.xlsx", "2026-11-17T04:30:00Z"),
       v("calendar", "cal.xlsx", "2026-11-18T00:00:00Z"),
     ], []);
-    expect(two[0].nowShowing).toBe("2 categories · last upload septex.xlsx · 17 Nov 2026, 10:30");
-    expect(cardStates([v("atl:lux-soap", "lux.xlsx", "2026-11-16T08:05:00Z")], [])[0].nowShowing).toBe("1 category · last upload lux.xlsx · 16 Nov 2026, 14:05");
+    expect(two[0].nowShowing).toBe("2 categories · septex.xlsx · 17 Nov 2026, 10:30");
+    expect(cardStates([v("atl:lux-soap", "lux.xlsx", "2026-11-16T08:05:00Z")], [])[0].nowShowing).toBe("1 category · lux.xlsx · 16 Nov 2026, 14:05");
   });
 
   it("shows the file and time on the other cards, and Manual edit for a typed version", () => {
@@ -55,12 +55,12 @@ describe("cardStates", () => {
     ], []);
     expect(nowOf(states)).toEqual({
       atl: "1 category · Manual edit · 17 Nov 2026, 10:30",
-      digital: "nothing uploaded yet",
-      fy: "nothing uploaded yet",
-      channel: "nothing uploaded yet",
+      digital: "nothing yet",
+      fy: "nothing yet",
+      channel: "nothing yet",
       billing: "billing.xlsx · 16 Nov 2026, 14:05",
       calendar: "Manual edit · 17 Nov 2026, 10:30",
-      billboard: "nothing uploaded yet",
+      billboard: "nothing yet",
     });
   });
 });

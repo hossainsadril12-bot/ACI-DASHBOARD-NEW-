@@ -31,7 +31,7 @@ export type HistoryRow = {
   isActive: boolean;
 };
 
-/** The version a dataset shows now, for the Upload Data cards' "Now showing" line. */
+/** The version a dataset shows now, for the Upload Data cards' "In use" line. */
 export type ActiveVersion = { datasetKey: string; kind: string; label: string; fileName: string | null; createdAt: Date; source: DatasetSource };
 
 function checkInput(input: PublishInput): PublishInput {

@@ -84,7 +84,7 @@ test("2. real Billing file on its card: decide 13 new businesses with Add all as
   await publishBtn(page).click();
   await expect(page.getByText(`Published 1 file: ${BILLING_LABEL}`)).toBeVisible();
   await expect(checkDialog(page)).toHaveCount(0);
-  await expect(card(page, "billing")).toContainText(`Now showing: ${BILLING} · `);
+  await expect(card(page, "billing")).toContainText(`In use: ${BILLING} · `);
 
   const after = await listedBusinesses(page);
   expect([...after].sort()).toEqual(BILLING_NAMES.filter((x) => x !== "ACI Salt").sort()); // 12 businesses, no ACI Salt
@@ -93,7 +93,7 @@ test("2. real Billing file on its card: decide 13 new businesses with Add all as
   await expect(page.getByText("Also matches: ACI Salt")).toBeVisible();
 });
 
-test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, published, the ATL card's Now showing updates", async ({ page }) => {
+test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, published, the ATL card's In use updates", async ({ page }) => {
   const dialog = await uploadToCard(page, "atl", [luxSoap()]);
   const row = dialog.getByTestId("preview-row");
   await expect(row.getByText("New category", { exact: true })).toBeVisible();
@@ -114,7 +114,7 @@ test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, publi
   await publishBtn(page).click();
   await expect(page.getByText(/^Published 1 file: ATL, Lux Soap/)).toBeVisible();
   // The first ATL category in the fresh store.
-  await expect(card(page, "atl")).toContainText(/Now showing: 1 category · last upload lux-soap\.xlsx · \d{1,2} \w+ \d{4}, \d{2}:\d{2}/);
+  await expect(card(page, "atl")).toContainText(/In use: 1 category · lux-soap\.xlsx · \d{1,2} \w+ \d{4}, \d{2}:\d{2}/);
 
   await listedBusinesses(page);
   await page.getByRole("link", { name: "Toiletries", exact: true }).click();

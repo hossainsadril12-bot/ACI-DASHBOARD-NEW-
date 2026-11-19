@@ -7,16 +7,14 @@ import { cardStates } from "./cards-state";
 const [atl] = cardStates([], []);
 
 describe("CardFace", () => {
-  it("shows the title, the file it expects, what it updates and what it shows now", () => {
+  it("shows the title, one line with the file and the pages it updates, and what is in use", () => {
     const html = renderToStaticMarkup(createElement(CardFace, { state: atl }));
     expect(html).toContain('data-testid="upload-card"');
     expect(html).toContain('data-card-id="atl"');
     expect(html).toContain("ATL (TV) performance");
-    expect(html).toContain("one per TV category");
-    expect(html).toContain("Updates: ");
-    expect(html).toContain("ATL Media Performance, Home");
-    expect(html).toContain("Now showing: ");
-    expect(html).toContain("nothing uploaded yet");
+    expect(html).toContain("2026 Dash Board files, one per TV category. Updates ATL and Home.");
+    expect(html).toContain("In use: ");
+    expect(html).toContain("nothing yet");
   });
   it("has no button for a viewer, and shows the admin's button when given", () => {
     expect(renderToStaticMarkup(createElement(CardFace, { state: atl }))).not.toContain("<button");

@@ -6,42 +6,46 @@ import { FILE_TYPE_LABEL, type FileType } from "./file-types";
 export type CardKey = "atl" | "digital" | "fy" | "channel" | "billing" | "calendar" | "billboard";
 export type UploadCard = { key: CardKey; type: FileType; title: string; fileText: string; updates: string; multiple: boolean };
 
-/** In the order of his app. The OOH master sheet has no card: it is uploaded on the OOH page (Phase 4). */
+/**
+ * In the order of his app. The OOH master sheet has no card: it is uploaded on the OOH page (Phase 4).
+ * Short copy, like the import cards in HubSpot and Wix: fileText names the file in a few words, and the card reads
+ * updates as "Updates <updates>.".
+ */
 export const UPLOAD_CARDS: readonly UploadCard[] = [
   {
     key: "atl", type: "atl", title: "ATL (TV) performance", multiple: true,
-    fileText: 'A "2026 Dash Board" file, one per TV category. The category is read from its "Brand Name:" line. You can choose several files at once.',
-    updates: "ATL Media Performance, Home",
+    fileText: "2026 Dash Board files, one per TV category.",
+    updates: "ATL and Home",
   },
   {
     key: "digital", type: "digital", title: "Digital performance", multiple: false,
-    fileText: "The business's digital data file, with sheets Meta, YouTube and TikTok.",
-    updates: "Digital Media Performance, Influencer, Activity Calendar, Home",
+    fileText: "Digital file with Meta, YouTube and TikTok sheets.",
+    updates: "Digital, Influencer, Activity Calendar and Home",
   },
   {
     key: "fy", type: "fy", title: "FY media spend", multiple: false,
-    fileText: 'The CB Media Spent Report (its "Final Report" sheet).',
-    updates: "Home, FY Media Spend, Activity Calendar, OOH",
+    fileText: "CB Media Spent Report.",
+    updates: "Home, FY Spend, Activity Calendar and OOH",
   },
   {
     key: "channel", type: "channel", title: "Channel cost", multiple: false,
-    fileText: "The Channel Cost file, with sheets Electronic, Digital and Press & Radio.",
-    updates: "Channel Wise Spend",
+    fileText: "Channel Cost file.",
+    updates: "Channel Spend",
   },
   {
     key: "billing", type: "billing", title: "Media billing", multiple: false,
-    fileText: 'Dashboard Media Final, sheet "Master".',
-    updates: "Billing Overview, Vendor Statement, Billing Data Sheet",
+    fileText: "Dashboard Media Final file.",
+    updates: "Billing and Vendor Statement",
   },
   {
     key: "calendar", type: "calendar", title: "Monthly activity calendar", multiple: false,
-    fileText: "The All Activity Calendar file, one sheet per month.",
-    updates: "Monthly Activity Calendar",
+    fileText: "All Activity Calendar file.",
+    updates: "Activity Calendar",
   },
   {
     key: "billboard", type: "billboard", title: "OOH / billboard bill status", multiple: false,
-    fileText: "The Billboard Billing Status file.",
-    updates: "OOH Media Bill Details",
+    fileText: "Billboard Billing Status file.",
+    updates: "OOH Bills",
   },
 ];
 
