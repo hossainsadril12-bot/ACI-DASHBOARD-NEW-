@@ -4,6 +4,7 @@ import { checkXlsxBytes } from "@/lib/ingest/xlsx-check";
 import { openWorkbook, type Workbook } from "@/lib/ingest/workbook";
 import { detectFileType, type Detection } from "@/lib/ingest/detect";
 import { FILE_TYPE_LABEL, isFileType, type FileType } from "@/lib/ingest/file-types";
+import { cardForType, notThisFileMessage, wrongCardMessage } from "@/lib/ingest/cards";
 import { READERS, READER_NEEDS_STYLES } from "@/lib/ingest/readers";
 import { NeedsBusinessError, NeedsCategoryError, ReadError, type ReaderContext, type ReadResult } from "@/lib/ingest/read-result";
 import type { BusinessSource } from "@/lib/ingest/brands";
@@ -162,6 +163,20 @@ function categorySuggestion(title: string, rows: string[]) {
   };
 }
 
+/**
+ * The safety check (spec 3.5) for a file sent with a type, the card it was chosen on; null reads it as that type.
+ * Sure of another type: blocked, naming the card to use. None of his files: blocked, naming what the card expects.
+ * Unsure: read as the card's type, and the reader's own errors decide.
+ */
+function wrongFile(chosen: FileType, detection: Detection): string | null {
+  const card = cardForType(chosen);
+  if (detection.status === "sure" && detection.type !== chosen) {
+    return card ? wrongCardMessage(card, detection.type) : `This looks like ${FILE_TYPE_LABEL[detection.type]}, not ${FILE_TYPE_LABEL[chosen]}.`;
+  }
+  if (detection.status === "none" && card) return notThisFileMessage(card);
+  return null;
+}
+
 /** Reads one file and checks its names against the catalog snapshot. No store, no network; only the batch's slug plan is shared. */
 function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: SlugPlan): Prepared {
   const fc = new FileChanges(catalog, plan);
@@ -205,15 +220,14 @@ function prepareFile(input: UploadInput, index: number, catalog: Catalog, plan: 
   }
   preview.detection = detection;
 
-  // Spec p2-04: a file that matches none of his usual files is refused, whatever type the admin picks.
-  if (detection.status === "none") return block("This is not one of the usual Media Mind files.", detection.lookedFor);
   const chosen = isFileType(input.chosenType) ? input.chosenType : null; // an unknown override is ignored
+  const wrong = chosen ? wrongFile(chosen, detection) : null;
+  if (wrong) return block(wrong);
+  // Spec p2-04: a file that matches none of his usual files is refused.
+  if (detection.status === "none") return block("This is not one of the usual Media Mind files.", detection.lookedFor);
   const type: FileType | null = chosen ?? (detection.status === "sure" ? detection.type : null);
   if (!type) return block("Pick the file type.", null);
   preview.type = type;
-  if (detection.status === "sure" && detection.type !== type) {
-    preview.warnings.push(`Detected as ${FILE_TYPE_LABEL[detection.type]}, but you picked ${FILE_TYPE_LABEL[type]}.`);
-  }
 
   const reader = Object.hasOwn(READERS, type) ? READERS[type] : undefined;
   if (!reader) {

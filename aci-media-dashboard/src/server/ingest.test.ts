@@ -8,6 +8,8 @@ import { ValidationError } from "./errors";
 import { ReadError } from "@/lib/ingest/read-result";
 import { makeXlsx, clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { NOT_USUAL_FILE } from "@/lib/ingest/detect";
+import { OOH_MASTER_MESSAGE, cardForType, notThisFileMessage, wrongCardMessage } from "@/lib/ingest/cards";
+import type { FileType } from "@/lib/ingest/file-types";
 import type { AtlCategory } from "@/lib/ingest/readers/atl";
 import type { Store } from "@/store/client";
 import { DecisionsSchema, previewUploads, publishUploads, type Decisions, type FilePreview, type UploadInput } from "./ingest";
@@ -96,10 +98,40 @@ describe("previewUploads", () => {
     expect(p.warnings).toContain("This is the same file as the one in use.");
     expect(p.canPublish).toBe(true);
   });
-  it("warns when the admin picks a type different from a sure detection", async () => {
-    const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook(), "channel")]);
-    expect(p.warnings).toContain("Detected as Activity Calendar, but you picked Channel Cost.");
-    expect(p.canPublish).toBe(false);
+  it("blocks a file sent for another card when detection is sure, naming the card to use", async () => {
+    const store = await calStore();
+    const msg = wrongCardMessage(cardForType("channel")!, "calendar");
+    expect(msg).toBe("This looks like an Activity Calendar file, not Channel Cost. Close this and use the Monthly activity calendar card.");
+    const [p] = await previewUploads(store, [file("cal.xlsx", calendarBook(), "channel")]);
+    expect(p).toMatchObject({ canPublish: false, type: null, label: null, datasetKey: null, blockReason: msg, errors: [msg] });
+    expect(p.warnings.join(" ")).not.toMatch(/Detected as/);
+    await expect(publishUploads(store, [file("cal.xlsx", calendarBook(), "channel")])).rejects.toThrow(new ValidationError(`cal.xlsx: ${msg}`));
+    expect(await listHistory(store)).toEqual([]);
+  });
+  it("reads a file sent for its own card as usual, with no detection warning", async () => {
+    const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook(), "calendar")]);
+    expect(p).toMatchObject({ type: "calendar", canPublish: true, errors: [] });
+    expect(p.warnings.join(" ")).not.toMatch(/Detected as/);
+  });
+  it("reads an unsure file as the card's type, and the reader's own errors decide", async () => {
+    const [p] = await previewUploads(await calStore(), [file("c.xlsx", calendarBook("Nov'26", false), "channel")]);
+    expect(p.detection).toEqual({ status: "unsure", candidates: ["calendar"] });
+    expect(p).toMatchObject({ type: "channel", canPublish: false });
+    expect(p.errors).toHaveLength(1);
+    expect(p.errors[0]).not.toMatch(/looks like|This is not/);
+  });
+  it("blocks the OOH master sheet on any card, saying where it is uploaded", async () => {
+    const ooh = makeXlsx([{ name: "Sites", rows: [["SL", "OOH Location", "Latitude", "Longitude"], [1, "Gulshan 1", 23.78, 90.41]] }]);
+    for (const t of ["billboard", "calendar"] as const) {
+      const [p] = await previewUploads(await createTestStore(), [file("ooh.xlsx", ooh, t)]);
+      expect(p, t).toMatchObject({ canPublish: false, type: null, blockReason: OOH_MASTER_MESSAGE, errors: [OOH_MASTER_MESSAGE] });
+    }
+    const [noCard] = await previewUploads(await createTestStore(), [file("ooh.xlsx", ooh)]);
+    expect(noCard.type).toBe("ooh-sites"); // with no card, the API reads it as before
+  });
+  it("still blocks a sure mismatch for a type with no card (the OOH master sheet, API only)", async () => {
+    const [p] = await previewUploads(await calStore(), [file("cal.xlsx", calendarBook(), "ooh-sites")]);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: "This looks like Activity Calendar, not OOH master sheet." });
   });
   it("ignores an unknown type override and falls back to detection", async () => {
     const store = await calStore();
@@ -114,14 +146,18 @@ describe("previewUploads", () => {
     const [p] = await previewUploads(await createTestStore(), [file("x.xlsx", makeXlsx([{ name: "S", rows: [["a"]] }]), "constructor" as UploadInput["chosenType"])]);
     expect(p).toMatchObject({ canPublish: false, type: null, blockReason: "This is not one of the usual Media Mind files." });
   });
-  it("keeps a workbook that is none of his files blocked even when the admin picks a type", async () => {
+  it("blocks a workbook that is none of his files on any card, saying what the card expects", async () => {
     // Calendar layout, but no month in the sheet name or A1 alone, so detection says none; the calendar reader could still read it.
     const book = makeXlsx([{ name: "26", rows: [["CB Media Activity Nov"], ["Business", "Brand", "Media"], [null, null, "TV", "Total"], ["T", "Savlon Soap", 1, 1], ["Grand Total", null, 1, 1]] }]);
     const store = await createTestStore();
+    const msg = notThisFileMessage(cardForType("calendar")!);
     const [p] = await previewUploads(store, [file("x.xlsx", book, "calendar")]);
     expect(p.detection?.status).toBe("none");
-    expect(p).toMatchObject({ canPublish: false, blockReason: "This is not one of the usual Media Mind files.", errors: [NOT_USUAL_FILE] });
-    await expect(publishUploads(store, [file("x.xlsx", book, "calendar")])).rejects.toThrow(/not one of the usual Media Mind files/);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: msg, errors: [msg] });
+    await expect(publishUploads(store, [file("x.xlsx", book, "calendar")])).rejects.toThrow(new ValidationError(`x.xlsx: ${msg}`));
+    // With no card (the API without type-<i>), the old message stays.
+    const [noCard] = await previewUploads(store, [file("x.xlsx", book)]);
+    expect(noCard).toMatchObject({ canPublish: false, blockReason: "This is not one of the usual Media Mind files.", errors: [NOT_USUAL_FILE] });
   });
   it("only warns about the file in use on publishable previews", async () => {
     const store = await calStore();
@@ -745,5 +781,30 @@ describe.skipIf(!hasClientFiles)("the real new-type files in the service", () =>
     expect(res.published.map((p) => p.datasetKey.split(":")[0]).sort()).toEqual(["billboard", "billing", "channel", "digital", "fy", "ooh-sites"]);
     const history = await listHistory(store);
     for (const p of res.published) expect(history.map((h) => h.label), p.datasetKey).toContain(p.label);
+  });
+});
+
+describe.skipIf(!hasClientFiles)("his real files on the wrong card", () => {
+  // [file, the type detection is sure of, a card of another type]
+  const CASES: [string, FileType, FileType][] = [
+    ["atl/1._2026_Dash_Board_-_Savlon_Soap_-_Oct26.xlsx", "atl", "digital"],
+    ["Hygiene_Business.xlsx", "digital", "atl"],
+    ["CB_media_Spent_Report_2026-27_V4_-_Oct_26_Updated_27.10.26.xlsx", "fy", "channel"],
+    ["Channel_Cost_26-27_Nov26_Updated_V5_11.11.26.xlsx", "channel", "billing"],
+    ["Dashboard_Media_Final_Fixed_26th_October_2026.xlsx", "billing", "calendar"],
+    ["All_Activity_Calender_FY_26-27.xlsx", "calendar", "billboard"],
+    ["Billboard_Billing_Status_Updated_10th_Nov26.xlsx", "billboard", "fy"],
+    ["ACI_CB_Media_Billboard_Master_Sheet_02_Nov_Updated_2026.xlsx", "ooh-sites", "billboard"],
+  ];
+  it.each(CASES)("%s (%s) on the %s card is blocked, naming the card to use", async (rel, detected, cardType) => {
+    const [p] = await previewUploads(await createTestStore(), [file("f.xlsx", clientFile(rel), cardType)]);
+    expect(p.detection).toEqual({ status: "sure", type: detected });
+    const msg = wrongCardMessage(cardForType(cardType)!, detected);
+    expect(p).toMatchObject({ canPublish: false, type: null, blockReason: msg, errors: [msg] });
+  });
+  it.each(CASES.filter(([, detected]) => detected !== "ooh-sites"))("%s is read on its own (%s) card", async (rel, detected) => {
+    const [p] = await previewUploads(await createTestStore(), [file("f.xlsx", clientFile(rel), detected)]);
+    expect(p.type).toBe(detected);
+    expect(p.errors).toEqual([]);
   });
 });
