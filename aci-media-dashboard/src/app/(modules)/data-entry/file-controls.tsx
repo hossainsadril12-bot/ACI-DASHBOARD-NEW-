@@ -54,7 +54,6 @@ const ROW = "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2
 /** The tag column, last on the row so the tags line up on the right. */
 const TAG_CELL = "order-2 flex shrink-0 justify-end md:order-last";
 
-/** A row's name, its tag, and the list's name when it differs ("= Salt"). */
 /** The name (and "= <list name>"), then the tag on the right. Used inside a ROW. */
 function NameTag({ name, tag, green, listName }: { name: string; tag: string; green: boolean; listName?: string | null }) {
   return (
@@ -177,13 +176,13 @@ export function NewBrands({ draft, known, businesses, disabled, fileBusiness, on
           if (!brandMatches(b, query)) return null;
           const business = b.business !== null ? (fileBusiness ?? b.business) : null;
           return (
-            <li key={b.name} className={`${ROW} gap-y-2 ${b.ticked ? GREEN_ROW : ORANGE_ROW}`}>
+            <li key={b.name} className={`${ROW} ${b.ticked ? GREEN_ROW : ORANGE_ROW}`}>
               <label className="order-1 flex min-w-0 flex-1 items-center gap-2 text-sm text-gray-900 md:w-40 md:flex-none">
                 <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
                   onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />
                 <span className="min-w-0 truncate" title={b.name}>{b.name}</span>
               </label>
-              <div className={`${TAG_CELL} md:w-16`}>
+              <div className={`${TAG_CELL} md:w-20`}>
                 <Badge className={b.ticked ? GREEN_TAG : ORANGE_TAG}>{b.ticked ? "Will add" : "New"}</Badge>
               </div>
               <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled}
