@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { FileType } from "@/lib/ingest/file-types";
 import type { FilePreview } from "@/server/ingest";
 import { BusinessSelect, NewBrands, NewBusinesses, NewCategory, Panel } from "./file-controls";
-import { brandWarning, greyReason, rowStatus, underFileBusiness, type BusinessOption, type BusinessPick, type RowDraft, type RowStatus } from "./logic";
+import { brandWarning, greyReason, knownBrandLine, rowStatus, underFileBusiness, type BusinessOption, type BusinessPick, type RowDraft, type RowStatus } from "./logic";
 
 const AMBER = "bg-amber-100 text-amber-900";
 const CHIP: Record<RowStatus, { label: string; className: string }> = {
@@ -48,6 +48,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
   const [lastCategory, setLastCategory] = useState<RowDraft["atl"]>(null); // the picks before Change, to start the block from
   const [reviewing, setReviewing] = useState(false); // the Review and add panel is open
   const brandLine = p ? brandWarning(p) : null;
+  const knownLine = p ? knownBrandLine(p) : null; // green, next to the orange brand line; not a warning
   const reviewButton = (
     <Button variant="outline" size="xs" disabled={disabled} className="ml-2 align-middle" onClick={() => setReviewing(true)}>Review and add</Button>
   );
@@ -96,6 +97,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
               <ul className="list-disc space-y-0.5 pl-5 text-amber-800">
                 {p.warnings.map((m, k) => <li key={k}>{m}{m === brandLine && !reviewing && reviewButton}</li>)}
               </ul>
+              {knownLine && brandLine && p.warnings.includes(brandLine) &&<p className="text-emerald-700">{knownLine}</p>}
             </div>
           )}
           {grey && <p className="text-gray-500">{grey}</p>}
@@ -103,7 +105,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
       )}
       {brandLine && !reviewing && !p?.warnings.includes(brandLine) && <div className="md:pl-7">{reviewButton}</div>}
       {p && reviewing && (
-        <NewBrands draft={draft} businesses={businesses} disabled={disabled}
+        <NewBrands draft={draft} known={p.knownBrands} businesses={businesses} disabled={disabled}
           fileBusiness={underFileBusiness(draft) ? (p.business?.name ?? null) : null}
           onDone={(brands) => { setReviewing(false); onDraft({ ...draft, brands }); }} />
       )}
