@@ -175,12 +175,12 @@ export function NewBrands({ draft, known, businesses, disabled, fileBusiness, on
                 <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
                   onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />
                 <span className="min-w-0 truncate" title={b.name}>{b.name}</span>
-                <Badge className={b.ticked ? GREEN_TAG : ORANGE_TAG}>{b.ticked ? "Will add" : "New"}</Badge>
+                <Badge className={`shrink-0 ${b.ticked ? GREEN_TAG : ORANGE_TAG}`}>{b.ticked ? "Will add" : "New"}</Badge>
               </label>
-              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="md:flex-1"
+              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="md:min-w-40 md:flex-1"
                 onChange={(e) => set(k, { fullName: e.target.value })} />
               {business !== null ? (
-                <p className="min-w-0 truncate text-sm text-gray-500 md:w-56" title={business}>{business}</p>
+                <p className="min-w-0 truncate text-sm text-gray-500 md:w-28 md:shrink-0" title={business}>{business}</p>
               ) : (
                 <select aria-label={`Business for ${b.name}`} value={brandPickValue(b.pick, draft)} disabled={disabled} className={SELECT}
                   onChange={(e) => set(k, { pick: e.target.value })}>
@@ -195,7 +195,7 @@ export function NewBrands({ draft, known, businesses, disabled, fileBusiness, on
       </ul>
       {knownShown.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-gray-500">Already on your list ({knownShown.length})</p>
+          <p className="text-xs font-medium text-gray-500">Already on your list ({known.length})</p>
           <ul className="space-y-2">
             {knownShown.map((b) => (
               <li key={b.name} className={`${ROW} ${GREEN_ROW}`}>

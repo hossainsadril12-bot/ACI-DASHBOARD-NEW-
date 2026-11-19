@@ -97,7 +97,7 @@ export function FileBlock({ name, cardType, fixedBusiness, preview: p, draft, bu
               <ul className="list-disc space-y-0.5 pl-5 text-amber-800">
                 {p.warnings.map((m, k) => <li key={k}>{m}{m === brandLine && !reviewing && reviewButton}</li>)}
               </ul>
-              {knownLine && brandLine && p.warnings.includes(brandLine) &&<p className="text-emerald-700">{knownLine}</p>}
+              {knownLine && brandLine && p.warnings.includes(brandLine) && <p className="text-emerald-700">{knownLine}</p>}
             </div>
           )}
           {grey && <p className="text-gray-500">{grey}</p>}

@@ -238,7 +238,7 @@ export function knownBrandLine(p: FilePreview): string | null {
 /** The list's name to show after a known name ("= Salt"), or null when it is the file's name in another case or spacing. */
 export const otherListName = (k: { name: string; listName: string }) => (same(k.name, k.listName) ? null : k.listName);
 
-export type BusinessRow ={ name: string; state: "new" | "decided" | "known"; listName: string | null };
+export type BusinessRow = { name: string; state: "new" | "decided" | "known"; listName: string | null };
 
 /**
  * The Businesses in this file rows: undecided names, then decided ones, then the ones already on the list.
