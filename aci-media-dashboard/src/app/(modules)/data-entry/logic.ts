@@ -241,7 +241,6 @@ export function canPublishAll(previews: FilePreview[] | null, fileCount: number)
 }
 
 const files = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
-export const publishButtonLabel = (n: number) => `Publish ${files(n)}`;
 export const publishedMessage = (published: { label: string }[]) =>
   `Published ${files(published.length)}: ${published.map((p) => p.label).join("; ")}`;
 

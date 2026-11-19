@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionsSchema, type FilePreview } from "@/server/ingest";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import {
-  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads, publishButtonLabel,
+  MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, canPublishAll, categoryDefaults, emptyDraft, greyReason, pickValue, postUploads,
   publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, tickShown, toDecisions, uploadForm, whenDhaka,
   type RowDraft,
 } from "./logic";
@@ -328,10 +328,6 @@ describe("texts", () => {
   it("names the files that were published", () => {
     expect(publishedMessage([{ label: "ATL, Savlon Soap" }, { label: "Activity Calendar" }])).toBe("Published 2 files: ATL, Savlon Soap; Activity Calendar");
     expect(publishedMessage([{ label: "Activity Calendar" }])).toBe("Published 1 file: Activity Calendar");
-  });
-  it("counts the files on the publish button", () => {
-    expect(publishButtonLabel(3)).toBe("Publish 3 files");
-    expect(publishButtonLabel(1)).toBe("Publish 1 file");
   });
   it("shows the time in Dhaka", () => {
     expect(whenDhaka(new Date("2026-11-16T08:05:00Z"))).toBe("16 Nov 2026, 14:05");

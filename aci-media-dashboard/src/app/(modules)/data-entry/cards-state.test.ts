@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveVersion } from "@/store/datasets";
-import { cardStates } from "./cards-state";
+import { cardStates, startDraft } from "./cards-state";
+import { emptyDraft, toDecisions } from "./logic";
 
 const v = (datasetKey: string, fileName: string | null, iso: string, source: ActiveVersion["source"] = "upload"): ActiveVersion => ({
   datasetKey, kind: datasetKey.split(":")[0], label: datasetKey, fileName, createdAt: new Date(iso), source,
@@ -61,5 +62,16 @@ describe("cardStates", () => {
       calendar: "Manual edit · 17 Nov 2026, 10:30",
       billboard: "nothing uploaded yet",
     });
+  });
+});
+
+describe("startDraft", () => {
+  it("sends the business of a business's own Digital card, and nothing on the other cards", () => {
+    const [atl, hygiene, other] = cardStates([v("digital:hygiene", "h.xlsx", "2026-11-17T04:30:00Z")], BIZ);
+    expect(hygiene.id).toBe("digital:hygiene");
+    expect(startDraft(hygiene).business).toEqual({ value: "hygiene", newName: "" });
+    expect(toDecisions(startDraft(hygiene), BIZ)).toEqual({ business: "hygiene", businesses: [], brands: [] });
+    expect(startDraft(other)).toEqual(emptyDraft());
+    expect(startDraft(atl)).toEqual(emptyDraft());
   });
 });

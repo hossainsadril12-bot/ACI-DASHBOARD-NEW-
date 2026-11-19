@@ -1,6 +1,6 @@
 import { UPLOAD_CARDS, type UploadCard } from "@/lib/ingest/cards";
 import type { ActiveVersion } from "@/store/datasets";
-import { whenDhaka } from "./logic";
+import { emptyDraft, whenDhaka, type RowDraft } from "./logic";
 
 // Pure: which cards Upload Data shows (spec 3.2, 3.3) and what each one shows now.
 
@@ -53,4 +53,9 @@ export function cardStates(active: ActiveVersion[], businesses: { slug: string; 
     out.push({ id: card.key, card, title: card.title, business: null, nowShowing: v ? shown(v) : NOTHING_YET });
   }
   return out;
+}
+
+/** A new file's draft on this card: a business's own Digital card sends that business, so it is never asked. */
+export function startDraft(state: CardState): RowDraft {
+  return state.business ? { ...emptyDraft(), business: { value: state.business.slug, newName: "" } } : emptyDraft();
 }
