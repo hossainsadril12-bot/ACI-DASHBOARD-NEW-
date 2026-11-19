@@ -1,10 +1,10 @@
 import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { hasClientFiles } from "../src/lib/ingest/test-workbooks";
-import { addFiles, fileOf, openUpload, pickBusiness, publishBtn, ready, settled, sheetFile, type Upload } from "./helpers";
+import { card, checkDialog, fileOf, pickBusiness, publishBtn, ready, settled, sheetFile, uploadToCard, type Upload } from "./helpers";
 
-// Phase 2 Part C user flow: the business, brand and ATL category lists start empty and uploads ask about new names.
-// Runs first, as the "fresh-store" project (playwright.config.ts), so the shared temp store is still empty.
-// Serial: later paths build on the businesses earlier ones add.
+// Phase 2 Part C user flow, through the Upload Data cards (Part D): the business, brand and ATL category lists start
+// empty and uploads ask about new names. Runs first, as the "fresh-store" project (playwright.config.ts), so the
+// shared temp store is still empty. Serial: later paths build on the businesses earlier ones add.
 test.describe.configure({ mode: "serial" });
 
 const BILLING = "Dashboard_Media_Final_Fixed_26th_October_2026.xlsx";
@@ -42,7 +42,7 @@ const businessRow = (page: Page, name: string) =>
 
 const decision = (row: Locator, name: string) => row.getByLabel(`Decision for ${name}`, { exact: true });
 
-/** The names a row's New business block asks about, from its "Decision for <name>" selects. */
+/** The names a file's New business block asks about, from its "Decision for <name>" selects. */
 const askedNames = async (row: Locator) => {
   const labels = await row.getByLabel(/^Decision for /).evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""));
   return labels.map((l) => l.replace(/^Decision for /, ""));
@@ -55,14 +55,13 @@ test("1. empty list: /businesses shows the empty state", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Add business" })).toBeVisible();
 });
 
-test("2. real Billing file: decide 13 new businesses, ACI Salt same as Salt, publish, the list shows them", async ({ page }) => {
+test("2. real Billing file on its card: decide 13 new businesses with Add all as new, ACI Salt same as Salt, publish", async ({ page }) => {
   test.skip(!hasClientFiles, "client files not present");
   expect(await listedBusinesses(page)).toEqual([]); // path 1's empty start
 
-  await openUpload(page);
-  await addFiles(page, [fileOf(BILLING)]);
-  const row = page.getByTestId("preview-row");
-  await expect(row).toHaveCount(1);
+  const dialog = await uploadToCard(page, "billing", [fileOf(BILLING)]);
+  await expect(dialog).toContainText("Check before publishing · Media billing");
+  const row = dialog.getByTestId("preview-row");
   await expect(newBusinessChip(row)).toBeVisible();
   await expect(row.getByText("New businesses in this file")).toBeVisible();
   expect((await askedNames(row)).sort()).toEqual([...BILLING_NAMES].sort());
@@ -73,7 +72,7 @@ test("2. real Billing file: decide 13 new businesses, ACI Salt same as Salt, pub
   await settled(page);
   for (const n of BILLING_NAMES) await expect(decision(row, n), n).toHaveValue("add");
 
-  // ACI Salt is the same business as Salt, which this row adds.
+  // ACI Salt is the same business as Salt, which this file adds.
   await decision(row, "ACI Salt").selectOption({ label: "Same as Salt" });
   await expect(decision(row, "ACI Salt")).toHaveValue("same:new:Salt");
   await settled(page);
@@ -84,6 +83,8 @@ test("2. real Billing file: decide 13 new businesses, ACI Salt same as Salt, pub
   await expect(publishBtn(page)).toBeEnabled();
   await publishBtn(page).click();
   await expect(page.getByText(`Published 1 file: ${BILLING_LABEL}`)).toBeVisible();
+  await expect(checkDialog(page)).toHaveCount(0);
+  await expect(card(page, "billing")).toContainText(`Now showing: ${BILLING} · `);
 
   const after = await listedBusinesses(page);
   expect([...after].sort()).toEqual(BILLING_NAMES.filter((x) => x !== "ACI Salt").sort()); // 12 businesses, no ACI Salt
@@ -92,10 +93,9 @@ test("2. real Billing file: decide 13 new businesses, ACI Salt same as Salt, pub
   await expect(page.getByText("Also matches: ACI Salt")).toBeVisible();
 });
 
-test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, published, shown on the Toiletries page", async ({ page }) => {
-  await openUpload(page);
-  await addFiles(page, [luxSoap()]);
-  const row = page.getByTestId("preview-row");
+test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, published, the ATL card's Now showing updates", async ({ page }) => {
+  const dialog = await uploadToCard(page, "atl", [luxSoap()]);
+  const row = dialog.getByTestId("preview-row");
   await expect(row.getByText("New category", { exact: true })).toBeVisible();
   await expect(row.getByText("New category found: Lux Soap")).toBeVisible();
   await expect(publishBtn(page)).toBeDisabled();
@@ -113,6 +113,8 @@ test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, publi
   await settled(page);
   await publishBtn(page).click();
   await expect(page.getByText(/^Published 1 file: ATL, Lux Soap/)).toBeVisible();
+  // The first ATL category in the fresh store.
+  await expect(card(page, "atl")).toContainText(/Now showing: 1 category · last upload lux-soap\.xlsx · \d{1,2} \w+ \d{4}, \d{2}:\d{2}/);
 
   await listedBusinesses(page);
   await page.getByRole("link", { name: "Toiletries", exact: true }).click();
@@ -126,9 +128,8 @@ test("3. a new ATL category: Lux Soap under Toiletries with our brand Lux, publi
 test("4. Review and add: Savlon HW is added as Savlon Handwash, and the same file then asks nothing", async ({ page }) => {
   const BIZ = "E2E Toiletries Four";
   const file = calendar("cal-review.xlsx", [[BIZ, "Savlon HW"]]);
-  await openUpload(page);
-  await addFiles(page, [file]);
-  const row = page.getByTestId("preview-row");
+  const dialog = await uploadToCard(page, "calendar", [file]);
+  const row = dialog.getByTestId("preview-row");
   await expect(newBusinessChip(row)).toBeVisible();
   await expect(row.getByText("New businesses in this file")).toBeVisible();
   await expect(row.getByRole("button", { name: "Add all as new" })).toHaveCount(0); // one name only
@@ -155,8 +156,7 @@ test("4. Review and add: Savlon HW is added as Savlon Handwash, and the same fil
   await expect(brand.locator("td").nth(1)).toHaveText("Savlon HW"); // the Also matches column
 
   // The same file again: the business and the brand are both on the list now.
-  await openUpload(page);
-  await addFiles(page, [file]);
+  await uploadToCard(page, "calendar", [file]);
   await expect(ready(row)).toBeVisible();
   await expect(brandWarning(row)).toHaveCount(0);
   await expect(row.getByText("New businesses in this file")).toHaveCount(0);
@@ -167,20 +167,18 @@ test("5. Cancel after deciding a new business changes nothing on the list", asyn
   const BIZ = "E2E Cancel Co";
   const before = await listedBusinesses(page);
   const file = calendar("cal-cancel.xlsx", [[BIZ, "E2E Cancel Brand"]]);
-  await openUpload(page);
-  await addFiles(page, [file]);
-  const row = page.getByTestId("preview-row");
+  const dialog = await uploadToCard(page, "calendar", [file]);
+  const row = dialog.getByTestId("preview-row");
   await expect(newBusinessChip(row)).toBeVisible();
   await decision(row, BIZ).selectOption({ label: "Add as new" });
   await expect(ready(row)).toBeVisible();
   await settled(page);
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByTestId("preview-row")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(checkDialog(page)).toHaveCount(0);
 
   expect(await listedBusinesses(page)).toEqual(before);
   // The decision was dropped too: the same file asks again.
-  await openUpload(page);
-  await addFiles(page, [file]);
+  await uploadToCard(page, "calendar", [file]);
   await expect(newBusinessChip(row)).toBeVisible();
   await expect(decision(row, BIZ)).toHaveValue("");
 });
@@ -279,9 +277,8 @@ test.describe("7. phone width (375 px)", () => {
 
   test("the New business block fits with no side scroll", async ({ page }) => {
     const names: [string, string][] = [["E2E Phone Business", "E2E Phone Brand"], ["E2E Phone Business With A Rather Long Name For A Small Screen", "E2E Phone Brand Two"]];
-    await openUpload(page);
-    await addFiles(page, [calendar("cal-phone-with-a-long-file-name.xlsx", names)]);
-    const row = page.getByTestId("preview-row");
+    const dialog = await uploadToCard(page, "calendar", [calendar("cal-phone-with-a-long-file-name.xlsx", names)]);
+    const row = dialog.getByTestId("preview-row");
     await expect(row.getByText("New businesses in this file")).toBeVisible();
     await expect(row.getByRole("button", { name: "Add all as new" })).toBeVisible();
     expect(await noSideScroll(page)).toBeLessThanOrEqual(375);
