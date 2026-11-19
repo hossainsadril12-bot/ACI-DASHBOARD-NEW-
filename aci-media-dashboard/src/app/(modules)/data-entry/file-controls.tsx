@@ -13,7 +13,8 @@ import {
 
 // The Part C questions for one file (business, new businesses, new category, new brands). Moved from upload-box.tsx unchanged.
 
-const SELECT = "h-9 w-full min-w-0 max-w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm md:w-56";
+const SELECT_BASE = "h-9 w-full min-w-0 max-w-full shrink-0 rounded-lg border border-gray-300 bg-white px-2 text-sm";
+const SELECT = `${SELECT_BASE} md:w-56`;
 
 /** A grey box under the row for list questions, lined up with the row's controls. */
 export function Panel({ children }: { children: ReactNode }) {
@@ -48,16 +49,22 @@ const GREEN_ROW = "bg-emerald-50";
 const ORANGE_ROW = "bg-orange-50";
 const GREEN_TAG = "bg-emerald-100 text-emerald-800";
 const ORANGE_TAG = "bg-orange-100 text-orange-800";
-const ROW = "flex min-w-0 flex-col gap-1 rounded-md px-2 py-1.5 md:flex-row md:items-center md:gap-3";
+/** A list row: the name on the left, the tag in a column on the right; a phone puts a select on its own line below. */
+const ROW = "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1.5 md:flex-nowrap";
+/** The tag column, last on the row so the tags line up on the right. */
+const TAG_CELL = "order-2 flex shrink-0 justify-end md:order-last";
 
 /** A row's name, its tag, and the list's name when it differs ("= Salt"). */
+/** The name (and "= <list name>"), then the tag on the right. Used inside a ROW. */
 function NameTag({ name, tag, green, listName }: { name: string; tag: string; green: boolean; listName?: string | null }) {
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <p className="min-w-0 truncate text-sm text-gray-900" title={name}>{name}</p>
-      <Badge className={green ? GREEN_TAG : ORANGE_TAG}>{tag}</Badge>
-      {listName && <p className="min-w-0 truncate text-sm text-gray-500" title={listName}>= {listName}</p>}
-    </div>
+    <>
+      <div className="order-1 flex min-w-0 flex-1 items-center gap-2">
+        <p className="min-w-0 truncate text-sm text-gray-900" title={name}>{name}</p>
+        {listName && <p className="min-w-0 truncate text-sm text-gray-500" title={listName}>= {listName}</p>}
+      </div>
+      <div className={`${TAG_CELL} md:w-24`}><Badge className={green ? GREEN_TAG : ORANGE_TAG}>{tag}</Badge></div>
+    </>
   );
 }
 
@@ -84,7 +91,7 @@ export function NewBusinesses({ preview: p, draft, businesses, disabled, onDraft
           <li key={n} className={`${ROW} ${state === "new" ? ORANGE_ROW : GREEN_ROW}`}>
             <NameTag name={n} tag={TAG[state]} green={state !== "new"} listName={listName} />
             {state !== "known" && (
-              <select aria-label={`Decision for ${n}`} value={decisionValue(draft.businesses, n)} disabled={disabled} className={SELECT}
+              <select aria-label={`Decision for ${n}`} value={decisionValue(draft.businesses, n)} disabled={disabled} className={`${SELECT} order-3 md:order-2`}
                 onChange={(e) => onDraft({ ...draft, businesses: setBusinessDecision(draft.businesses, draft.bizNames, n, e.target.value) })}>
                 <option value="">Decide…</option>
                 {sameAsOptions(n, draft, businesses).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -170,19 +177,23 @@ export function NewBrands({ draft, known, businesses, disabled, fileBusiness, on
           if (!brandMatches(b, query)) return null;
           const business = b.business !== null ? (fileBusiness ?? b.business) : null;
           return (
-            <li key={b.name} className={`flex min-w-0 flex-col gap-2 rounded-md px-2 py-1.5 md:flex-row md:items-center md:gap-3 ${b.ticked ? GREEN_ROW : ORANGE_ROW}`}>
-              <label className="flex min-w-0 items-center gap-2 text-sm text-gray-900 md:w-56">
+            <li key={b.name} className={`${ROW} gap-y-2 ${b.ticked ? GREEN_ROW : ORANGE_ROW}`}>
+              <label className="order-1 flex min-w-0 flex-1 items-center gap-2 text-sm text-gray-900 md:w-40 md:flex-none">
                 <input type="checkbox" aria-label={`Add ${b.name}`} checked={b.ticked} disabled={disabled}
                   onChange={(e) => set(k, { ticked: e.target.checked })} className="size-4 shrink-0 accent-primary" />
                 <span className="min-w-0 truncate" title={b.name}>{b.name}</span>
-                <Badge className={`shrink-0 ${b.ticked ? GREEN_TAG : ORANGE_TAG}`}>{b.ticked ? "Will add" : "New"}</Badge>
               </label>
-              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled} className="md:min-w-40 md:flex-1"
+              <div className={`${TAG_CELL} md:w-16`}>
+                <Badge className={b.ticked ? GREEN_TAG : ORANGE_TAG}>{b.ticked ? "Will add" : "New"}</Badge>
+              </div>
+              <Input aria-label={`Full name for ${b.name}`} value={b.fullName} maxLength={120} disabled={disabled}
+                className="order-3 w-full md:order-2 md:w-auto md:min-w-24 md:flex-1"
                 onChange={(e) => set(k, { fullName: e.target.value })} />
               {business !== null ? (
-                <p className="min-w-0 truncate text-sm text-gray-500 md:w-28 md:shrink-0" title={business}>{business}</p>
+                <p className="order-4 w-full min-w-0 truncate text-sm text-gray-500 md:order-3 md:w-24 md:shrink-0" title={business}>{business}</p>
               ) : (
-                <select aria-label={`Business for ${b.name}`} value={brandPickValue(b.pick, draft)} disabled={disabled} className={SELECT}
+                <select aria-label={`Business for ${b.name}`} value={brandPickValue(b.pick, draft)} disabled={disabled}
+                  className={`${SELECT_BASE} order-4 md:order-3 md:w-40`}
                   onChange={(e) => set(k, { pick: e.target.value })}>
                   <option value="">Pick the business…</option>
                   {businesses.map((x) => <option key={x.slug} value={x.slug}>{x.name}</option>)}
