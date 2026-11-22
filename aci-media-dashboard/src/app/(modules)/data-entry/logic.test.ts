@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionsSchema, type FilePreview } from "@/server/ingest";
-import { NAV_ITEMS } from "@/components/shell/nav-items";
+import { PRD_PAGES } from "@/components/shell/nav-items";
 import {
   MAX_NEW_BUSINESS_NAME, NEW_BUSINESS, addAllAsNew, afterPreview, brandMatches, brandPickValue, brandWarning, businessCountLine, businessRows, canPublishAll, categoryDefaults, emptyDraft, greyReason, knownBrandLine, pickValue, postUploads,
   publishedMessage, rowStatus, sameAsOptions, seenBrands, seenNames, setBusinessDecision, takeFiles, takeThenReset, tickShown, toDecisions, uploadForm, whenDhaka,
@@ -429,10 +429,10 @@ describe("postUploads", () => {
 });
 
 describe("menu", () => {
-  it("puts Data Entry first in the Data group, before Businesses & Brands", () => {
-    const i = NAV_ITEMS.findIndex((n) => n.href === "/data-entry");
-    expect(NAV_ITEMS[i]).toEqual({ href: "/data-entry", label: "Data Entry", group: "Data" });
-    expect(i).toBe(NAV_ITEMS.findIndex((n) => n.href === "/businesses") - 1);
+  it("lists Data Entry right before Businesses & Brands in the sidebar", () => {
+    const i = PRD_PAGES.findIndex((n) => n.href === "/data-entry");
+    expect(PRD_PAGES[i].label).toBe("Upload Data");
+    expect(PRD_PAGES.findIndex((n) => n.href === "/businesses")).toBe(i + 3);
   });
 });
 
