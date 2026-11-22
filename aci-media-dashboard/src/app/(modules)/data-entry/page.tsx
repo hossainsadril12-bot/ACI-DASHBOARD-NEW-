@@ -14,26 +14,32 @@ import { CardFace } from "./card-face";
 import { anotherBusinessOptions, cardStates } from "./cards-state";
 import { DataCard } from "./data-card";
 import { HistoryTable } from "./history-table";
+import { loadManualEntry } from "./manual-data";
+import { ManualEntry } from "./manual-entry";
 
 export const metadata: Metadata = { title: "Data Entry" };
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
-type Tab = "upload" | "history";
+type Tab = "upload" | "manual" | "history";
 
 const TABS: { key: Tab; label: string; href: string }[] = [
   { key: "upload", label: "Upload Data", href: "/data-entry" },
+  { key: "manual", label: "Manual Entry", href: "/data-entry?tab=manual" },
   { key: "history", label: "Upload History", href: "/data-entry?tab=history" },
 ];
 
-const tabOf = (sp: Record<string, string | string[] | undefined>): Tab => (sp.tab === "history" ? "history" : "upload");
+const tabOf = (sp: Record<string, string | string[] | undefined>): Tab =>
+  sp.tab === "history" ? "history" : sp.tab === "manual" ? "manual" : "upload";
 
 export default function DataEntryPage({ searchParams }: { searchParams: Search }) {
   return (
     <>
       <PageHeader title="Data Entry" subtitle="Upload the Excel files in the same format you use today. Every upload is kept in Upload History.">
-        <Suspense fallback={<SegmentedLinks label="Data Entry sections" items={TABS} value="" />}>
-          <Tabs searchParams={searchParams} />
-        </Suspense>
+        <div className="max-w-full overflow-x-auto">
+          <Suspense fallback={<SegmentedLinks label="Data Entry sections" items={TABS} value="" />}>
+            <Tabs searchParams={searchParams} />
+          </Suspense>
+        </div>
       </PageHeader>
       <Suspense fallback={<PageSkeleton label="Loading" />}>
         <DataEntryContent searchParams={searchParams} />
@@ -55,6 +61,7 @@ async function DataEntryContent({ searchParams }: { searchParams: Search }) {
   if (tab === "history") {
     return <HistoryTable rows={await listHistory(store, { limit: 200 })} admin={admin} />;
   }
+  if (tab === "manual") return <ManualEntry admin={admin} data={await loadManualEntry(store)} />;
   const catalog = await getCatalog(store);
   const cards = cardStates(await listActiveVersions(store), catalog.businesses);
   // The visible businesses for the pickers; the server checks every pick again.

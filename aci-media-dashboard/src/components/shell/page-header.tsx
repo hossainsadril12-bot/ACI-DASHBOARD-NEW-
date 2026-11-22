@@ -14,7 +14,7 @@ export function PageHeader({ title, subtitle, count, children }: { title: string
         </h1>
         {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
       </div>
-      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+      {children && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{children}</div>}
     </header>
   );
 }
