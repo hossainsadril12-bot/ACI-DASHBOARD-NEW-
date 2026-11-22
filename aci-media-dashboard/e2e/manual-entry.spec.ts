@@ -1,6 +1,7 @@
 import { test, expect, type Dialog, type Locator, type Page } from "@playwright/test";
 import { makeXlsx } from "../src/lib/ingest/test-workbooks";
 import { XLSX_TYPE, historyRows } from "./helpers";
+import { currentFyStart, dhakaDate, fyMonthLabels } from "../src/lib/manual/rules";
 
 // Phase 2 Part E: Manual Entry. Serial: one shared temp store; later tests use what earlier ones saved.
 test.describe.configure({ mode: "serial" });
@@ -36,6 +37,27 @@ const typeUntil = async (box: Locator, value: string, reacted: Locator) => {
     await expect(reacted).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
 };
+/** A quarter button in a section's quarter row. */
+const quarterButton = (section: Locator, label: string) =>
+  section.getByRole("group", { name: "Quarter" }).getByRole("button", { name: label, exact: true });
+/** Clicks a quarter button until it shows as chosen (a click before hydration is lost). */
+const pickQuarter = async (section: Locator, label: string) => {
+  const button = quarterButton(section, label);
+  await expect(async () => {
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true", { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+};
+const QUARTER_LABELS = ["Q1 Jul–Sep", "Q2 Oct–Dec", "Q3 Jan–Mar", "Q4 Apr–Jun"];
+/** The quarter Manual Entry should open on for an FY (design 1.1), worked out here on its own as the test's oracle. */
+const openingQuarter = (fyStart: number): string => {
+  const now = new Date();
+  if (currentFyStart(now) !== fyStart) return "Full year";
+  const month = Number(dhakaDate(now).slice(5, 7));
+  return QUARTER_LABELS[Math.floor(((month + 5) % 12) / 3)];
+};
+/** A month column head such as Jul'26. */
+const MONTH_HEAD = /^[A-Z][a-z]{2}'\d\d$/;
 
 test("1. channel: edit an amount, Save & publish, History shows Manual edit, Restore brings the upload back", async ({ page }) => {
   const res = await page.request.post("/api/uploads/publish", {
@@ -49,6 +71,7 @@ test("1. channel: edit an amount, Save & publish, History shows Manual edit, Res
   await expect(channel.getByText("Channel cost · Electronic")).toBeVisible();
   await expect(channel.getByText("BDT · type amounts, add or remove rows, then Save & publish")).toBeVisible();
   await expect(channel.getByLabel("Channel 1", { exact: true })).toHaveValue("E2E TV One");
+  await pickQuarter(channel, "Full year");
   const jul = channel.getByLabel("Channel 1 Jul'26", { exact: true });
   await expect(jul).toHaveValue("100000");
   await expect(channel.getByText("All saved")).toBeVisible();
@@ -71,7 +94,9 @@ test("1. channel: edit an amount, Save & publish, History shows Manual edit, Res
   page.off("dialog", accept);
 
   await openManual(page);
-  await expect(page.getByTestId("manual-channel").getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
+  const restored = page.getByTestId("manual-channel");
+  await pickQuarter(restored, "Full year");
+  await expect(restored.getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
 });
 
 const FY_BIZ = "E2E Manual Biz";
@@ -103,6 +128,7 @@ test("2. FY: add a brand with a new name, Save & publish, and it is on Businesse
   await expect(fy.getByText(`FY media spend · ${FY_BRAND}`)).toBeVisible();
   await expect(fy.getByText(new RegExp(`^BDT Mn · ${FY_BIZ} · FY \\d{4}-\\d{2} months Jul to Jun, plus the last FY total$`))).toBeVisible();
   await expect(fy.getByText("Unsaved changes")).toBeVisible();
+  await pickQuarter(fy, "Q1 Jul–Sep");
   await fy.getByLabel(/^TV Jul'\d\d$/).fill("1.5");
   await fy.getByRole("button", { name: "Save & publish" }).click();
   await expect(fy.getByText("All saved")).toBeVisible();
@@ -172,15 +198,72 @@ test("3. bills: add, edit and delete a bill; delete asks first; a missing vendor
   await expect(history.first()).toContainText("Billboard billing");
 });
 
+/** channelBook's FY: its months are Jul'26 to Jun'27. */
+const CHANNEL_FY = 2026;
+
+test("4. quarters: Channel cost opens on today's quarter, Full year shows 12, and an edit in a hidden month is saved", async ({ page }) => {
+  await openManual(page);
+  const channel = page.getByTestId("manual-channel");
+  const table = channel.getByTestId("channel-table");
+  const monthHeads = table.getByRole("columnheader", { name: MONTH_HEAD });
+  const labels = fyMonthLabels(CHANNEL_FY);
+  const opening = openingQuarter(CHANNEL_FY);
+  const q = QUARTER_LABELS.indexOf(opening);
+  await expect(quarterButton(channel, opening)).toHaveAttribute("aria-pressed", "true");
+  await expect(monthHeads).toHaveText(q < 0 ? labels : labels.slice(q * 3, q * 3 + 3)); // 3 columns while today is in FY 2026-27
+  await expect(table.getByRole("columnheader", { name: "SL", exact: true })).toBeVisible();
+  await expect(table.getByRole("columnheader", { name: "Channel", exact: true })).toBeVisible();
+  await expect(channel.getByRole("button", { name: "Remove E2E TV One" })).toBeVisible();
+
+  await pickQuarter(channel, "Full year");
+  await expect(monthHeads).toHaveText(labels);
+
+  // Type Aug'26 in Q1, hide it with Q2, then save: Aug is still sent.
+  await pickQuarter(channel, "Q1 Jul–Sep");
+  await expect(monthHeads).toHaveText(["Jul'26", "Aug'26", "Sep'26"]);
+  const aug = channel.getByLabel("Channel 1 Aug'26", { exact: true });
+  await typeUntil(aug, "4321", channel.getByText("Unsaved changes"));
+  await pickQuarter(channel, "Q2 Oct–Dec");
+  await expect(monthHeads).toHaveText(["Oct'26", "Nov'26", "Dec'26"]);
+  await expect(aug).toHaveCount(0);
+  await expect(channel.getByText("Unsaved changes")).toBeVisible();
+  await channel.getByRole("button", { name: "Save & publish" }).click();
+  await expect(channel.getByText("All saved")).toBeVisible();
+  await expect(quarterButton(channel, "Q2 Oct–Dec")).toHaveAttribute("aria-pressed", "true"); // the remount after a save keeps the choice
+
+  // After a reload the stored version has the hidden months: Jul as it was, Aug as typed.
+  await openManual(page);
+  const again = page.getByTestId("manual-channel");
+  await pickQuarter(again, "Q1 Jul–Sep");
+  await expect(again.getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
+  await expect(again.getByLabel("Channel 1 Aug'26", { exact: true })).toHaveValue("4321");
+
+  // FY media spend shares the choice and keeps Media and Last FY.
+  const fy = await showView(page, "FY media spend", "manual-fy");
+  await expect(quarterButton(fy, "Q1 Jul–Sep")).toHaveAttribute("aria-pressed", "true");
+  await pickQuarter(fy, "Q3 Jan–Mar");
+  const fyTable = fy.getByTestId("fy-table");
+  await expect(fyTable.getByRole("columnheader", { name: MONTH_HEAD })).toHaveText([/^Jan'\d\d$/, /^Feb'\d\d$/, /^Mar'\d\d$/]);
+  await expect(fyTable.getByRole("columnheader", { name: "Media", exact: true })).toBeVisible();
+  await expect(fyTable.getByRole("columnheader", { name: "Last FY", exact: true })).toBeVisible();
+  await expect(fy.getByLabel("TV Last FY", { exact: true })).toBeVisible();
+  const channelAgain = await showView(page, "Channel cost", "manual-channel");
+  await expect(quarterButton(channelAgain, "Q3 Jan–Mar")).toHaveAttribute("aria-pressed", "true");
+});
+
 test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("sees the tab read-only with the note, and no Save, Add or Remove", async ({ page }) => {
+  test("sees the tab read-only with the note, no Save, Add or Remove, and can switch quarters", async ({ page }) => {
     await openManual(page);
     const note = page.getByText(VIEWER_NOTE);
     await expect(note).toBeVisible();
     await expect(note.locator("..").getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
     const channel = page.getByTestId("manual-channel");
+    await pickQuarter(channel, "Q1 Jul–Sep");
+    await expect(channel.getByLabel("Channel 1 Oct'26", { exact: true })).toHaveCount(0);
+    await pickQuarter(channel, "Full year");
+    await expect(channel.getByLabel("Channel 1 Oct'26", { exact: true })).toBeDisabled();
     await expect(channel.getByLabel("Channel 1 Jul'26", { exact: true })).toBeDisabled();
     await expect(channel.getByLabel("Channel 1", { exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Save & publish" })).toHaveCount(0);
@@ -192,6 +275,7 @@ test.describe("viewer", () => {
     await openManual(page);
     const fy = await showView(page, "FY media spend", "manual-fy");
     await expect(fy.getByRole("button", { name: "+ Add brand" })).toHaveCount(0);
+    await pickQuarter(fy, "Q1 Jul–Sep");
     await expect(fy.getByLabel(/^TV Jul'\d\d$/)).toBeDisabled();
     await expect(fy.getByLabel("FY brand")).toBeEnabled();
   });
@@ -224,6 +308,7 @@ test.describe("phone width (375 px)", () => {
     }
     // The 12-month channel table is wider than a phone: it scrolls inside its own box.
     const channel = await showView(page, "Channel cost", "manual-channel");
+    await pickQuarter(channel, "Full year");
     expect(await tableBox(channel).evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   });
 
