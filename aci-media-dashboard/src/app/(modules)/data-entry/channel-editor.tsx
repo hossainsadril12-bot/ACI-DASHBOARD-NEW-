@@ -65,31 +65,31 @@ export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onShe
         </div>
       </CardHeader>
       <CardContent className="min-w-0 space-y-3">
-        <Table data-testid="channel-table" className="w-auto">
+        <Table data-testid="channel-table">
           <TableHeader>
             <TableRow>
-              <TableHead className="text-right">SL</TableHead>
-              <TableHead>{tab.column}</TableHead>
+              <TableHead className="w-px whitespace-nowrap text-right">SL</TableHead>
+              <TableHead className="w-56">{tab.column}</TableHead>
               {shown.map((j) => <TableHead key={months[j]} className="text-right">{months[j]}</TableHead>)}
-              {!readOnly && <TableHead><span className="sr-only">Remove</span></TableHead>}
+              {!readOnly && <TableHead className="w-px whitespace-nowrap"><span className="sr-only">Remove</span></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((r, i) => (
               <TableRow key={r.key}>
-                <TableCell className="text-right text-gray-500 tabular-nums">{i + 1}</TableCell>
-                <TableCell>
-                  <Input aria-label={`${tab.column} ${i + 1}`} value={r.n} maxLength={120} disabled={readOnly} className="w-48"
+                <TableCell className="w-px whitespace-nowrap text-right text-gray-500 tabular-nums">{i + 1}</TableCell>
+                <TableCell className="w-56">
+                  <Input aria-label={`${tab.column} ${i + 1}`} value={r.n} maxLength={120} disabled={readOnly} className="w-full"
                     onChange={(e) => setDraft((d) => setChannelName(d, tab.key, r.key, e.target.value))} />
                 </TableCell>
                 {shown.map((j) => (
                   <TableCell key={months[j]}>
-                    <Input aria-label={`${tab.column} ${i + 1} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="ml-auto w-28 text-right tabular-nums"
+                    <Input aria-label={`${tab.column} ${i + 1} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="w-full min-w-28 text-right tabular-nums"
                       onChange={(e) => setDraft((d) => setChannelAmount(d, tab.key, r.key, j, e.target.value))} />
                   </TableCell>
                 ))}
                 {!readOnly && (
-                  <TableCell>
+                  <TableCell className="w-px whitespace-nowrap">
                     <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${r.n.trim() || `${tab.column} ${i + 1}`}`}
                       onClick={() => setDraft((d) => removeChannelRow(d, tab.key, r.key))}>Remove</Button>
                   </TableCell>

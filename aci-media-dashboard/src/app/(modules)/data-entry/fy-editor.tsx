@@ -73,10 +73,10 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
       </CardHeader>
       <CardContent className="min-w-0">
         {selected ? (
-          <Table data-testid="fy-table" className="w-auto">
+          <Table data-testid="fy-table">
             <TableHeader>
               <TableRow>
-                <TableHead>Media</TableHead>
+                <TableHead className="w-px whitespace-nowrap">Media</TableHead>
                 {shown.map((j) => <TableHead key={months[j]} className="text-right">{months[j]}</TableHead>)}
                 <TableHead className="text-right">Last FY</TableHead>
               </TableRow>
@@ -84,15 +84,15 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
             <TableBody>
               {fyTable(draft, selected).map((r) => (
                 <TableRow key={r.med}>
-                  <TableCell className="font-medium">{r.med}</TableCell>
+                  <TableCell className="w-px whitespace-nowrap font-medium">{r.med}</TableCell>
                   {shown.map((j) => (
                     <TableCell key={months[j]}>
-                      <Input aria-label={`${r.med} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="ml-auto w-24 text-right tabular-nums"
+                      <Input aria-label={`${r.med} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="w-full min-w-24 text-right tabular-nums"
                         onChange={(e) => setDraft((d) => setFyAmount(d, selected, r.med, j, e.target.value))} />
                     </TableCell>
                   ))}
                   <TableCell>
-                    <Input aria-label={`${r.med} Last FY`} inputMode="decimal" value={r.py} disabled={readOnly} className="ml-auto w-24 text-right tabular-nums"
+                    <Input aria-label={`${r.med} Last FY`} inputMode="decimal" value={r.py} disabled={readOnly} className="w-full min-w-24 text-right tabular-nums"
                       onChange={(e) => setDraft((d) => setFyAmount(d, selected, r.med, "py", e.target.value))} />
                   </TableCell>
                 </TableRow>

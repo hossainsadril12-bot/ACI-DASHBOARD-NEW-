@@ -261,10 +261,12 @@ const expectBoxesUnderHeadings = async (table: Locator, headNames: (string | Reg
     const text = ((await heads.nth(i).textContent()) ?? "").trim();
     if (!headNames.some((n) => (typeof n === "string" ? n === text : n.test(text)))) continue;
     const th = await heads.nth(i).boundingBox();
+    // the heading's text ends at the cell's right edge less its padding; the box ends at its own cell's edge less the same padding
+    const pad = await heads.nth(i).evaluate((el) => parseFloat(getComputedStyle(el).paddingRight));
     const box = await firstRowCells.nth(i).locator("input").boundingBox();
     expect(th, `heading ${text}`).not.toBeNull();
     expect(box, `box under ${text}`).not.toBeNull();
-    expect(Math.abs(th!.x + th!.width - (box!.x + box!.width)), `${text}: box right edge vs heading right edge`).toBeLessThanOrEqual(20);
+    expect(Math.abs(th!.x + th!.width - pad - (box!.x + box!.width)), `${text}: box right edge vs heading right edge`).toBeLessThanOrEqual(2);
     expect(box!.x, `${text}: box left edge`).toBeGreaterThanOrEqual(th!.x - 1);
     checked++;
   }
@@ -281,6 +283,35 @@ test("4b. quarters: on Q1 each month box sits under its right-aligned heading on
   const fy = await showView(page, "FY media spend", "manual-fy");
   await pickQuarter(fy, "Q1 Jul–Sep");
   await expectBoxesUnderHeadings(fy.getByTestId("fy-table"), [MONTH_HEAD, "Last FY"], 4);
+});
+
+/** The table fills (at least 95% of) its card's table container. */
+const expectTableFillsCard = async (table: Locator) => {
+  const t = await table.boundingBox();
+  const c = await table.locator("xpath=ancestor::*[@data-slot='table-container'][1]").boundingBox();
+  expect(t).not.toBeNull();
+  expect(c).not.toBeNull();
+  expect(t!.width / c!.width).toBeGreaterThanOrEqual(0.95);
+};
+
+test("4c. the Channel and FY tables fill the card on Q1, and Full year keeps boxes under headings without a side scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= 1280);
+  await openManual(page);
+  const channel = page.getByTestId("manual-channel");
+  await pickQuarter(channel, "Q1 Jul–Sep");
+  await expectTableFillsCard(channel.getByTestId("channel-table"));
+  const fy = await showView(page, "FY media spend", "manual-fy");
+  await pickQuarter(fy, "Q1 Jul–Sep");
+  await expectTableFillsCard(fy.getByTestId("fy-table"));
+
+  await pickQuarter(fy, "Full year");
+  expect(await noSideScroll()).toBe(true);
+  await expectBoxesUnderHeadings(fy.getByTestId("fy-table"), [MONTH_HEAD, "Last FY"], 13);
+  const channelAgain = await showView(page, "Channel cost", "manual-channel");
+  await pickQuarter(channelAgain, "Full year");
+  expect(await noSideScroll()).toBe(true);
+  await expectBoxesUnderHeadings(channelAgain.getByTestId("channel-table"), [MONTH_HEAD], 12);
 });
 
 test("5. bills: the Submit Date range narrows the list and the count", async ({ page }) => {
