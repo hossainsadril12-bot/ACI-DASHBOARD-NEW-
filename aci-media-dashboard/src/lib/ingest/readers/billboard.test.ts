@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readBillboard, type BillboardData } from "./billboard";
+import { DEFAULT_BILL_STATUSES, billboardLabel, businessGroup, readBillboard, type BillboardData } from "./billboard";
 import { READER_NEEDS_STYLES } from "./index";
 import { ReadError } from "../read-result";
 import { openWorkbook } from "../workbook";
@@ -21,5 +21,17 @@ describe("Billboard billing read errors", () => {
 describe("Billboard registration", () => {
   it("needs styles", () => {
     expect(READER_NEEDS_STYLES).toEqual(new Set(["billboard"]));
+  });
+});
+
+describe("Billboard shared helpers", () => {
+  it("has his five standard statuses in his legend order", () => {
+    expect(DEFAULT_BILL_STATUSES).toEqual(["Payment Done", "Cheque in Hand", "Finance/Audit", "Bill Error/DOC Problem", "Cheque in Counter"]);
+  });
+  it("groups a business as Toiletries, Hygiene or Salt, else Others", () => {
+    expect(["Toiletries", "Hygiene", "Salt", "AI", "Foods", ""].map(businessGroup)).toEqual(["Toiletries", "Hygiene", "Salt", "Others", "Others", "Others"]);
+  });
+  it("labels the dataset by its bill count, as the reader does", () => {
+    expect(billboardLabel(169)).toBe("Billboard billing, 169 bills");
   });
 });

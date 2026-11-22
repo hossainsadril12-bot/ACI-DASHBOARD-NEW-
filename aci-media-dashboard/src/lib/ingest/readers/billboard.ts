@@ -13,6 +13,13 @@ export type BillboardData = { legend: string[]; rows: BillboardRow[] };
 
 const f2 = (n: number): string => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const BBLEG_DEFAULT: Record<string, string> = { FFFF00: "Payment Done", "00B0F0": "Cheque in Hand", FBD4B4: "Finance/Audit", FF0000: "Bill Error/DOC Problem", "00B050": "Cheque in Counter" };
+
+/** His five standard statuses in his legend order: the Status choices before any file is uploaded. */
+export const DEFAULT_BILL_STATUSES: readonly string[] = Object.values(BBLEG_DEFAULT);
+/** The group the OOH page filters by: Toiletries, Hygiene or Salt, else Others. */
+export const businessGroup = (biz: string): string => (["Toiletries", "Hygiene", "Salt"].includes(biz) ? biz : "Others");
+/** "Billboard billing, N bills", as the reader labels it. */
+export const billboardLabel = (n: number): string => `Billboard billing, ${n} bills`;
 const hx = (h: string): number[] => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
 
 /** His day-first date rule. Returns [iso, raw text when it was text]. */
@@ -73,7 +80,7 @@ export function readBillboard(wb: Workbook): ReadResult<BillboardData> {
     rows.push({
       sl0: a, v: xstr(b), po: xstr(ws.v(r, 3)), bill: xstr(ws.v(r, 4)), poa: n(5), ba: n(6), diff: n(7), st, en, sb, pr,
       stR: st ? null : (ws.v(r, 8) ? xstr(ws.v(r, 8)) : null), enR: en ? null : (ws.v(r, 9) ? xstr(ws.v(r, 9)) : null),
-      biz, bz: ["Toiletries", "Hygiene", "Salt"].includes(biz) ? biz : "Others", b: xstr(ws.v(r, 11)),
+      biz, bz: businessGroup(biz), b: xstr(ws.v(r, 11)),
       billc: ws.v(r, 14), chq: ws.v(r, 15), loc: xstr(ws.v(r, 16)), cm: xstr(ws.v(r, 17)), show: xstr(ws.v(r, 18)), status: status(r), sl: 0,
     });
   }
@@ -89,7 +96,7 @@ export function readBillboard(wb: Workbook): ReadResult<BillboardData> {
   return {
     type: "billboard",
     datasetKey: "billboard",
-    label: `Billboard billing, ${rows.length} bills`,
+    label: billboardLabel(rows.length),
     summary: `${rows.length} bills · ${Object.entries(cnt).map(([k, v]) => `${k} ${v}`).join(" · ")} · bill amount ${f2(rows.reduce((t, o) => t + o.ba, 0) / 1e6)} Mn`,
     months: [],
     rowCount: rows.length,

@@ -31,7 +31,9 @@ export function HistoryTable({ rows, admin }: { rows: HistoryRow[]; admin: boole
                     <TableCell className="whitespace-nowrap">{whenDhaka(r.createdAt)}</TableCell>
                     <TableCell className="whitespace-nowrap">{isFileType(r.kind) ? FILE_TYPE_LABEL[r.kind] : r.kind}</TableCell>
                     <TableCell className="min-w-48">{r.label}</TableCell>
-                    <TableCell className="max-w-56 truncate" title={r.fileName ?? undefined}>{r.fileName ?? ""}</TableCell>
+                    <TableCell className="max-w-56 truncate" title={r.fileName ?? undefined}>
+                      {r.source === "manual" ? <Badge className="bg-sky-100 text-sky-800">Manual edit</Badge> : (r.fileName ?? "")}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{(r.summary.rowCount as number | undefined) ?? ""}</TableCell>
                     <TableCell>{r.isActive && <Badge className="bg-emerald-100 text-emerald-800">In use</Badge>}</TableCell>
                     {admin && (
