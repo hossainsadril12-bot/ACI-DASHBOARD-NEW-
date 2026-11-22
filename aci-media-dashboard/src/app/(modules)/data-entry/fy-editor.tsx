@@ -73,7 +73,7 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
       </CardHeader>
       <CardContent className="min-w-0">
         {selected ? (
-          <Table data-testid="fy-table">
+          <Table data-testid="fy-table" className="w-auto">
             <TableHeader>
               <TableRow>
                 <TableHead>Media</TableHead>
@@ -87,12 +87,12 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
                   <TableCell className="font-medium">{r.med}</TableCell>
                   {shown.map((j) => (
                     <TableCell key={months[j]}>
-                      <Input aria-label={`${r.med} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="w-24 text-right tabular-nums"
+                      <Input aria-label={`${r.med} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="ml-auto w-24 text-right tabular-nums"
                         onChange={(e) => setDraft((d) => setFyAmount(d, selected, r.med, j, e.target.value))} />
                     </TableCell>
                   ))}
                   <TableCell>
-                    <Input aria-label={`${r.med} Last FY`} inputMode="decimal" value={r.py} disabled={readOnly} className="w-24 text-right tabular-nums"
+                    <Input aria-label={`${r.med} Last FY`} inputMode="decimal" value={r.py} disabled={readOnly} className="ml-auto w-24 text-right tabular-nums"
                       onChange={(e) => setDraft((d) => setFyAmount(d, selected, r.med, "py", e.target.value))} />
                   </TableCell>
                 </TableRow>

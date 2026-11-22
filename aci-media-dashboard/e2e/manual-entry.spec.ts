@@ -251,6 +251,38 @@ test("4. quarters: Channel cost opens on today's quarter, Full year shows 12, an
   await expect(quarterButton(channelAgain, "Q3 Jan–Mar")).toHaveAttribute("aria-pressed", "true");
 });
 
+/** Every month column (and Last FY) has its first-row box right under its heading, at the heading's right edge. */
+const expectBoxesUnderHeadings = async (table: Locator, headNames: (string | RegExp)[], expected: number) => {
+  const heads = table.locator("thead th");
+  const firstRowCells = table.locator("tbody tr").first().locator("td");
+  const count = await heads.count();
+  let checked = 0;
+  for (let i = 0; i < count; i++) {
+    const text = ((await heads.nth(i).textContent()) ?? "").trim();
+    if (!headNames.some((n) => (typeof n === "string" ? n === text : n.test(text)))) continue;
+    const th = await heads.nth(i).boundingBox();
+    const box = await firstRowCells.nth(i).locator("input").boundingBox();
+    expect(th, `heading ${text}`).not.toBeNull();
+    expect(box, `box under ${text}`).not.toBeNull();
+    expect(Math.abs(th!.x + th!.width - (box!.x + box!.width)), `${text}: box right edge vs heading right edge`).toBeLessThanOrEqual(20);
+    expect(box!.x, `${text}: box left edge`).toBeGreaterThanOrEqual(th!.x - 1);
+    checked++;
+  }
+  expect(checked).toBe(expected);
+};
+
+test("4b. quarters: on Q1 each month box sits under its right-aligned heading on Channel cost and FY media spend", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openManual(page);
+  const channel = page.getByTestId("manual-channel");
+  await pickQuarter(channel, "Q1 Jul–Sep");
+  await expectBoxesUnderHeadings(channel.getByTestId("channel-table"), [MONTH_HEAD], 3);
+
+  const fy = await showView(page, "FY media spend", "manual-fy");
+  await pickQuarter(fy, "Q1 Jul–Sep");
+  await expectBoxesUnderHeadings(fy.getByTestId("fy-table"), [MONTH_HEAD, "Last FY"], 4);
+});
+
 test("5. bills: the Submit Date range narrows the list and the count", async ({ page }) => {
   await openManual(page);
   const bills = await showView(page, "OOH / billboard bills", "manual-bills");
