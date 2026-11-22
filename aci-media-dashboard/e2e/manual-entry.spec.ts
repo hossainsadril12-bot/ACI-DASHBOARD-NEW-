@@ -1,6 +1,7 @@
 import { test, expect, type Dialog, type Locator, type Page } from "@playwright/test";
 import { makeXlsx } from "../src/lib/ingest/test-workbooks";
 import { XLSX_TYPE, historyRows } from "./helpers";
+import { currentFyStart, dhakaDate, fyMonthLabels } from "../src/lib/manual/rules";
 
 // Phase 2 Part E: Manual Entry. Serial: one shared temp store; later tests use what earlier ones saved.
 test.describe.configure({ mode: "serial" });
@@ -36,6 +37,27 @@ const typeUntil = async (box: Locator, value: string, reacted: Locator) => {
     await expect(reacted).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
 };
+/** A quarter button in a section's quarter row. */
+const quarterButton = (section: Locator, label: string) =>
+  section.getByRole("group", { name: "Quarter" }).getByRole("button", { name: label, exact: true });
+/** Clicks a quarter button until it shows as chosen (a click before hydration is lost). */
+const pickQuarter = async (section: Locator, label: string) => {
+  const button = quarterButton(section, label);
+  await expect(async () => {
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true", { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+};
+const QUARTER_LABELS = ["Q1 Jul–Sep", "Q2 Oct–Dec", "Q3 Jan–Mar", "Q4 Apr–Jun"];
+/** The quarter Manual Entry should open on for an FY (design 1.1), worked out here on its own as the test's oracle. */
+const openingQuarter = (fyStart: number): string => {
+  const now = new Date();
+  if (currentFyStart(now) !== fyStart) return "Full year";
+  const month = Number(dhakaDate(now).slice(5, 7));
+  return QUARTER_LABELS[Math.floor(((month + 5) % 12) / 3)];
+};
+/** A month column head such as Jul'26. */
+const MONTH_HEAD = /^[A-Z][a-z]{2}'\d\d$/;
 
 test("1. channel: edit an amount, Save & publish, History shows Manual edit, Restore brings the upload back", async ({ page }) => {
   const res = await page.request.post("/api/uploads/publish", {
@@ -49,6 +71,7 @@ test("1. channel: edit an amount, Save & publish, History shows Manual edit, Res
   await expect(channel.getByText("Channel cost · Electronic")).toBeVisible();
   await expect(channel.getByText("BDT · type amounts, add or remove rows, then Save & publish")).toBeVisible();
   await expect(channel.getByLabel("Channel 1", { exact: true })).toHaveValue("E2E TV One");
+  await pickQuarter(channel, "Full year");
   const jul = channel.getByLabel("Channel 1 Jul'26", { exact: true });
   await expect(jul).toHaveValue("100000");
   await expect(channel.getByText("All saved")).toBeVisible();
@@ -71,7 +94,9 @@ test("1. channel: edit an amount, Save & publish, History shows Manual edit, Res
   page.off("dialog", accept);
 
   await openManual(page);
-  await expect(page.getByTestId("manual-channel").getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
+  const restored = page.getByTestId("manual-channel");
+  await pickQuarter(restored, "Full year");
+  await expect(restored.getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
 });
 
 const FY_BIZ = "E2E Manual Biz";
@@ -103,6 +128,7 @@ test("2. FY: add a brand with a new name, Save & publish, and it is on Businesse
   await expect(fy.getByText(`FY media spend · ${FY_BRAND}`)).toBeVisible();
   await expect(fy.getByText(new RegExp(`^BDT Mn · ${FY_BIZ} · FY \\d{4}-\\d{2} months Jul to Jun, plus the last FY total$`))).toBeVisible();
   await expect(fy.getByText("Unsaved changes")).toBeVisible();
+  await pickQuarter(fy, "Q1 Jul–Sep");
   await fy.getByLabel(/^TV Jul'\d\d$/).fill("1.5");
   await fy.getByRole("button", { name: "Save & publish" }).click();
   await expect(fy.getByText("All saved")).toBeVisible();
@@ -172,15 +198,158 @@ test("3. bills: add, edit and delete a bill; delete asks first; a missing vendor
   await expect(history.first()).toContainText("Billboard billing");
 });
 
+/** channelBook's FY: its months are Jul'26 to Jun'27. */
+const CHANNEL_FY = 2026;
+
+test("4. quarters: Channel cost opens on today's quarter, Full year shows 12, and an edit in a hidden month is saved", async ({ page }) => {
+  await openManual(page);
+  const channel = page.getByTestId("manual-channel");
+  const table = channel.getByTestId("channel-table");
+  const monthHeads = table.getByRole("columnheader", { name: MONTH_HEAD });
+  const labels = fyMonthLabels(CHANNEL_FY);
+  const opening = openingQuarter(CHANNEL_FY);
+  const q = QUARTER_LABELS.indexOf(opening);
+  await expect(quarterButton(channel, opening)).toHaveAttribute("aria-pressed", "true");
+  await expect(monthHeads).toHaveText(q < 0 ? labels : labels.slice(q * 3, q * 3 + 3)); // 3 columns while today is in FY 2026-27
+  await expect(table.getByRole("columnheader", { name: "SL", exact: true })).toBeVisible();
+  await expect(table.getByRole("columnheader", { name: "Channel", exact: true })).toBeVisible();
+  await expect(channel.getByRole("button", { name: "Remove E2E TV One" })).toBeVisible();
+
+  await pickQuarter(channel, "Full year");
+  await expect(monthHeads).toHaveText(labels);
+
+  // Type Aug'26 in Q1, hide it with Q2, then save: Aug is still sent.
+  await pickQuarter(channel, "Q1 Jul–Sep");
+  await expect(monthHeads).toHaveText(["Jul'26", "Aug'26", "Sep'26"]);
+  const aug = channel.getByLabel("Channel 1 Aug'26", { exact: true });
+  await typeUntil(aug, "4321", channel.getByText("Unsaved changes"));
+  await pickQuarter(channel, "Q2 Oct–Dec");
+  await expect(monthHeads).toHaveText(["Oct'26", "Nov'26", "Dec'26"]);
+  await expect(aug).toHaveCount(0);
+  await expect(channel.getByText("Unsaved changes")).toBeVisible();
+  await channel.getByRole("button", { name: "Save & publish" }).click();
+  await expect(channel.getByText("All saved")).toBeVisible();
+  await expect(quarterButton(channel, "Q2 Oct–Dec")).toHaveAttribute("aria-pressed", "true"); // the remount after a save keeps the choice
+
+  // After a reload the stored version has the hidden months: Jul as it was, Aug as typed.
+  await openManual(page);
+  const again = page.getByTestId("manual-channel");
+  await pickQuarter(again, "Q1 Jul–Sep");
+  await expect(again.getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
+  await expect(again.getByLabel("Channel 1 Aug'26", { exact: true })).toHaveValue("4321");
+
+  // FY media spend shares the choice and keeps Media and Last FY.
+  const fy = await showView(page, "FY media spend", "manual-fy");
+  await expect(quarterButton(fy, "Q1 Jul–Sep")).toHaveAttribute("aria-pressed", "true");
+  await pickQuarter(fy, "Q3 Jan–Mar");
+  const fyTable = fy.getByTestId("fy-table");
+  await expect(fyTable.getByRole("columnheader", { name: MONTH_HEAD })).toHaveText([/^Jan'\d\d$/, /^Feb'\d\d$/, /^Mar'\d\d$/]);
+  await expect(fyTable.getByRole("columnheader", { name: "Media", exact: true })).toBeVisible();
+  await expect(fyTable.getByRole("columnheader", { name: "Last FY", exact: true })).toBeVisible();
+  await expect(fy.getByLabel("TV Last FY", { exact: true })).toBeVisible();
+  const channelAgain = await showView(page, "Channel cost", "manual-channel");
+  await expect(quarterButton(channelAgain, "Q3 Jan–Mar")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("5. bills: the Submit Date range narrows the list and the count", async ({ page }) => {
+  await openManual(page);
+  const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+  const dialog = page.getByRole("dialog");
+  for (const [no, sb] of [["E2E-RANGE-A", "2026-08-15"], ["E2E-RANGE-B", "2026-10-20"]]) {
+    await bills.getByRole("button", { name: "+ Add bill" }).click();
+    await dialog.getByLabel("Name of the Media / Vendor", { exact: true }).fill(`Vendor ${no}`);
+    await dialog.getByLabel("Bill No", { exact: true }).fill(no);
+    await dialog.getByLabel("Submit Date", { exact: true }).fill(sb);
+    await dialog.getByRole("button", { name: "Save & publish" }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+  const table = bills.getByTestId("manual-bills-table");
+  const rowA = table.locator("tbody tr").filter({ hasText: "E2E-RANGE-A" });
+  const rowB = table.locator("tbody tr").filter({ hasText: "E2E-RANGE-B" });
+  const count = bills.getByText(/^\d+ of \d+ bills$/);
+  const from = bills.getByLabel("Submitted from", { exact: true });
+  const to = bills.getByLabel("to", { exact: true });
+  await expect(count).toHaveCount(0); // Any to Any and no search: no count line
+  await expect(from).toHaveValue("");
+  await expect(to).toHaveValue("");
+  await expect(from.locator("option").first()).toHaveText("Any");
+  await expect(from.locator("option")).toContainText(["Any", "Aug'26", "Oct'26"]);
+  await expect(to.locator("option")).toContainText(["Any", "Aug'26", "Oct'26"]);
+
+  await bills.getByLabel("Search bills").fill("E2E-RANGE");
+  await expect(count).toHaveText(/^2 of \d+ bills$/);
+  await from.selectOption({ label: "Oct'26" });
+  await expect(count).toHaveText(/^1 of \d+ bills$/);
+  await expect(rowB).toHaveCount(1);
+  await expect(rowA).toHaveCount(0);
+  await from.selectOption({ label: "Any" });
+  await to.selectOption({ label: "Aug'26" });
+  await expect(count).toHaveText(/^1 of \d+ bills$/);
+  await expect(rowA).toHaveCount(1);
+  await expect(rowB).toHaveCount(0);
+  await from.selectOption({ label: "Oct'26" }); // From later than To: nothing matches
+  await expect(count).toHaveText(/^0 of \d+ bills$/);
+  await expect(table.getByText("No bills match.", { exact: true })).toBeVisible();
+
+  await from.selectOption({ label: "Any" });
+  await to.selectOption({ label: "Any" });
+  await expect(count).toHaveText(/^2 of \d+ bills$/); // the search alone still counts
+  await bills.getByLabel("Search bills").fill("");
+  await expect(count).toHaveCount(0);
+  await expect(table.getByText("No bills match.", { exact: true })).toHaveCount(0);
+});
+
+test("6. bills: Columns adds Brand and hides Bill No, and this browser remembers it", async ({ page }) => {
+  await openManual(page);
+  const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+  const head = (name: string) => bills.getByTestId("manual-bills-table").getByRole("columnheader", { name, exact: true });
+  for (const name of ["SL", "Vendor", "Bill No", "Bill Amount", "Status", "Edit"]) await expect(head(name)).toHaveCount(1);
+  for (const name of ["PO", "PO Amount", "Brand", "Location"]) await expect(head(name)).toHaveCount(0);
+
+  const borderColor = await bills.getByRole("button", { name: "Columns", exact: true })
+    .evaluate((el) => getComputedStyle(el).borderTopColor);
+  expect(borderColor).not.toBe("rgba(0, 0, 0, 0)");
+
+  const menu = page.getByRole("menu");
+  await expect(async () => {
+    await bills.getByRole("button", { name: "Columns", exact: true }).click();
+    await expect(menu).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveText(["PO", "Bill No", "PO Amount", "Bill Amount", "Brand", "Location"]);
+  const item = (name: string) => menu.getByRole("menuitemcheckbox", { name, exact: true });
+  await expect(item("Bill No")).toHaveAttribute("aria-checked", "true");
+  await expect(item("Bill Amount")).toHaveAttribute("aria-checked", "true");
+  await expect(item("Brand")).toHaveAttribute("aria-checked", "false");
+  await item("Brand").click();
+  await expect(item("Brand")).toHaveAttribute("aria-checked", "true");
+  await item("Bill No").click();
+  await expect(item("Bill No")).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(head("Brand")).toHaveCount(1);
+  await expect(head("Bill No")).toHaveCount(0);
+  await expect(head("Bill Amount")).toHaveCount(1);
+
+  await page.reload();
+  const again = await showView(page, "OOH / billboard bills", "manual-bills");
+  const headAgain = (name: string) => again.getByTestId("manual-bills-table").getByRole("columnheader", { name, exact: true });
+  await expect(headAgain("Brand")).toHaveCount(1);
+  await expect(headAgain("Bill No")).toHaveCount(0);
+});
+
 test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("sees the tab read-only with the note, and no Save, Add or Remove", async ({ page }) => {
+  test("sees the tab read-only with the note, no Save, Add or Remove, and can switch quarters", async ({ page }) => {
     await openManual(page);
     const note = page.getByText(VIEWER_NOTE);
     await expect(note).toBeVisible();
     await expect(note.locator("..").getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
     const channel = page.getByTestId("manual-channel");
+    await pickQuarter(channel, "Q1 Jul–Sep");
+    await expect(channel.getByLabel("Channel 1 Oct'26", { exact: true })).toHaveCount(0);
+    await pickQuarter(channel, "Full year");
+    await expect(channel.getByLabel("Channel 1 Oct'26", { exact: true })).toBeDisabled();
     await expect(channel.getByLabel("Channel 1 Jul'26", { exact: true })).toBeDisabled();
     await expect(channel.getByLabel("Channel 1", { exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Save & publish" })).toHaveCount(0);
@@ -192,17 +361,23 @@ test.describe("viewer", () => {
     await openManual(page);
     const fy = await showView(page, "FY media spend", "manual-fy");
     await expect(fy.getByRole("button", { name: "+ Add brand" })).toHaveCount(0);
+    await pickQuarter(fy, "Q1 Jul–Sep");
     await expect(fy.getByLabel(/^TV Jul'\d\d$/)).toBeDisabled();
     await expect(fy.getByLabel("FY brand")).toBeEnabled();
   });
 
-  test("sees the bills with no Add bill or Edit", async ({ page }) => {
+  test("sees the bills with no Add bill or Edit, and can still filter and pick columns", async ({ page }) => {
     await openManual(page);
     const bills = await showView(page, "OOH / billboard bills", "manual-bills");
     await expect(bills.getByTestId("manual-bills-table")).toBeVisible();
     await expect(bills.getByRole("button", { name: "+ Add bill" })).toHaveCount(0);
     await expect(bills.getByRole("button", { name: /^Edit bill/ })).toHaveCount(0);
     await expect(bills.getByLabel("Search bills")).toBeEnabled();
+    await expect(bills.getByLabel("Submitted from", { exact: true })).toBeEnabled();
+    await expect(bills.getByLabel("to", { exact: true })).toBeEnabled();
+    await bills.getByLabel("Submitted from", { exact: true }).selectOption({ label: "Oct'26" });
+    await expect(bills.getByText(/^\d+ of \d+ bills$/)).toBeVisible();
+    await expect(bills.getByRole("button", { name: "Columns", exact: true })).toBeEnabled();
   });
 });
 
@@ -224,6 +399,7 @@ test.describe("phone width (375 px)", () => {
     }
     // The 12-month channel table is wider than a phone: it scrolls inside its own box.
     const channel = await showView(page, "Channel cost", "manual-channel");
+    await pickQuarter(channel, "Full year");
     expect(await tableBox(channel).evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   });
 
@@ -234,6 +410,29 @@ test.describe("phone width (375 px)", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     expect(await dialog.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true);
+    expect(await noSideScroll(page)).toBe(true);
+  });
+
+  test("the quarter row and the bills toolbar stay inside the screen", async ({ page }) => {
+    await openManual(page);
+    for (const [label, id] of VIEWS.slice(0, 2)) {
+      const section = await showView(page, label, id);
+      const row = section.getByTestId("quarter-row");
+      await expect(row).toBeVisible();
+      expect(await row.evaluate((el) => el.getBoundingClientRect().right <= 375), label).toBe(true);
+      await pickQuarter(section, "Q4 Apr–Jun"); // the last button: reached by scrolling inside the row's own box
+      expect(await noSideScroll(page), label).toBe(true);
+    }
+    const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+    const toolbar = bills.getByTestId("bills-toolbar");
+    expect(await toolbar.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true);
+    expect(await noSideScroll(page)).toBe(true);
+    const menu = page.getByRole("menu");
+    await expect(async () => {
+      await bills.getByRole("button", { name: "Columns", exact: true }).click();
+      await expect(menu).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    expect(await menu.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true);
     expect(await noSideScroll(page)).toBe(true);
   });
 

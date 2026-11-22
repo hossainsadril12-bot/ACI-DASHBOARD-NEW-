@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { BillboardRow } from "@/lib/ingest/readers/billboard";
 import { BAD_AMOUNT, VENDOR_REQUIRED } from "@/lib/manual/rules";
 import {
-  CHANNEL_TABS, NEW_BRAND, billForm, billInput, billMatches, billsCaption, billsToShow, newBillForm, withCurrent, addChannelRow, addFyBrand, amountText, brandChoices, brandToAdd, channelDraft, channelInput, fyBrandGroups, fyDraft, fyInput, fyTable,
-  isDirty, readAmount, removeChannelRow, setChannelAmount, setChannelName, setFyAmount,
+  ANY_MONTH, ANY_RANGE, BILL_COLUMNS, BILL_COLUMNS_KEY, CHANNEL_TABS, DEFAULT_BILL_COLUMNS, NEW_BRAND, QUARTER_TABS, addChannelRow, addFyBrand,
+  amountText, billFilterActive, billForm, billInput, billMatches, billsCaption, billsCount, billsToShow, brandChoices, brandToAdd, channelDraft,
+  channelInput, defaultQuarter, fyBrandGroups, fyDraft, fyInput, fyTable, inBillRange, isDirty, newBillForm, parseBillColumns, quarterMonths,
+  readAmount, readStoredColumns, removeChannelRow, setChannelAmount, setChannelName, setFyAmount, submitMonthOptions, toggleBillColumn,
+  withCurrent, writeBillColumns,
 } from "./manual-drafts";
 
 const months = (jul: number) => [jul, ...Array.from({ length: 11 }, () => 0)];
@@ -158,5 +161,117 @@ describe("bills", () => {
   it("counts the bills in the caption", () => {
     expect(billsCaption(1)).toBe("1 bill · add a bill or change a status. Each save publishes.");
     expect(billsCaption(169)).toBe("169 bills · add a bill or change a status. Each save publishes.");
+  });
+});
+
+describe("view controls", () => {
+  const bill = (sl: number, sb: string | null): BillboardRow => ({
+    sl0: sl, v: `Vendor ${sl}`, po: `PO-${sl}`, bill: `B-${sl}`, poa: 1000, ba: 800, diff: 200, st: null, en: null, sb, pr: null,
+    stR: null, enR: null, biz: "Salt", bz: "Salt", b: "ACI Salt", billc: null, chq: null, loc: "Gulshan", cm: "", show: "", status: "Payment Done", sl,
+  });
+
+  it("names the quarter buttons in FY order and maps each to its months (0 = Jul … 11 = Jun)", () => {
+    expect(QUARTER_TABS.map((q) => [q.key, q.label])).toEqual([
+      ["q1", "Q1 Jul–Sep"], ["q2", "Q2 Oct–Dec"], ["q3", "Q3 Jan–Mar"], ["q4", "Q4 Apr–Jun"], ["full", "Full year"],
+    ]);
+    expect(quarterMonths("q1")).toEqual([0, 1, 2]);
+    expect(quarterMonths("q2")).toEqual([3, 4, 5]);
+    expect(quarterMonths("q3")).toEqual([6, 7, 8]);
+    expect(quarterMonths("q4")).toEqual([9, 10, 11]);
+    expect(quarterMonths("full")).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+
+  it("opens on today's quarter in Dhaka when today is in the FY shown, else Full year", () => {
+    expect(defaultQuarter(new Date("2026-11-22T06:00:00Z"), 2026)).toBe("q2");
+    expect(defaultQuarter(new Date("2026-07-01T00:00:00Z"), 2026)).toBe("q1");
+    expect(defaultQuarter(new Date("2027-02-10T06:00:00Z"), 2026)).toBe("q3");
+    expect(defaultQuarter(new Date("2027-05-31T06:00:00Z"), 2026)).toBe("q4");
+    // Dhaka is UTC+6: 30 Sep 17:59 UTC is still 30 Sep there, 18:00 UTC is 1 Oct.
+    expect(defaultQuarter(new Date("2026-09-30T17:59:00Z"), 2026)).toBe("q1");
+    expect(defaultQuarter(new Date("2026-09-30T18:00:00Z"), 2026)).toBe("q2");
+    // Outside the FY the editor shows.
+    expect(defaultQuarter(new Date("2026-11-22T06:00:00Z"), 2025)).toBe("full");
+    expect(defaultQuarter(new Date("2027-06-30T17:59:00Z"), 2026)).toBe("q4");
+    expect(defaultQuarter(new Date("2027-06-30T18:00:00Z"), 2026)).toBe("full"); // 1 Jul 2027 in Dhaka: FY 2027-28
+  });
+
+  it("keeps every month in the draft and in what Save sends, whichever quarter shows", () => {
+    const data = { elec: { rows: [{ sl: 1, n: "ATN Bangla", m: months(100000) }], notes: [] }, dig: { rows: [], notes: [] }, press: { rows: [], notes: [] } };
+    // Aug (index 1) is outside Q2 Oct–Dec, the quarter on screen; its edit is still sent with all 12 months.
+    expect(quarterMonths("q2")).not.toContain(1);
+    const out = channelInput(setChannelAmount(channelDraft(data), "elec", "elec-0", 1, "4321"));
+    expect(out.ok && out.data.elec[0].m).toEqual([100000, 4321, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    // Feb (index 7) is outside Q1 Jul–Sep; the FY row still sends 12 months and the Last FY total.
+    expect(quarterMonths("q1")).not.toContain(7);
+    const fy = fyInput(setFyAmount(fyDraft([]), { biz: "Salt", b: "ACI Salt" }, "TV", 7, "2"));
+    expect(fy.ok && fy.rows[0]).toEqual({ biz: "Salt", b: "ACI Salt", med: "TV", m: [0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0], py: 0 });
+  });
+
+  it("lists the Submit Date months after Any: blanks skipped, each month once, oldest first, as Mon'YY", () => {
+    const rows = [bill(1, "2026-10-20"), bill(2, null), bill(3, "2026-08-15"), bill(4, "2026-10-01"), bill(5, ""), bill(6, "2027-01-05")];
+    expect(submitMonthOptions(rows)).toEqual([
+      { value: "2026-08", label: "Aug'26" }, { value: "2026-10", label: "Oct'26" }, { value: "2027-01", label: "Jan'27" },
+    ]);
+    // A month already chosen stays on its list after its last bill goes, so the select never shows a value it does not list.
+    expect(submitMonthOptions([bill(1, "2026-10-20")], { from: "2026-07", to: ANY_MONTH }).map((o) => o.value)).toEqual(["2026-07", "2026-10"]);
+  });
+
+  it("filters on the Submit Date month: Any to Any, From only, To only, both, reversed, and a bill with no Submit Date", () => {
+    const rows = [bill(1, "2026-08-15"), bill(2, "2026-10-20"), bill(3, "2027-01-05"), bill(4, null)];
+    const keep = (from: string, to: string) => rows.filter((r) => inBillRange(r, { from, to })).map((r) => r.sl);
+    expect(keep(ANY_MONTH, ANY_MONTH)).toEqual([1, 2, 3, 4]);
+    expect(keep("2026-10", ANY_MONTH)).toEqual([2, 3]);
+    expect(keep(ANY_MONTH, "2026-10")).toEqual([1, 2]);
+    expect(keep("2026-08", "2026-10")).toEqual([1, 2]);
+    expect(keep("2026-10", "2026-10")).toEqual([2]);
+    expect(keep("2027-01", "2026-08")).toEqual([]);
+  });
+
+  it("works with the search and the first-40 rule, and says N of M bills only when a filter or search is on", () => {
+    const rows = [...Array.from({ length: 45 }, (_, i) => bill(i + 1, "2026-10-20")), bill(46, "2026-08-15"), bill(47, null)];
+    const oct = billsToShow(rows, "", false, { from: "2026-10", to: "2026-10" });
+    expect([oct.shown.length, oct.matching, oct.shown[0].sl]).toEqual([40, 45, 45]);
+    expect(billsToShow(rows, "", true, { from: "2026-10", to: "2026-10" }).shown).toHaveLength(45);
+    expect(billsToShow(rows, "vendor 46", false, { from: "2026-08", to: ANY_MONTH }).shown.map((r) => r.sl)).toEqual([46]);
+    expect(billsToShow(rows, "vendor 46", false, { from: "2026-10", to: ANY_MONTH }).matching).toBe(0);
+    expect(billsToShow(rows, "", false).matching).toBe(47);
+    expect(billsToShow(rows, "", false, ANY_RANGE).matching).toBe(47);
+    expect(billFilterActive("", ANY_RANGE)).toBe(false);
+    expect(billFilterActive("   ", ANY_RANGE)).toBe(false);
+    expect(billFilterActive("gulshan", ANY_RANGE)).toBe(true);
+    expect(billFilterActive("", { from: ANY_MONTH, to: "2026-10" })).toBe(true);
+    expect(billsCount(2, 169)).toBe("2 of 169 bills");
+  });
+
+  it("lists the hideable bill columns in table order and opens with Bill No and Bill Amount", () => {
+    expect(BILL_COLUMNS.map((c) => c.label)).toEqual(["PO", "Bill No", "PO Amount", "Bill Amount", "Brand", "Location"]);
+    expect(DEFAULT_BILL_COLUMNS).toEqual(["bill", "ba"]);
+    expect(toggleBillColumn(["bill", "ba"], "b", true)).toEqual(["bill", "ba", "b"]);
+    expect(toggleBillColumn(["bill", "ba", "b"], "bill", false)).toEqual(["ba", "b"]);
+    expect(toggleBillColumn(["loc"], "po", true)).toEqual(["po", "loc"]);
+  });
+
+  it("reads stored ticks, falling back to the default for a missing or bad value", () => {
+    expect(parseBillColumns(null)).toEqual(["bill", "ba"]);
+    expect(parseBillColumns('["loc","b"]')).toEqual(["b", "loc"]);
+    expect(parseBillColumns("[]")).toEqual([]);
+    for (const bad of ["not json", "{}", '"b"', '["b","sl"]', "[1]", "null"]) expect(parseBillColumns(bad), bad).toEqual(["bill", "ba"]);
+  });
+
+  it("reads and writes the browser's ticks without ever throwing", () => {
+    const box = new Map<string, string>();
+    const storage = { getItem: (k: string) => box.get(k) ?? null, setItem: (k: string, v: string) => void box.set(k, v) };
+    expect(readStoredColumns(storage)).toBeNull();
+    expect(writeBillColumns(storage, ["b", "loc"])).toBe(true);
+    expect(box.get(BILL_COLUMNS_KEY)).toBe('["b","loc"]');
+    expect(parseBillColumns(readStoredColumns(storage))).toEqual(["b", "loc"]);
+    const blocked = {
+      getItem: (): string | null => { throw new Error("blocked"); },
+      setItem: (): void => { throw new Error("full"); },
+    };
+    expect(readStoredColumns(blocked)).toBeNull();
+    expect(writeBillColumns(blocked, ["b"])).toBe(false);
+    expect(readStoredColumns(null)).toBeNull();
+    expect(writeBillColumns(null, ["b"])).toBe(false);
   });
 });

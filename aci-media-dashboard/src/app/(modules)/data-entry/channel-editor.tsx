@@ -11,22 +11,27 @@ import type { ChannelData } from "@/lib/ingest/readers/channel";
 import { fyMonthLabels, type ChannelKey } from "@/lib/manual/rules";
 import { saveChannelAction } from "./actions";
 import {
-  CHANNEL_TABS, addChannelRow, channelDraft, channelInput, isDirty, removeChannelRow, setChannelAmount, setChannelName,
+  CHANNEL_TABS, addChannelRow, channelDraft, channelInput, isDirty, quarterMonths, removeChannelRow, setChannelAmount, setChannelName,
+  type Quarter,
 } from "./manual-drafts";
+import { QuarterButtons } from "./quarter-buttons";
 import { SaveBar } from "./save-bar";
 
 /**
  * Channel cost (design 3.1). All three sheets are one draft and one save; edits survive switching sheets.
  * Keyed by its version id: a save re-renders the page with the new version, which remounts this with what was stored.
+ * The quarter only picks which month columns show: the draft and the save always hold all 12 months.
  */
-export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onSheet }: {
+export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onSheet, quarter, onQuarter }: {
   versionId: number | null; fyStart: number; data: ChannelData; readOnly: boolean; sheet: ChannelKey; onSheet: (k: ChannelKey) => void;
+  quarter: Quarter; onQuarter: (q: Quarter) => void;
 }) {
   const [initial] = useState(() => channelDraft(data));
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const months = fyMonthLabels(fyStart);
+  const shown = quarterMonths(quarter);
   const tab = CHANNEL_TABS.find((t) => t.key === sheet) ?? CHANNEL_TABS[0];
   const rows = draft[tab.key];
 
@@ -48,8 +53,11 @@ export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onShe
   return (
     <Card className="min-w-0">
       <CardHeader className="gap-3">
-        <div className="max-w-full overflow-x-auto">
-          <SegmentedButtons label="Channel cost sheets" items={CHANNEL_TABS.map(({ key, label }) => ({ key, label }))} value={tab.key} onChange={onSheet} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="max-w-full overflow-x-auto">
+            <SegmentedButtons label="Channel cost sheets" items={CHANNEL_TABS.map(({ key, label }) => ({ key, label }))} value={tab.key} onChange={onSheet} />
+          </div>
+          <QuarterButtons value={quarter} onChange={onQuarter} />
         </div>
         <div>
           <CardTitle>{`Channel cost · ${tab.label}`}</CardTitle>
@@ -62,7 +70,7 @@ export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onShe
             <TableRow>
               <TableHead className="text-right">SL</TableHead>
               <TableHead>{tab.column}</TableHead>
-              {months.map((m) => <TableHead key={m} className="text-right">{m}</TableHead>)}
+              {shown.map((j) => <TableHead key={months[j]} className="text-right">{months[j]}</TableHead>)}
               {!readOnly && <TableHead><span className="sr-only">Remove</span></TableHead>}
             </TableRow>
           </TableHeader>
@@ -74,9 +82,9 @@ export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onShe
                   <Input aria-label={`${tab.column} ${i + 1}`} value={r.n} maxLength={120} disabled={readOnly} className="w-48"
                     onChange={(e) => setDraft((d) => setChannelName(d, tab.key, r.key, e.target.value))} />
                 </TableCell>
-                {r.m.map((v, j) => (
+                {shown.map((j) => (
                   <TableCell key={months[j]}>
-                    <Input aria-label={`${tab.column} ${i + 1} ${months[j]}`} inputMode="decimal" value={v} disabled={readOnly} className="w-28 text-right tabular-nums"
+                    <Input aria-label={`${tab.column} ${i + 1} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="w-28 text-right tabular-nums"
                       onChange={(e) => setDraft((d) => setChannelAmount(d, tab.key, r.key, j, e.target.value))} />
                   </TableCell>
                 ))}

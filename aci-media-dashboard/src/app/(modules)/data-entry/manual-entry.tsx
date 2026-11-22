@@ -8,7 +8,7 @@ import type { ChannelKey } from "@/lib/manual/rules";
 import { BillboardEditor } from "./billboard-editor";
 import { ChannelEditor } from "./channel-editor";
 import { FyEditor } from "./fy-editor";
-import type { ManualEntryData } from "./manual-drafts";
+import { ANY_RANGE, defaultQuarter, type BillRange, type ManualEntryData, type Quarter } from "./manual-drafts";
 
 type View = "channel" | "fy" | "bills";
 const VIEWS: { key: View; label: string }[] = [
@@ -26,6 +26,12 @@ export function ManualEntry({ admin, data }: { admin: boolean; data: ManualEntry
   const [sheet, setSheet] = useState<ChannelKey>("elec");
   const [fyBrand, setFyBrand] = useState<string | null>(null);
   const [billQuery, setBillQuery] = useState("");
+  // The Submit Date range lives here with the search, so the remount after a bill save keeps both.
+  const [billRange, setBillRange] = useState<BillRange>(ANY_RANGE);
+  // One quarter for Channel cost and FY media spend (view controls design 1.1), from the Channel cost FY, the section that
+  // opens first. Not remembered after a reload. This renders per request (page.tsx awaits connection()), so the clock read is
+  // never in a static shell.
+  const [quarter, setQuarter] = useState<Quarter>(() => defaultQuarter(new Date(), data.channel.fyStart));
   return (
     <div className="min-w-0 space-y-4">
       {!admin && (
@@ -39,14 +45,16 @@ export function ManualEntry({ admin, data }: { admin: boolean; data: ManualEntry
         <SegmentedButtons label="Manual Entry sections" items={VIEWS} value={view} onChange={setView} />
       </div>
       <section data-testid="manual-channel" hidden={view !== "channel"} className="min-w-0">
-        <ChannelEditor key={`channel-${data.channel.versionId ?? "none"}`} {...data.channel} readOnly={!admin} sheet={sheet} onSheet={setSheet} />
+        <ChannelEditor key={`channel-${data.channel.versionId ?? "none"}`} {...data.channel} readOnly={!admin} sheet={sheet} onSheet={setSheet}
+          quarter={quarter} onQuarter={setQuarter} />
       </section>
       <section data-testid="manual-fy" hidden={view !== "fy"} className="min-w-0">
-        <FyEditor key={`fy-${data.fy.versionId ?? "none"}`} {...data.fy} businesses={data.businesses} readOnly={!admin} brand={fyBrand} onBrand={setFyBrand} />
+        <FyEditor key={`fy-${data.fy.versionId ?? "none"}`} {...data.fy} businesses={data.businesses} readOnly={!admin} brand={fyBrand} onBrand={setFyBrand}
+          quarter={quarter} onQuarter={setQuarter} />
       </section>
       <section data-testid="manual-bills" hidden={view !== "bills"} className="min-w-0">
         <BillboardEditor key={`bills-${data.billboard.versionId ?? "none"}`} {...data.billboard} businesses={data.businesses} readOnly={!admin}
-          query={billQuery} onQuery={setBillQuery} />
+          query={billQuery} onQuery={setBillQuery} range={billRange} onRange={setBillRange} />
       </section>
     </div>
   );

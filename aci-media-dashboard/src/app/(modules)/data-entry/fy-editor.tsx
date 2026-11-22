@@ -11,16 +11,20 @@ import { fyMonthLabels, fyName } from "@/lib/manual/rules";
 import { saveFyAction } from "./actions";
 import { AddBrandDialog } from "./add-brand-dialog";
 import {
-  addFyBrand, fyBrandGroups, fyBrandKey, fyDraft, fyInput, fyTable, isDirty, setFyAmount, type ManualBusiness,
+  addFyBrand, fyBrandGroups, fyBrandKey, fyDraft, fyInput, fyTable, isDirty, quarterMonths, setFyAmount, type ManualBusiness, type Quarter,
 } from "./manual-drafts";
+import { QuarterButtons } from "./quarter-buttons";
 import { SaveBar } from "./save-bar";
 
 const SELECT = "h-9 max-w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-sm";
 
-/** FY media spend (design 3.2). Edits to several brands stay in one draft until Save & publish or Discard changes. */
-export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand, onBrand }: {
+/**
+ * FY media spend (design 3.2). Edits to several brands stay in one draft until Save & publish or Discard changes.
+ * The quarter only picks which month columns show: Last FY always shows, and the save always sends all 12 months.
+ */
+export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand, onBrand, quarter, onQuarter }: {
   versionId: number | null; fyStart: number; rows: FyRow[]; businesses: ManualBusiness[]; readOnly: boolean;
-  brand: string | null; onBrand: (key: string) => void;
+  brand: string | null; onBrand: (key: string) => void; quarter: Quarter; onQuarter: (q: Quarter) => void;
 }) {
   const [initial] = useState(() => fyDraft(rows));
   const [draft, setDraft] = useState(initial);
@@ -30,6 +34,7 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
   const groups = fyBrandGroups(draft);
   const selected = groups.flatMap((g) => g.brands).find((x) => fyBrandKey(x) === brand) ?? groups[0]?.brands[0] ?? null;
   const months = fyMonthLabels(fyStart);
+  const shown = quarterMonths(quarter);
 
   const save = () => {
     const built = fyInput(draft);
@@ -60,6 +65,7 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
           )}
           {!readOnly && <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}>+ Add brand</Button>}
         </div>
+        {selected && <QuarterButtons value={quarter} onChange={onQuarter} />}
         <div>
           <CardTitle>{selected ? `FY media spend · ${selected.b}` : "FY media spend"}</CardTitle>
           {selected && <p className="text-sm text-gray-500">{`BDT Mn · ${selected.biz} · FY ${fyName(fyStart)} months Jul to Jun, plus the last FY total`}</p>}
@@ -71,7 +77,7 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
             <TableHeader>
               <TableRow>
                 <TableHead>Media</TableHead>
-                {months.map((m) => <TableHead key={m} className="text-right">{m}</TableHead>)}
+                {shown.map((j) => <TableHead key={months[j]} className="text-right">{months[j]}</TableHead>)}
                 <TableHead className="text-right">Last FY</TableHead>
               </TableRow>
             </TableHeader>
@@ -79,9 +85,9 @@ export function FyEditor({ versionId, fyStart, rows, businesses, readOnly, brand
               {fyTable(draft, selected).map((r) => (
                 <TableRow key={r.med}>
                   <TableCell className="font-medium">{r.med}</TableCell>
-                  {r.m.map((v, j) => (
+                  {shown.map((j) => (
                     <TableCell key={months[j]}>
-                      <Input aria-label={`${r.med} ${months[j]}`} inputMode="decimal" value={v} disabled={readOnly} className="w-24 text-right tabular-nums"
+                      <Input aria-label={`${r.med} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="w-24 text-right tabular-nums"
                         onChange={(e) => setDraft((d) => setFyAmount(d, selected, r.med, j, e.target.value))} />
                     </TableCell>
                   ))}
