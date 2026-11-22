@@ -251,6 +251,88 @@ test("4. quarters: Channel cost opens on today's quarter, Full year shows 12, an
   await expect(quarterButton(channelAgain, "Q3 Jan–Mar")).toHaveAttribute("aria-pressed", "true");
 });
 
+test("5. bills: the Submit Date range narrows the list and the count", async ({ page }) => {
+  await openManual(page);
+  const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+  const dialog = page.getByRole("dialog");
+  for (const [no, sb] of [["E2E-RANGE-A", "2026-08-15"], ["E2E-RANGE-B", "2026-10-20"]]) {
+    await bills.getByRole("button", { name: "+ Add bill" }).click();
+    await dialog.getByLabel("Name of the Media / Vendor", { exact: true }).fill(`Vendor ${no}`);
+    await dialog.getByLabel("Bill No", { exact: true }).fill(no);
+    await dialog.getByLabel("Submit Date", { exact: true }).fill(sb);
+    await dialog.getByRole("button", { name: "Save & publish" }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+  const table = bills.getByTestId("manual-bills-table");
+  const rowA = table.locator("tbody tr").filter({ hasText: "E2E-RANGE-A" });
+  const rowB = table.locator("tbody tr").filter({ hasText: "E2E-RANGE-B" });
+  const count = bills.getByText(/^\d+ of \d+ bills$/);
+  const from = bills.getByLabel("Submitted from", { exact: true });
+  const to = bills.getByLabel("to", { exact: true });
+  await expect(count).toHaveCount(0); // Any to Any and no search: no count line
+  await expect(from).toHaveValue("");
+  await expect(to).toHaveValue("");
+  await expect(from.locator("option").first()).toHaveText("Any");
+  await expect(from.locator("option")).toContainText(["Any", "Aug'26", "Oct'26"]);
+  await expect(to.locator("option")).toContainText(["Any", "Aug'26", "Oct'26"]);
+
+  await bills.getByLabel("Search bills").fill("E2E-RANGE");
+  await expect(count).toHaveText(/^2 of \d+ bills$/);
+  await from.selectOption({ label: "Oct'26" });
+  await expect(count).toHaveText(/^1 of \d+ bills$/);
+  await expect(rowB).toHaveCount(1);
+  await expect(rowA).toHaveCount(0);
+  await from.selectOption({ label: "Any" });
+  await to.selectOption({ label: "Aug'26" });
+  await expect(count).toHaveText(/^1 of \d+ bills$/);
+  await expect(rowA).toHaveCount(1);
+  await expect(rowB).toHaveCount(0);
+  await from.selectOption({ label: "Oct'26" }); // From later than To: nothing matches
+  await expect(count).toHaveText(/^0 of \d+ bills$/);
+  await expect(table.getByText("No bills match.", { exact: true })).toBeVisible();
+
+  await from.selectOption({ label: "Any" });
+  await to.selectOption({ label: "Any" });
+  await expect(count).toHaveText(/^2 of \d+ bills$/); // the search alone still counts
+  await bills.getByLabel("Search bills").fill("");
+  await expect(count).toHaveCount(0);
+  await expect(table.getByText("No bills match.", { exact: true })).toHaveCount(0);
+});
+
+test("6. bills: Columns adds Brand and hides Bill No, and this browser remembers it", async ({ page }) => {
+  await openManual(page);
+  const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+  const head = (name: string) => bills.getByTestId("manual-bills-table").getByRole("columnheader", { name, exact: true });
+  for (const name of ["SL", "Vendor", "Bill No", "Bill Amount", "Status", "Edit"]) await expect(head(name)).toHaveCount(1);
+  for (const name of ["PO", "PO Amount", "Brand", "Location"]) await expect(head(name)).toHaveCount(0);
+
+  const menu = page.getByRole("menu");
+  await expect(async () => {
+    await bills.getByRole("button", { name: "Columns", exact: true }).click();
+    await expect(menu).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveText(["PO", "Bill No", "PO Amount", "Bill Amount", "Brand", "Location"]);
+  const item = (name: string) => menu.getByRole("menuitemcheckbox", { name, exact: true });
+  await expect(item("Bill No")).toHaveAttribute("aria-checked", "true");
+  await expect(item("Bill Amount")).toHaveAttribute("aria-checked", "true");
+  await expect(item("Brand")).toHaveAttribute("aria-checked", "false");
+  await item("Brand").click();
+  await expect(item("Brand")).toHaveAttribute("aria-checked", "true");
+  await item("Bill No").click();
+  await expect(item("Bill No")).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(head("Brand")).toHaveCount(1);
+  await expect(head("Bill No")).toHaveCount(0);
+  await expect(head("Bill Amount")).toHaveCount(1);
+
+  await page.reload();
+  const again = await showView(page, "OOH / billboard bills", "manual-bills");
+  const headAgain = (name: string) => again.getByTestId("manual-bills-table").getByRole("columnheader", { name, exact: true });
+  await expect(headAgain("Brand")).toHaveCount(1);
+  await expect(headAgain("Bill No")).toHaveCount(0);
+});
+
 test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -280,13 +362,18 @@ test.describe("viewer", () => {
     await expect(fy.getByLabel("FY brand")).toBeEnabled();
   });
 
-  test("sees the bills with no Add bill or Edit", async ({ page }) => {
+  test("sees the bills with no Add bill or Edit, and can still filter and pick columns", async ({ page }) => {
     await openManual(page);
     const bills = await showView(page, "OOH / billboard bills", "manual-bills");
     await expect(bills.getByTestId("manual-bills-table")).toBeVisible();
     await expect(bills.getByRole("button", { name: "+ Add bill" })).toHaveCount(0);
     await expect(bills.getByRole("button", { name: /^Edit bill/ })).toHaveCount(0);
     await expect(bills.getByLabel("Search bills")).toBeEnabled();
+    await expect(bills.getByLabel("Submitted from", { exact: true })).toBeEnabled();
+    await expect(bills.getByLabel("to", { exact: true })).toBeEnabled();
+    await bills.getByLabel("Submitted from", { exact: true }).selectOption({ label: "Oct'26" });
+    await expect(bills.getByText(/^\d+ of \d+ bills$/)).toBeVisible();
+    await expect(bills.getByRole("button", { name: "Columns", exact: true })).toBeEnabled();
   });
 });
 
