@@ -2832,3 +2832,11 @@ EOF
 
 (Add any component fixed in Step 2 to the `git add`, with its quoted path.)
 
+---
+
+## Decisions after the final review (22 Nov 2026)
+
+- **Bill Difference on edit.** The Edit dialog leaves Bill Difference blank when the stored value equals PO minus Bill, so changing an amount recomputes it. A stored value that differs from PO minus Bill is a real override and stays until the admin clears the box. His real file (169 bills) has no such override. PO, Bill and the difference are rounded to 2 decimals. A status-only edit keeps the bill's unreadable date text.
+- **FY save and businesses.** A FY save files every brand that is on the Businesses & Brands list under that brand's business on the list, including rows the admin did not touch. This is kept on purpose: the list is the source of truth for which business a brand belongs to. The Phase 3 FY pages should read the stored `biz` of each row.
+- **Known minors left for later:** a crafted admin FY payload can name a brand not on the list; a lock timeout shows the "data changed" message; a brand with both Press and Print rows shows only one Print row; a bill's business that differs only in case shows "Not set"; very long uploaded text blocks a save with a general message; the bills table's Edit column needs a sideways scroll on desktop.
+
