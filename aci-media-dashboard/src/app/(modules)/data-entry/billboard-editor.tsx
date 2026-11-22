@@ -2,6 +2,7 @@
 
 import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -97,7 +98,7 @@ export function BillboardEditor({ versionId, data, businesses, readOnly, query, 
             </select>
           </div>
           <DropdownMenu>
-            <DropdownMenuTrigger className={buttonVariants({ variant: "outline" })}>Columns</DropdownMenuTrigger>
+            <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline" }))}>Columns</DropdownMenuTrigger>
             <DropdownMenuContent className="w-44">
               {BILL_COLUMNS.map((c) => (
                 <DropdownMenuCheckboxItem key={c.key} checked={columns.includes(c.key)}

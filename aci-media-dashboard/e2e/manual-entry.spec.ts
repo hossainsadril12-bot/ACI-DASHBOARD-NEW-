@@ -306,6 +306,10 @@ test("6. bills: Columns adds Brand and hides Bill No, and this browser remembers
   for (const name of ["SL", "Vendor", "Bill No", "Bill Amount", "Status", "Edit"]) await expect(head(name)).toHaveCount(1);
   for (const name of ["PO", "PO Amount", "Brand", "Location"]) await expect(head(name)).toHaveCount(0);
 
+  const borderColor = await bills.getByRole("button", { name: "Columns", exact: true })
+    .evaluate((el) => getComputedStyle(el).borderTopColor);
+  expect(borderColor).not.toBe("rgba(0, 0, 0, 0)");
+
   const menu = page.getByRole("menu");
   await expect(async () => {
     await bills.getByRole("button", { name: "Columns", exact: true }).click();
