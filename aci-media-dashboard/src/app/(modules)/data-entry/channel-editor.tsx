@@ -65,7 +65,7 @@ export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onShe
         </div>
       </CardHeader>
       <CardContent className="min-w-0 space-y-3">
-        <Table data-testid="channel-table">
+        <Table data-testid="channel-table" className="w-auto">
           <TableHeader>
             <TableRow>
               <TableHead className="text-right">SL</TableHead>
@@ -84,7 +84,7 @@ export function ChannelEditor({ versionId, fyStart, data, readOnly, sheet, onShe
                 </TableCell>
                 {shown.map((j) => (
                   <TableCell key={months[j]}>
-                    <Input aria-label={`${tab.column} ${i + 1} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="w-28 text-right tabular-nums"
+                    <Input aria-label={`${tab.column} ${i + 1} ${months[j]}`} inputMode="decimal" value={r.m[j]} disabled={readOnly} className="ml-auto w-28 text-right tabular-nums"
                       onChange={(e) => setDraft((d) => setChannelAmount(d, tab.key, r.key, j, e.target.value))} />
                   </TableCell>
                 ))}
