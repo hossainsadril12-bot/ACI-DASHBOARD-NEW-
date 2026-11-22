@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Lock } from "lucide-react";
 import { SegmentedButtons } from "@/components/data/segmented";
 import type { ChannelKey } from "@/lib/manual/rules";
+import { BillboardEditor } from "./billboard-editor";
 import { ChannelEditor } from "./channel-editor";
 import { FyEditor } from "./fy-editor";
 import type { ManualEntryData } from "./manual-drafts";
@@ -13,6 +14,7 @@ type View = "channel" | "fy" | "bills";
 const VIEWS: { key: View; label: string }[] = [
   { key: "channel", label: "Channel cost" },
   { key: "fy", label: "FY media spend" },
+  { key: "bills", label: "OOH / billboard bills" },
 ];
 
 /**
@@ -23,6 +25,7 @@ export function ManualEntry({ admin, data }: { admin: boolean; data: ManualEntry
   const [view, setView] = useState<View>("channel");
   const [sheet, setSheet] = useState<ChannelKey>("elec");
   const [fyBrand, setFyBrand] = useState<string | null>(null);
+  const [billQuery, setBillQuery] = useState("");
   return (
     <div className="min-w-0 space-y-4">
       {!admin && (
@@ -40,6 +43,10 @@ export function ManualEntry({ admin, data }: { admin: boolean; data: ManualEntry
       </section>
       <section data-testid="manual-fy" hidden={view !== "fy"} className="min-w-0">
         <FyEditor key={`fy-${data.fy.versionId ?? "none"}`} {...data.fy} businesses={data.businesses} readOnly={!admin} brand={fyBrand} onBrand={setFyBrand} />
+      </section>
+      <section data-testid="manual-bills" hidden={view !== "bills"} className="min-w-0">
+        <BillboardEditor key={`bills-${data.billboard.versionId ?? "none"}`} {...data.billboard} businesses={data.businesses} readOnly={!admin}
+          query={billQuery} onQuery={setBillQuery} />
       </section>
     </div>
   );

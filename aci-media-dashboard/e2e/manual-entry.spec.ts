@@ -113,6 +113,56 @@ test("2. FY: add a brand with a new name, Save & publish, and it is on Businesse
   await expect(page.getByTestId("brands-table")).toContainText(FY_BRAND);
 });
 
+test("3. bills: add, edit and delete a bill; delete asks first; a missing vendor shows in red", async ({ page }) => {
+  await openManual(page);
+  const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+  await expect(bills.getByText(/^\d+ bills? · add a bill or change a status\. Each save publishes\.$/)).toBeVisible();
+  const dialog = page.getByRole("dialog");
+  const row = bills.getByTestId("manual-bills-table").locator("tbody tr").filter({ hasText: "E2E-001" });
+  const search = bills.getByLabel("Search bills");
+
+  await bills.getByRole("button", { name: "+ Add bill" }).click();
+  await expect(dialog.getByText("Add bill", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Status", { exact: true })).toHaveValue("Finance/Audit");
+  await expect(dialog.getByLabel("Submit Date", { exact: true })).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
+  await dialog.getByRole("button", { name: "Save & publish" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Enter the name of the media / vendor.");
+  await dialog.getByLabel("Name of the Media / Vendor", { exact: true }).fill("E2E Vendor One");
+  await dialog.getByLabel("Bill No", { exact: true }).fill("E2E-001");
+  await dialog.getByLabel("PO Amount", { exact: true }).fill("1000");
+  await dialog.getByLabel("Bill Amount", { exact: true }).fill("800");
+  await dialog.getByRole("button", { name: "Save & publish" }).click();
+  await expect(dialog).toHaveCount(0);
+  await search.fill("E2E-001");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Finance/Audit");
+
+  await row.getByRole("button", { name: "Edit bill E2E-001" }).click();
+  await expect(dialog.getByText(/^Edit bill · SL \d+$/)).toBeVisible();
+  await expect(dialog.getByLabel("Bill Difference (blank = PO − Bill)", { exact: true })).toHaveValue("200");
+  await dialog.getByLabel("Status", { exact: true }).selectOption("Payment Done");
+  await dialog.getByRole("button", { name: "Save & publish" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(row).toContainText("Payment Done");
+
+  await row.getByRole("button", { name: "Edit bill E2E-001" }).click();
+  page.once("dialog", (d) => d.dismiss());
+  await dialog.getByRole("button", { name: "Delete bill" }).click();
+  await expect(dialog).toBeVisible(); // said no: nothing deleted
+  await expect(row).toHaveCount(1);
+  page.once("dialog", (d) => {
+    expect(d.message()).toBe("Delete bill E2E-001? You can bring it back from Upload History.");
+    return d.accept();
+  });
+  await dialog.getByRole("button", { name: "Delete bill" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(row).toHaveCount(0);
+
+  const history = await historyRows(page);
+  await expect(history.first()).toContainText("Manual edit");
+  await expect(history.first()).toContainText("Billboard billing");
+});
+
 test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -135,5 +185,14 @@ test.describe("viewer", () => {
     await expect(fy.getByRole("button", { name: "+ Add brand" })).toHaveCount(0);
     await expect(fy.getByLabel(/^TV Jul'\d\d$/)).toBeDisabled();
     await expect(fy.getByLabel("FY brand")).toBeEnabled();
+  });
+
+  test("sees the bills with no Add bill or Edit", async ({ page }) => {
+    await openManual(page);
+    const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+    await expect(bills.getByTestId("manual-bills-table")).toBeVisible();
+    await expect(bills.getByRole("button", { name: "+ Add bill" })).toHaveCount(0);
+    await expect(bills.getByRole("button", { name: /^Edit bill/ })).toHaveCount(0);
+    await expect(bills.getByLabel("Search bills")).toBeEnabled();
   });
 });

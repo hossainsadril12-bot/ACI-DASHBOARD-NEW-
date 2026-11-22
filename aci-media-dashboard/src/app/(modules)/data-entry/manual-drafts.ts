@@ -1,8 +1,9 @@
-import type { BillboardData } from "@/lib/ingest/readers/billboard";
+import type { BillboardData, BillboardRow } from "@/lib/ingest/readers/billboard";
 import type { ChannelData } from "@/lib/ingest/readers/channel";
 import type { FyRow } from "@/lib/ingest/readers/fy";
+import type { CellValue } from "@/lib/ingest/workbook";
 import { normName } from "@/lib/names-normal";
-import { BAD_AMOUNT, CHANNEL_SHEETS, FY_MEDIA, type ChannelInput, type ChannelKey } from "@/lib/manual/rules";
+import { BAD_AMOUNT, CHANNEL_SHEETS, FY_MEDIA, VENDOR_REQUIRED, type BillInput, type ChannelInput, type ChannelKey } from "@/lib/manual/rules";
 
 // Pure helpers for the Manual Entry editors: what the boxes hold and what a save sends. Safe for the browser.
 
@@ -164,3 +165,57 @@ export function brandToAdd(d: FyDraft, businesses: ManualBusiness[], pick: { bus
   const onList = businesses.flatMap((b) => b.brands).find((n) => normName(n) === normName(typed));
   return { ok: true, brand: { name: onList ?? typed, businessSlug: business.slug, businessName: business.name, isNew: !onList } };
 }
+
+// ---- OOH / billboard bills ------------------------------------------------------------------------------------
+
+export type BillForm = Record<"v" | "po" | "bill" | "b" | "billc" | "chq" | "loc" | "cm" | "poa" | "ba" | "diff" | "st" | "en" | "sb" | "pr" | "biz" | "status", string>;
+export const NEW_BILL_STATUS = "Finance/Audit";
+export const BILLS_SHOWN = 40;
+
+const cellText = (v: CellValue): string => (v == null ? "" : String(v));
+
+export const billForm = (r: BillboardRow): BillForm => ({
+  v: r.v, po: r.po, bill: r.bill, b: r.b, billc: cellText(r.billc), chq: cellText(r.chq), loc: r.loc, cm: r.cm,
+  poa: String(r.poa), ba: String(r.ba), diff: String(r.diff), st: r.st ?? "", en: r.en ?? "", sb: r.sb ?? "", pr: r.pr ?? "",
+  biz: r.biz, status: r.status,
+});
+
+/** A new bill: Status Finance/Audit (else the legend's first) and today's date as the Submit Date. */
+export const newBillForm = (statuses: readonly string[], today: string): BillForm => ({
+  v: "", po: "", bill: "", b: "", billc: "", chq: "", loc: "", cm: "", poa: "", ba: "", diff: "", st: "", en: "", sb: today, pr: "", biz: "",
+  status: statuses.includes(NEW_BILL_STATUS) ? NEW_BILL_STATUS : (statuses[0] ?? NEW_BILL_STATUS),
+});
+
+/** The form as changeBillboardAction takes a bill: blank amounts null, or the first problem. */
+export function billInput(f: BillForm): { ok: true; bill: BillInput } | { ok: false; error: string } {
+  if (!f.v.trim()) return { ok: false, error: VENDOR_REQUIRED };
+  const poa = readAmount(f.poa);
+  const ba = readAmount(f.ba);
+  const diff = readAmount(f.diff);
+  if (!poa.ok || !ba.ok || !diff.ok) return { ok: false, error: BAD_AMOUNT };
+  return {
+    ok: true,
+    bill: {
+      v: f.v, po: f.po, bill: f.bill, b: f.b, billc: f.billc, chq: f.chq, loc: f.loc, cm: f.cm,
+      poa: poa.value, ba: ba.value, diff: diff.value, st: f.st, en: f.en, sb: f.sb, pr: f.pr, biz: f.biz, status: f.status,
+    },
+  };
+}
+
+/** Search: vendor, PO, bill no, brand or location contains the text, ignoring case and spaces. */
+export const billMatches = (r: BillboardRow, query: string): boolean => {
+  const q = normName(query);
+  return !q || [r.v, r.po, r.bill, r.b, r.loc].some((s) => normName(s).includes(q));
+};
+
+/** The bills to list: matching the search, newest (highest SL) first, the first 40 unless Show all. */
+export function billsToShow(rows: BillboardRow[], query: string, showAll: boolean): { shown: BillboardRow[]; matching: number } {
+  const hits = rows.filter((r) => billMatches(r, query)).sort((a, b) => b.sl - a.sl);
+  return { shown: showAll ? hits : hits.slice(0, BILLS_SHOWN), matching: hits.length };
+}
+
+/** A select's options plus the bill's own value when the list does not have it, so an edit never changes it silently. */
+export const withCurrent = (options: readonly string[], current: string): string[] =>
+  current.trim() && !options.some((o) => normName(o) === normName(current)) ? [...options, current] : [...options];
+
+export const billsCaption = (n: number): string => `${n} ${n === 1 ? "bill" : "bills"} · add a bill or change a status. Each save publishes.`;

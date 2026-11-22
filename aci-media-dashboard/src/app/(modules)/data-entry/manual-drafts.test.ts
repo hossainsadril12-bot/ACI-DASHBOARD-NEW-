@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { BAD_AMOUNT } from "@/lib/manual/rules";
+import type { BillboardRow } from "@/lib/ingest/readers/billboard";
+import { BAD_AMOUNT, VENDOR_REQUIRED } from "@/lib/manual/rules";
 import {
-  CHANNEL_TABS, NEW_BRAND, addChannelRow, addFyBrand, amountText, brandChoices, brandToAdd, channelDraft, channelInput, fyBrandGroups, fyDraft, fyInput, fyTable,
+  CHANNEL_TABS, NEW_BRAND, billForm, billInput, billMatches, billsCaption, billsToShow, newBillForm, withCurrent, addChannelRow, addFyBrand, amountText, brandChoices, brandToAdd, channelDraft, channelInput, fyBrandGroups, fyDraft, fyInput, fyTable,
   isDirty, readAmount, removeChannelRow, setChannelAmount, setChannelName, setFyAmount,
 } from "./manual-drafts";
 
@@ -110,5 +111,46 @@ describe("FY draft", () => {
       .toEqual({ ok: true, brand: { name: "Neem", businessSlug: "hygiene", businessName: "Hygiene", isNew: false } });
     expect(brandToAdd(d, businesses, { businessSlug: "hygiene", brand: NEW_BRAND, newName: " Lizol  Pro " }))
       .toEqual({ ok: true, brand: { name: "Lizol Pro", businessSlug: "hygiene", businessName: "Hygiene", isNew: true } });
+  });
+});
+
+describe("bills", () => {
+  const row = (sl: number, over: Partial<BillboardRow> = {}): BillboardRow => ({
+    sl0: sl, v: `Vendor ${sl}`, po: `PO-${sl}`, bill: `B-${sl}`, poa: 1000, ba: 800, diff: 200, st: "2026-07-01", en: null, sb: null, pr: null,
+    stR: null, enR: "bad", biz: "Salt", bz: "Salt", b: "ACI Salt", billc: 123, chq: null, loc: "Gulshan", cm: "", show: "", status: "Payment Done", sl, ...over,
+  });
+
+  it("fills the Edit form from a bill, and a new bill with Finance/Audit and today's Submit Date", () => {
+    expect(billForm(row(3))).toEqual({
+      v: "Vendor 3", po: "PO-3", bill: "B-3", b: "ACI Salt", billc: "123", chq: "", loc: "Gulshan", cm: "", poa: "1000", ba: "800", diff: "200",
+      st: "2026-07-01", en: "", sb: "", pr: "", biz: "Salt", status: "Payment Done",
+    });
+    expect(newBillForm(["Payment Done", "Finance/Audit"], "2026-11-19")).toMatchObject({ status: "Finance/Audit", sb: "2026-11-19", v: "", poa: "" });
+    expect(newBillForm(["Paid", "Open"], "2026-11-19").status).toBe("Paid");
+  });
+  it("sends blank amounts as null (the server makes PO and Bill 0 and Bill Difference PO - Bill) and needs a vendor", () => {
+    const f = { ...newBillForm(["Finance/Audit"], "2026-11-19"), v: "Vendor", poa: "1,000" };
+    expect(billInput(f)).toEqual({ ok: true, bill: expect.objectContaining({ v: "Vendor", poa: 1000, ba: null, diff: null, sb: "2026-11-19" }) });
+    expect(billInput({ ...f, v: "  " })).toEqual({ ok: false, error: VENDOR_REQUIRED });
+    expect(billInput({ ...f, ba: "eight" })).toEqual({ ok: false, error: BAD_AMOUNT });
+  });
+  it("searches vendor, PO, bill no, brand and location, newest first, the first 40", () => {
+    const rows = Array.from({ length: 45 }, (_, i) => row(i + 1));
+    const all = billsToShow(rows, "", false);
+    expect([all.shown.length, all.matching, all.shown[0].sl]).toEqual([40, 45, 45]);
+    expect(billsToShow(rows, "", true).shown).toHaveLength(45);
+    expect(billsToShow(rows, "po-7", false).shown.map((r) => r.sl)).toEqual([7]);
+    expect(billMatches(row(1), "gulshan")).toBe(true);
+    expect(billMatches(row(1), "aci salt")).toBe(true);
+    expect(billMatches(row(1), "payment")).toBe(false);
+  });
+  it("keeps a bill's own status or business in its select when the list does not have it", () => {
+    expect(withCurrent(["Payment Done"], "Unmarked")).toEqual(["Payment Done", "Unmarked"]);
+    expect(withCurrent(["Salt", "Hygiene"], "salt")).toEqual(["Salt", "Hygiene"]);
+    expect(withCurrent(["Salt"], "")).toEqual(["Salt"]);
+  });
+  it("counts the bills in the caption", () => {
+    expect(billsCaption(1)).toBe("1 bill · add a bill or change a status. Each save publishes.");
+    expect(billsCaption(169)).toBe("169 bills · add a bill or change a status. Each save publishes.");
   });
 });
