@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
 import { TEMPLATES } from "../src/lib/upload/templates";
 
-// Regression: after choosing a month, a refresh or a menu click jumped back to the current month,
+// Regression: after choosing a month, a refresh or a page load (page.goto, since /spend left the menu) jumped back to the current month,
 // so data entered for another month looked lost.
 const shown = async (page: Page, url: string) => {
   await page.goto(url);
