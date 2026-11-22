@@ -6,11 +6,13 @@ import { Lock } from "lucide-react";
 import { SegmentedButtons } from "@/components/data/segmented";
 import type { ChannelKey } from "@/lib/manual/rules";
 import { ChannelEditor } from "./channel-editor";
+import { FyEditor } from "./fy-editor";
 import type { ManualEntryData } from "./manual-drafts";
 
 type View = "channel" | "fy" | "bills";
 const VIEWS: { key: View; label: string }[] = [
   { key: "channel", label: "Channel cost" },
+  { key: "fy", label: "FY media spend" },
 ];
 
 /**
@@ -20,6 +22,7 @@ const VIEWS: { key: View; label: string }[] = [
 export function ManualEntry({ admin, data }: { admin: boolean; data: ManualEntryData }) {
   const [view, setView] = useState<View>("channel");
   const [sheet, setSheet] = useState<ChannelKey>("elec");
+  const [fyBrand, setFyBrand] = useState<string | null>(null);
   return (
     <div className="min-w-0 space-y-4">
       {!admin && (
@@ -34,6 +37,9 @@ export function ManualEntry({ admin, data }: { admin: boolean; data: ManualEntry
       </div>
       <section data-testid="manual-channel" hidden={view !== "channel"} className="min-w-0">
         <ChannelEditor key={`channel-${data.channel.versionId ?? "none"}`} {...data.channel} readOnly={!admin} sheet={sheet} onSheet={setSheet} />
+      </section>
+      <section data-testid="manual-fy" hidden={view !== "fy"} className="min-w-0">
+        <FyEditor key={`fy-${data.fy.versionId ?? "none"}`} {...data.fy} businesses={data.businesses} readOnly={!admin} brand={fyBrand} onBrand={setFyBrand} />
       </section>
     </div>
   );

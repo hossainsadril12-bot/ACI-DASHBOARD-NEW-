@@ -74,6 +74,45 @@ test("1. channel: edit an amount, Save & publish, History shows Manual edit, Res
   await expect(page.getByTestId("manual-channel").getByLabel("Channel 1 Jul'26", { exact: true })).toHaveValue("100000");
 });
 
+const FY_BIZ = "E2E Manual Biz";
+const FY_BRAND = "E2E Manual Brand";
+
+/** Adds the business on Businesses & Brands unless it is already there. */
+const ensureBusiness = async (page: Page, name: string) => {
+  await page.goto("/businesses");
+  await expect(page.getByRole("heading", { name: "Businesses & Brands" })).toBeVisible();
+  if (await page.getByRole("link", { name, exact: true }).count()) return;
+  await page.getByRole("button", { name: "Add business" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Business name").fill(name);
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+};
+
+test("2. FY: add a brand with a new name, Save & publish, and it is on Businesses & Brands", async ({ page }) => {
+  await ensureBusiness(page, FY_BIZ);
+  await openManual(page);
+  const fy = await showView(page, "FY media spend", "manual-fy");
+  await fy.getByRole("button", { name: "+ Add brand" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Business", { exact: true }).selectOption({ label: FY_BIZ });
+  await dialog.getByLabel("Brand", { exact: true }).selectOption({ label: "New brand…" });
+  await dialog.getByLabel("New brand name").fill(FY_BRAND);
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(fy.getByText(`FY media spend · ${FY_BRAND}`)).toBeVisible();
+  await expect(fy.getByText(new RegExp(`^BDT Mn · ${FY_BIZ} · FY \\d{4}-\\d{2} months Jul to Jun, plus the last FY total$`))).toBeVisible();
+  await expect(fy.getByText("Unsaved changes")).toBeVisible();
+  await fy.getByLabel(/^TV Jul'\d\d$/).fill("1.5");
+  await fy.getByRole("button", { name: "Save & publish" }).click();
+  await expect(fy.getByText("All saved")).toBeVisible();
+  await expect(fy.getByLabel("FY brand").locator("option:checked")).toHaveText(FY_BRAND);
+
+  await page.goto("/businesses");
+  await page.getByRole("link", { name: FY_BIZ, exact: true }).click();
+  await expect(page.getByTestId("brands-table")).toContainText(FY_BRAND);
+});
+
 test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -88,5 +127,13 @@ test.describe("viewer", () => {
     await expect(page.getByRole("button", { name: "Save & publish" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "+ Add channel" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+  });
+
+  test("sees FY media spend with its boxes off and no Add brand", async ({ page }) => {
+    await openManual(page);
+    const fy = await showView(page, "FY media spend", "manual-fy");
+    await expect(fy.getByRole("button", { name: "+ Add brand" })).toHaveCount(0);
+    await expect(fy.getByLabel(/^TV Jul'\d\d$/)).toBeDisabled();
+    await expect(fy.getByLabel("FY brand")).toBeEnabled();
   });
 });
