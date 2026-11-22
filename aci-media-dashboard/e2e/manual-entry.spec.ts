@@ -196,3 +196,47 @@ test.describe("viewer", () => {
     await expect(bills.getByLabel("Search bills")).toBeEnabled();
   });
 });
+
+test.describe("phone width (375 px)", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+  const VIEWS: [string, string][] = [["Channel cost", "manual-channel"], ["FY media spend", "manual-fy"], ["OOH / billboard bills", "manual-bills"]];
+  const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= 375);
+  /** The table's own scroll box ends inside the screen. */
+  const tableBox = (section: Locator) => section.locator('[data-slot="table-container"]').first();
+
+  test("each editor's table scrolls inside its card and the page does not scroll sideways", async ({ page }) => {
+    await openManual(page);
+    await page.waitForLoadState("networkidle");
+    expect(await noSideScroll(page)).toBe(true);
+    for (const [label, id] of VIEWS) {
+      const section = await showView(page, label, id);
+      expect(await noSideScroll(page), label).toBe(true);
+      expect(await tableBox(section).evaluate((el) => el.getBoundingClientRect().right <= 375), label).toBe(true);
+    }
+    // The 12-month channel table is wider than a phone: it scrolls inside its own box.
+    const channel = await showView(page, "Channel cost", "manual-channel");
+    expect(await tableBox(channel).evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  });
+
+  test("the bill dialog fits the screen", async ({ page }) => {
+    await openManual(page);
+    const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+    await bills.getByRole("button", { name: "+ Add bill" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true);
+    expect(await noSideScroll(page)).toBe(true);
+  });
+
+  test.describe("viewer on a phone", () => {
+    test.use({ storageState: { cookies: [], origins: [] } });
+    test("sees the note and the editors without side scroll", async ({ page }) => {
+      await openManual(page);
+      await expect(page.getByText(VIEWER_NOTE)).toBeVisible();
+      for (const [label, id] of VIEWS) {
+        await showView(page, label, id);
+        expect(await noSideScroll(page), label).toBe(true);
+      }
+    });
+  });
+});
