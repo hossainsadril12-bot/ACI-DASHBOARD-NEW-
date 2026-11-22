@@ -409,6 +409,29 @@ test.describe("phone width (375 px)", () => {
     expect(await noSideScroll(page)).toBe(true);
   });
 
+  test("the quarter row and the bills toolbar stay inside the screen", async ({ page }) => {
+    await openManual(page);
+    for (const [label, id] of VIEWS.slice(0, 2)) {
+      const section = await showView(page, label, id);
+      const row = section.getByTestId("quarter-row");
+      await expect(row).toBeVisible();
+      expect(await row.evaluate((el) => el.getBoundingClientRect().right <= 375), label).toBe(true);
+      await pickQuarter(section, "Q4 Apr–Jun"); // the last button: reached by scrolling inside the row's own box
+      expect(await noSideScroll(page), label).toBe(true);
+    }
+    const bills = await showView(page, "OOH / billboard bills", "manual-bills");
+    const toolbar = bills.getByTestId("bills-toolbar");
+    expect(await toolbar.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true);
+    expect(await noSideScroll(page)).toBe(true);
+    const menu = page.getByRole("menu");
+    await expect(async () => {
+      await bills.getByRole("button", { name: "Columns", exact: true }).click();
+      await expect(menu).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    expect(await menu.evaluate((el) => el.getBoundingClientRect().right <= 375)).toBe(true);
+    expect(await noSideScroll(page)).toBe(true);
+  });
+
   test.describe("viewer on a phone", () => {
     test.use({ storageState: { cookies: [], origins: [] } });
     test("sees the note and the editors without side scroll", async ({ page }) => {
