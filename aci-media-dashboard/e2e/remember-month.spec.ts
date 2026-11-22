@@ -17,7 +17,7 @@ test("the chosen month is kept across pages and refreshes, and applies without a
   await page.reload();
   await expect(page.getByRole("heading", { name: "June 2031" })).toBeVisible();
 
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Spend", exact: true }).click();
+  await shown(page, "/spend");
   const month = page.getByRole("form", { name: "Filters" }).getByLabel("Month");
   await expect(month).toHaveValue("2031-06");
 

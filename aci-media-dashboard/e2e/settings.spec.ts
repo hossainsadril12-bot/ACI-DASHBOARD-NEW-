@@ -1,10 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { NAV_ITEMS } from "../src/components/shell/nav-items";
+import { PRD_PAGES } from "../src/components/shell/nav-items";
 
-test("sidebar shows all sections", async ({ page }) => {
-  await page.goto("/");
+test("sidebar shows every PRD page", async ({ page }) => {
+  await page.goto("/data-entry");
   const nav = page.getByRole("navigation", { name: "Main" });
-  for (const item of NAV_ITEMS) await expect(nav.getByRole("link", { name: item.label, exact: true })).toBeVisible();
+  for (const s of ["Campaign Performance", "Media Spend", "Channel Wise Spend", "Billing & Statement", "Settings"]) {
+    const head = nav.getByRole("button", { name: new RegExp(s) });
+    if ((await head.getAttribute("aria-expanded")) === "false") await head.click();
+  }
+  for (const p of PRD_PAGES) await expect(nav.getByRole("link", { name: p.label, exact: true }), p.code).toBeVisible();
 });
 
 test("add a brand and a rival in settings", async ({ page }) => {
