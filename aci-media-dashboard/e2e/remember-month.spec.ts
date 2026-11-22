@@ -28,7 +28,7 @@ test("the chosen month is kept across pages and refreshes, and applies without a
   await expect(page.getByRole("form", { name: "Filters" }).getByLabel("Month")).toHaveValue("2031-07");
 
   // Home links to other months; opening Home must not change the remembered month.
-  await shown(page, "/");
+  await shown(page, "/old-home");
   expect(await cookie(page, "aci-month")).toBe("2031-07");
 });
 

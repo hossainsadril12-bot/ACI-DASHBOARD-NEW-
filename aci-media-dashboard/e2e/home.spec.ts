@@ -32,7 +32,7 @@ test("home shows an overdue bill alert, reminds it, and lists a campaign startin
   await dialog.getByRole("button", { name: "Save campaign" }).click();
   await expect(dialog).toBeHidden();
 
-  await page.goto("/");
+  await page.goto("/old-home");
   await expect(page.getByTestId("alerts")).toContainText(/bills? waiting \d+\+ days/);
   await expect(page.getByTestId("home-upcoming")).toContainText(`Soon ${stamp}`);
   await expect(page.getByTestId(`home-budget-${brand}`)).toContainText("No budget set");

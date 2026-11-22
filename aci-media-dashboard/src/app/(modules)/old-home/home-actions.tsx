@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { remindOverdueAction, resolveReminderAction } from "./billing/actions";
+import { remindOverdueAction, resolveReminderAction } from "../billing/actions";
 
 export function RemindOverdueButton({ count }: { count: number }) {
   const [pending, startTransition] = useTransition();

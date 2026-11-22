@@ -38,7 +38,7 @@ test("add an old bill, remind, note, mark paid; upload a bill and change its sta
   await row.getByRole("button", { name: `More actions for ${oldBill}` }).click();
   await page.getByRole("menuitem", { name: "Remind" }).click();
   await expect(row).toContainText("Reminder on");
-  await page.goto("/");
+  await page.goto("/old-home");
   await expect(page.getByTestId("home-reminders")).toContainText(oldBill);
   await page.goBack();
 
