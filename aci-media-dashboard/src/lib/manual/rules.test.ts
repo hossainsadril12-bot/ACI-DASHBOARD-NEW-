@@ -114,6 +114,26 @@ describe("applyBillChange", () => {
     expect(data.rows[1]).toEqual(row(2));
     expect(summary).toBe("Edited bill B-3 · Vendor C · Payment Done");
   });
+  it("recomputes Bill Difference on edit when it is left blank, even if the stored one was different", () => {
+    const stored = base();
+    stored.rows[0] = row(1, { poa: 1000, ba: 800, diff: 200 });
+    const { data } = applyBillChange(stored, { op: "edit", sl: 1, bill: input({ poa: 1000, ba: 900, diff: null }) }, same);
+    expect(data.rows[0].diff).toBe(100);
+  });
+  it("rounds PO, Bill and the default difference to 2 decimals", () => {
+    const r = applyBillChange(null, { op: "add", bill: input({ poa: 1000.005, ba: 800.004, diff: null }) }, same).data.rows[0];
+    expect(r.poa).toBe(1000.01);
+    expect(r.ba).toBe(800);
+    expect(r.diff).toBe(200.01);
+    const s = applyBillChange(null, { op: "add", bill: input({ poa: 1000.1, ba: 800.05, diff: null }) }, same).data.rows[0];
+    expect(s.diff).toBe(200.05);
+  });
+  it("keeps the unreadable date text on an edit that leaves the date blank, and clears it when a real date is typed", () => {
+    const kept = applyBillChange(base(), { op: "edit", sl: 1, bill: input({ st: "", en: "", status: "Payment Done" }) }, same).data.rows[0];
+    expect(kept.stR).toBe("12..3.26");
+    const typed = applyBillChange(base(), { op: "edit", sl: 1, bill: input({ st: "2026-07-01" }) }, same).data.rows[0];
+    expect(typed.stR).toBeNull();
+  });
   it("deletes a bill by SL and renumbers the rest from 1", () => {
     const { data, summary } = applyBillChange(base(), { op: "delete", sl: 1 }, same);
     expect(data.rows).toEqual([{ ...row(2), sl: 1 }]);

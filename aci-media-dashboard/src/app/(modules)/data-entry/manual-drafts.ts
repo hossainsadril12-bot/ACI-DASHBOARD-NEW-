@@ -1,3 +1,4 @@
+import { round } from "@/lib/ingest/cells";
 import type { BillboardData, BillboardRow } from "@/lib/ingest/readers/billboard";
 import type { ChannelData } from "@/lib/ingest/readers/channel";
 import type { FyRow } from "@/lib/ingest/readers/fy";
@@ -176,7 +177,7 @@ const cellText = (v: CellValue): string => (v == null ? "" : String(v));
 
 export const billForm = (r: BillboardRow): BillForm => ({
   v: r.v, po: r.po, bill: r.bill, b: r.b, billc: cellText(r.billc), chq: cellText(r.chq), loc: r.loc, cm: r.cm,
-  poa: String(r.poa), ba: String(r.ba), diff: String(r.diff), st: r.st ?? "", en: r.en ?? "", sb: r.sb ?? "", pr: r.pr ?? "",
+  poa: String(r.poa), ba: String(r.ba), diff: r.diff === round(r.poa - r.ba, 2) ? "" : String(r.diff), st: r.st ?? "", en: r.en ?? "", sb: r.sb ?? "", pr: r.pr ?? "",
   biz: r.biz, status: r.status,
 });
 

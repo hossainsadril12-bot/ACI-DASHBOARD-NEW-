@@ -139,11 +139,20 @@ test("3. bills: add, edit and delete a bill; delete asks first; a missing vendor
 
   await row.getByRole("button", { name: "Edit bill E2E-001" }).click();
   await expect(dialog.getByText(/^Edit bill · SL \d+$/)).toBeVisible();
-  await expect(dialog.getByLabel("Bill Difference (blank = PO − Bill)", { exact: true })).toHaveValue("200");
+  const diffBox = dialog.getByLabel("Bill Difference (blank = PO − Bill)", { exact: true });
+  await expect(diffBox).toHaveValue(""); // 1000 - 800 is the derived value, so it shows blank
+  await dialog.getByLabel("Bill Amount", { exact: true }).fill("900");
   await dialog.getByLabel("Status", { exact: true }).selectOption("Payment Done");
   await dialog.getByRole("button", { name: "Save & publish" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(row).toContainText("Payment Done");
+
+  // the saved difference followed the Bill Amount (100), so it is still the derived value and shows blank, not 200
+  await row.getByRole("button", { name: "Edit bill E2E-001" }).click();
+  await expect(dialog.getByLabel("Bill Amount", { exact: true })).toHaveValue("900");
+  await expect(diffBox).toHaveValue("");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
 
   await row.getByRole("button", { name: "Edit bill E2E-001" }).click();
   page.once("dialog", (d) => d.dismiss());

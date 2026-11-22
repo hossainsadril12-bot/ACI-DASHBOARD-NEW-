@@ -127,13 +127,17 @@ export function fyVersion(rows: FyRow[], fyStart: number): ManualVersion<FyRow[]
 // ---- OOH / billboard bills ---------------------------------------------------------------------------------------
 
 function billRow(input: BillInput, prev: BillboardRow | null, biz: string, status: string): BillboardRow {
-  const poa = input.poa ?? 0;
-  const ba = input.ba ?? 0;
+  const poa = round(input.poa ?? 0, 2);
+  const ba = round(input.ba ?? 0, 2);
   const day = (s: string) => s.trim() || null;
+  const st = day(input.st);
+  const en = day(input.en);
   return {
     sl0: prev ? prev.sl0 : null,
-    v: input.v.trim(), po: input.po.trim(), bill: input.bill.trim(), poa, ba, diff: input.diff ?? poa - ba,
-    st: day(input.st), en: day(input.en), sb: day(input.sb), pr: day(input.pr), stR: null, enR: null,
+    v: input.v.trim(), po: input.po.trim(), bill: input.bill.trim(), poa, ba, diff: round(input.diff ?? poa - ba, 2),
+    st, en, sb: day(input.sb), pr: day(input.pr),
+    // the sheet's unreadable date text stays until the admin types a real date there
+    stR: !st && prev && prev.st === null ? prev.stR : null, enR: !en && prev && prev.en === null ? prev.enR : null,
     biz, bz: businessGroup(biz), b: input.b.trim(), billc: input.billc.trim(), chq: input.chq.trim(),
     loc: input.loc.trim(), cm: input.cm.trim(), show: prev ? prev.show : "", status, sl: 0,
   };

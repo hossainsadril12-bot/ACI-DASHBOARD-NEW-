@@ -122,11 +122,17 @@ describe("bills", () => {
 
   it("fills the Edit form from a bill, and a new bill with Finance/Audit and today's Submit Date", () => {
     expect(billForm(row(3))).toEqual({
-      v: "Vendor 3", po: "PO-3", bill: "B-3", b: "ACI Salt", billc: "123", chq: "", loc: "Gulshan", cm: "", poa: "1000", ba: "800", diff: "200",
+      v: "Vendor 3", po: "PO-3", bill: "B-3", b: "ACI Salt", billc: "123", chq: "", loc: "Gulshan", cm: "", poa: "1000", ba: "800", diff: "",
       st: "2026-07-01", en: "", sb: "", pr: "", biz: "Salt", status: "Payment Done",
     });
     expect(newBillForm(["Payment Done", "Finance/Audit"], "2026-11-19")).toMatchObject({ status: "Finance/Audit", sb: "2026-11-19", v: "", poa: "" });
     expect(newBillForm(["Paid", "Open"], "2026-11-19").status).toBe("Paid");
+  });
+  it("prefills Bill Difference blank when it is PO - Bill, else its own value", () => {
+    expect(billForm(row(3, { poa: 1000, ba: 800, diff: 200 })).diff).toBe("");
+    expect(billForm(row(3, { poa: 1000.1, ba: 800.2, diff: 199.9 })).diff).toBe("");
+    expect(billForm(row(3, { poa: 1000, ba: 800, diff: 50 })).diff).toBe("50");
+    expect(billForm(row(3, { poa: 100, ba: 100, diff: 0 })).diff).toBe("");
   });
   it("sends blank amounts as null (the server makes PO and Bill 0 and Bill Difference PO - Bill) and needs a vendor", () => {
     const f = { ...newBillForm(["Finance/Audit"], "2026-11-19"), v: "Vendor", poa: "1,000" };
