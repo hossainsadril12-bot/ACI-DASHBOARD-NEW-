@@ -16,8 +16,8 @@ type Drop = {
  */
 export function CardFace({ state, dragging = false, onDragOver, onDragLeave, onDrop, children }: Drop & { state: CardState; children?: ReactNode }) {
   return (
-    <Card data-testid="upload-card" data-card-id={state.id} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
-      className={cn("min-w-0 transition-colors", dragging && "border-primary bg-accent")}>
+    <Card id={`card-${state.id}`} data-testid="upload-card" data-card-id={state.id} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+      className={cn("min-w-0 scroll-mt-20 transition-colors", dragging && "border-primary bg-accent")}>
       <CardContent className="flex h-full flex-col gap-2">
         <h2 className="font-semibold text-gray-900 [overflow-wrap:anywhere]">{state.title}</h2>
         <p className="text-sm text-gray-600">{`${state.card.fileText} Updates ${state.card.updates}.`}</p>
