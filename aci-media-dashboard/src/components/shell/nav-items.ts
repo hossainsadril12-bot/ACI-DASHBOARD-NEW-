@@ -51,7 +51,7 @@ export const PRD_SECTIONS: readonly PrdSection[] = [
     page("6.4", "Businesses & Brands", "/businesses", null, null, false, true),
   ] },
   { code: "7", label: "Settings", pages: [
-    page("7.2", "Data Sources", "/settings", null, null, false, true),
+    page("7.2", "Data Sources and USD rate", "/settings", null, null, false, true),
     page("7.3", "My Access", "/settings/access", null, null, false, false, "Shows who can see what. Per-person access is switched off for now."),
   ] },
 ];

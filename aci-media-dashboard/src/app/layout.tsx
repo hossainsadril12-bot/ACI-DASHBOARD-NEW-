@@ -42,11 +42,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   <Sidebar quickActionsSlot={sidebarQuickActions} footerSlot={sidebarFooter} />
                 </MobileMenu>
               }
-              quickActionsSlot={
-                <Suspense fallback={null}>
-                  <AdminOnly><div className="w-36 sm:w-44 md:hidden"><QuickActions /></div></AdminOnly>
-                </Suspense>
-              }
               adminSlot={<Suspense fallback={null}><AdminStatus /></Suspense>}
             />
             <div className="mx-auto max-w-[1440px] px-4 py-6 md:px-10 md:py-8">{children}</div>

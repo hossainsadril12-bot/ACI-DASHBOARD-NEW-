@@ -33,10 +33,9 @@ function CurrentPageCrumb() {
 }
 
 /**
- * White bar above every page: the phone Menu and where you are on the left; date, money rule, the admin's
- * quick actions (phone only) and the Login / Sign out slot on the right, Login last.
+ * White bar above every page: the phone Menu and where you are on the left; date, money rule and the Login / Sign out slot on the right, Login last.
  */
-export function TopBar({ adminSlot, quickActionsSlot, menuSlot }: { adminSlot?: ReactNode; quickActionsSlot?: ReactNode; menuSlot?: ReactNode }) {
+export function TopBar({ adminSlot, menuSlot }: { adminSlot?: ReactNode; menuSlot?: ReactNode }) {
   // The layout is prerendered, so the date is read on the client only (null on the server).
   const today = useSyncExternalStore(noop, todayDhaka, () => null);
 
@@ -61,7 +60,6 @@ export function TopBar({ adminSlot, quickActionsSlot, menuSlot }: { adminSlot?: 
             </span>
           )}
           <span className="hidden rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground md:inline">BDT · with VAT</span>
-          {quickActionsSlot}
           {adminSlot}
         </div>
       </div>
