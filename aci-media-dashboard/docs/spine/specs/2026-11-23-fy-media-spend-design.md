@@ -42,7 +42,7 @@ Show the client's FY media spend (the CB Media Spent Report, or its Manual Entry
   - the shared Business filter;
   - media buttons "All media", "TV", "Digital", "Print", "OOH" (a view control, kept in the address as `?media=`, default All media).
 
-**Cards.** Four, one per medium (TV, Digital, Print, OOH), always shown.
+**Cards.** Four, one per medium (TV, Digital, Print, OOH), always shown. A fifth card "Other" appears only when the chosen business has rows in another medium (Manual Entry allows any medium text), so the cards always add up to the Grand total.
 - Value: that medium's FY to date for the chosen business, for example "12.34 BDT Mn".
 - Sub line: "FY 2025-26 full year: 8.10 BDT Mn".
 - The cards follow the Business filter, not the media buttons, because each card already is one medium.

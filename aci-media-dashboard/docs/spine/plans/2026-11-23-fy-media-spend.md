@@ -410,7 +410,7 @@ Page rules (exact copy from Global Constraints):
 - Read the active `fy` data, the catalog, `getBusinessChoice()`, `isAdmin()` and `searchParams.media`.
 - **No `fy` data:** render `<NoDataYet fileName="CB Media Spent Report" card="fy" admin={admin} />` and nothing else.
 - **Otherwise:** `view = fySpendView({ rows: data, fyStart: fyStartOf(active, new Date()), businesses: catalog.businesses, businessOf: catalog.businessOf, brandOf: catalog.brandOf, business: choice, media })`.
-- **Cards:** `StatGrid` with four `StatCard`s:
+- **Cards:** `StatGrid` with one `StatCard` per entry in `view.cards` (the four media, plus "Other" when the view includes it; Task 1's fix made `cards` `{ medium: FyMedium | "Other"; fytd; py }[]`):
   - label is the medium;
   - value is `formatMn(card.fytd)`;
   - sub line is "FY 2025-26 full year: " + `formatMn(card.py)`.
