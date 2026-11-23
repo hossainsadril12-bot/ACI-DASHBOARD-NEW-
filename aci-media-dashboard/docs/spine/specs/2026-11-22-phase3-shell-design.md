@@ -79,7 +79,7 @@ Files named on each page:
 - **Where it shows:** at the top of every page except Channel Wise (4.x), Data Entry (6.x, including Businesses & Brands) and Settings (7.x). This matches the client's own design.
 - **Choices:** "All businesses", then each business from Businesses & Brands that is not hidden, in list order.
 - **Look:** with 4 or fewer businesses, it is a row of buttons. With more than 4, it is one dropdown pill showing the current choice, with a search box in the list.
-- **Remembered:** a choice is kept across pages and refreshes, like the month filter is today. A remembered business that has since been hidden or renamed falls back to "All businesses".
+- **Remembered:** a choice is kept across pages and refreshes, like the month filter is today. A remembered business that has since been hidden falls back to "All businesses". A renamed business stays chosen and shows its new name (the choice is kept by the business, not by its name).
 - **Effect:** on unbuilt pages it only shows the choice. Each real page reads it when that page is built.
 - **Viewers and the admin both use it.** It is a view control that never changes saved data.
 
