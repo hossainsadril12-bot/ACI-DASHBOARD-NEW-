@@ -23,4 +23,10 @@ describe("businessFilterView", () => {
     expect(businessFilterView(biz(3), "gone").value).toBe("");
     expect(businessFilterView(biz(3), undefined).value).toBe("");
   });
+  it("keeps a saved slug whose business was renamed, and shows the new name", () => {
+    const renamed = biz(3).map((b) => (b.slug === "b1" ? { ...b, name: "Renamed Co" } : b));
+    const view = businessFilterView(renamed, "b1");
+    expect(view.value).toBe("b1");
+    expect(view.options.find((o) => o.slug === "b1")?.name).toBe("Renamed Co");
+  });
 });

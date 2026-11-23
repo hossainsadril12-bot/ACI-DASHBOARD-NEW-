@@ -34,6 +34,7 @@ test("the Business filter is remembered across pages and refreshes", async ({ pa
 test("pages the PRD keeps unfiltered show no Business filter", async ({ page }) => {
   for (const p of ["/channel/electronic", "/data-entry", "/settings/access"]) {
     await page.goto(p);
+    await expect(page.getByRole("heading", { level: 1 }).first(), `${p} loaded`).toBeVisible();
     await expect(page.getByRole("group", { name: "Business" }), p).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Business: / }), p).toHaveCount(0);
   }
