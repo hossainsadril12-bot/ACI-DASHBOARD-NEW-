@@ -54,7 +54,7 @@ function BusinessDropdown({ options, value, onChange }: { options: BusinessFilte
   const current = options.find((o) => o.slug === value)?.name ?? ALL;
   const q = query.trim().toLowerCase();
   const matches = q ? options.filter((o) => o.name.toLowerCase().includes(q)) : options;
-  const item = "min-h-10 py-2";
+  const item = "min-h-10 py-2 hover:bg-accent hover:text-accent-foreground";
 
   return (
     <DropdownMenu highlightItemOnHover={false} onOpenChange={(open) => { if (!open) setQuery(""); }}>
