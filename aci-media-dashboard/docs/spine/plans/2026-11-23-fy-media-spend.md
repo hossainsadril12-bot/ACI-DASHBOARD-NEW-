@@ -40,8 +40,8 @@ Spec: `docs/spine/specs/2026-11-23-fy-media-spend-design.md`. Content reference:
 **Media:** `FY_MEDIA` = TV, Digital, Print, OOH (`src/lib/manual/rules.ts`). Rows store "Print" (the reader maps "Press" to "Print").
 
 **Business:**
-- The row's stored `biz` is looked up with `catalog.businessOf`. Groups follow the catalog list order, and hidden businesses still group their rows.
-- An unknown `biz` keeps its own name and comes after the listed groups.
+- The row's stored `biz` is looked up with `catalog.businessOf`. Hidden businesses still group their rows.
+- **Amended 23 Nov (owner decision, after Task 2):** groups follow the FY file's own business order (first appearance in the rows, before any filter), not the catalog list order. An unknown `biz` keeps its own name and sits at its first appearance. `fySpendView` no longer takes `businesses`. Values keep 6 decimals (reader, `cleanFy` and the builder) and are rounded only at display. The spec's Data section is the source of truth; the Task 1 interface text below predates these changes.
 - The Business filter choice comes from `getBusinessChoice()` (`src/components/shell/business-filter.tsx`), which returns `{ slug, name } | null`.
 - When a business is chosen, only rows whose looked-up business slug equals it count.
 
