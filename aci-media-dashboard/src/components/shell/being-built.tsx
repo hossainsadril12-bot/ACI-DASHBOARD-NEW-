@@ -6,7 +6,6 @@ import { Hammer } from "lucide-react";
 import { isAdmin } from "@/auth/admin";
 import { EmptyState } from "@/components/data/empty-state";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "./page-header";
 import { prdPage, type PrdPage } from "./nav-items";
 
@@ -24,7 +23,7 @@ export function BeingBuiltBody({ page, admin }: { page: PrdPage; admin: boolean 
   return (
     <EmptyState icon={Hammer} title="This page is being built." message={page.files ? `It will read: ${page.files}` : page.note}>
       {admin && page.card && (
-        <Link href={`/data-entry#card-${page.card}`} className={cn(buttonVariants({ variant: "outline" }))}>Open its upload card</Link>
+        <Link href={`/data-entry#card-${page.card}`} className={buttonVariants({ variant: "outline", size: "lg" })}>Open its upload card</Link>
       )}
     </EmptyState>
   );

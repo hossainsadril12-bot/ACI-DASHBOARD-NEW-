@@ -7,6 +7,7 @@ describe("formatBdtMn", () => {
     expect(formatBdtMn(1_234_560_000)).toBe("1,234.56 BDT Mn");
     expect(formatBdtMn(0)).toBe("0.00 BDT Mn");
     expect(formatBdtMn(-500_000)).toBe("-0.50 BDT Mn");
+    expect(formatBdtMn(-1)).toBe("0.00 BDT Mn");
     expect(BDT_MN).toBe("BDT Mn");
   });
 });

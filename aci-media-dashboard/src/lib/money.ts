@@ -28,5 +28,8 @@ export const BDT_MN = "BDT Mn";
 /** Page amounts: taka shown as millions, 2 decimals, always with the unit (PRD currency rule). */
 export function formatBdtMn(taka: number): string {
   const mn = taka / 1_000_000;
-  return `${mn.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${BDT_MN}`;
+  const text = mn.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // A tiny negative rounds to "-0.00"; show it as "0.00".
+  const shown = /^-[0.,]+$/.test(text) ? text.slice(1) : text;
+  return `${shown} ${BDT_MN}`;
 }
