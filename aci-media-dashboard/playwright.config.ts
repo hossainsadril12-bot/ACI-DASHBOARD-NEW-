@@ -18,18 +18,25 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3100" },
   projects: [
     { name: "admin-setup", testMatch: /auth\.setup\.ts/ },
+    // Phase 3 shell flow: runs first, on the empty store. Creates no businesses, brands or categories and uploads nothing.
+    {
+      name: "empty-store",
+      use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
+      testMatch: /phase3-shell\.spec\.ts/,
+      dependencies: ["admin-setup"],
+    },
     // Runs before every other spec, so it starts with the empty business, brand and ATL category lists.
     {
       name: "fresh-store",
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
       testMatch: /phase2c-.*\.spec\.ts/,
-      dependencies: ["admin-setup"],
+      dependencies: ["admin-setup", "empty-store"],
     },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
       dependencies: ["admin-setup", "fresh-store"],
-      testIgnore: [/phase1-.*\.spec\.ts/, /phase2c-.*\.spec\.ts/],
+      testIgnore: [/phase1-.*\.spec\.ts/, /phase2c-.*\.spec\.ts/, /phase3-shell\.spec\.ts/],
     },
     { name: "phase1-flow", use: { ...devices["Desktop Chrome"] }, testMatch: /phase1-.*\.spec\.ts/, dependencies: ["admin-setup"] },
   ],
