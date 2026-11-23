@@ -84,3 +84,27 @@ export const pickBusiness = async (page: Page, selectLabel: string, boxLabel: st
   await box.fill(name);
   await box.press("Enter");
 };
+
+/** Chooses a business in the shared Business filter (buttons when there are few, else the searchable dropdown). */
+export const chooseBusiness = async (page: Page, name: string) => {
+  const buttons = page.getByRole("group", { name: "Business" });
+  if (await buttons.count()) return buttons.getByRole("button", { name, exact: true }).click();
+  await page.getByRole("button", { name: /^Business: / }).click();
+  await page.getByLabel("Search businesses").fill(name);
+  await page.getByRole("menuitemradio", { name, exact: true }).click();
+};
+
+/** Decides every new business in a file as new (Add all as new, or the one name's select), until it is Ready. */
+export const addBusinessesAsNew = async (page: Page, row: Locator) => {
+  await expect(ready(row).or(row.getByText("New business", { exact: true })).first()).toBeVisible();
+  await settled(page);
+  const all = row.getByRole("button", { name: "Add all as new" });
+  if (await all.isVisible()) await all.click();
+  else {
+    for (const select of await row.getByLabel(/^Decision for /).all()) {
+      if ((await select.inputValue()) === "") await select.selectOption({ label: "Add as new" });
+    }
+  }
+  await expect(ready(row)).toBeVisible();
+  await settled(page);
+};

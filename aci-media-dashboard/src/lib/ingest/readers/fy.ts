@@ -2,7 +2,8 @@ import { pad2, round, xstr } from "../cells";
 import { ReadError, type ReadResult } from "../read-result";
 import type { Workbook } from "../workbook";
 
-/** Line-by-line port of his parseFY (template.html 607-616). Spend is in BDT Mn. */
+/** Line-by-line port of his parseFY (template.html 607-616). Spend is in BDT Mn.
+ *  Differs from his parseFY on purpose: it keeps 6 decimals instead of 4, so page totals match the cells of his file. */
 
 export type FyRow = { biz: string; b: string; med: string; m: number[]; py: number };
 
@@ -38,9 +39,9 @@ export function readFy(wb: Workbook): ReadResult<FyRow[]> {
     if (!med || !b) continue;
     if (med === "Press") med = "Print";
     const mv: number[] = [];
-    for (let c = 3; c <= 14; c++) { const v = ws.v(r, c); mv.push(typeof v === "number" ? round(v, 4) : 0); }
+    for (let c = 3; c <= 14; c++) { const v = ws.v(r, c); mv.push(typeof v === "number" ? round(v, 6) : 0); }
     const py = ws.v(r, 16);
-    out.push({ biz: groups[g] || "Others", b, med, m: mv, py: typeof py === "number" ? round(py, 4) : 0 });
+    out.push({ biz: groups[g] || "Others", b, med, m: mv, py: typeof py === "number" ? round(py, 6) : 0 });
   }
   const rows = out.filter((r) => r.m.some((v) => v) || r.py);
   if (!rows.length) throw new ReadError("No brand rows with values were found.");

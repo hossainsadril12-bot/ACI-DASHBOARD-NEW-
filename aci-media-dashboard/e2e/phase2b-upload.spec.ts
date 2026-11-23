@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { hasClientFiles, makeXlsx } from "../src/lib/ingest/test-workbooks";
 import { OOH_MASTER_MESSAGE } from "../src/lib/ingest/cards";
-import { XLSX_TYPE, card, dropOnCard, fileOf, historyRows, openUpload, pickBusiness, publishBtn, ready, settled, uploadToCard, type Upload } from "./helpers";
+import { XLSX_TYPE, addBusinessesAsNew, card, dropOnCard, fileOf, historyRows, openUpload, pickBusiness, publishBtn, ready, settled, uploadToCard, type Upload } from "./helpers";
 
 // Phase 2 Part B user flow, through the Upload Data cards (Part D): the new file types and the Digital cards.
 // Serial: one shared temp store.
@@ -28,21 +28,6 @@ const NEW_TYPES = [
 /** The specs share one store: picks `name` for a Digital file when it is on the list, else adds it as New business…. */
 const pickFileBusiness = (page: Page, fileName: string, name: string) =>
   pickBusiness(page, `Business for ${fileName}`, `New business name for ${fileName}`, name);
-
-/** Decides every new business in a file as new (Add all as new, or the one name's select), until it is Ready. */
-const addBusinessesAsNew = async (page: Page, row: Locator) => {
-  await expect(ready(row).or(row.getByText("New business", { exact: true })).first()).toBeVisible();
-  await settled(page);
-  const all = row.getByRole("button", { name: "Add all as new" });
-  if (await all.isVisible()) await all.click();
-  else {
-    for (const select of await row.getByLabel(/^Decision for /).all()) {
-      if ((await select.inputValue()) === "") await select.selectOption({ label: "Add as new" });
-    }
-  }
-  await expect(ready(row)).toBeVisible();
-  await settled(page);
-};
 
 /** Review and add, Tick all, Done: every brand of the file goes on the list under the file's business. */
 const addAllBrands = async (page: Page, row: Locator) => {

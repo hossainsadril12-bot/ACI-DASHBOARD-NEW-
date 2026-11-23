@@ -1,14 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+import { chooseBusiness as choose } from "./helpers";
 
 // The shared Business filter keeps its choice across pages and a refresh, and is absent where the PRD hides it.
 
-const choose = async (page: Page, name: string) => {
-  const buttons = page.getByRole("group", { name: "Business" });
-  if (await buttons.count()) return buttons.getByRole("button", { name, exact: true }).click();
-  await page.getByRole("button", { name: /^Business: / }).click();
-  await page.getByLabel("Search businesses").fill(name);
-  await page.getByRole("menuitemradio", { name, exact: true }).click();
-};
 const current = async (page: Page, name: string) => {
   const buttons = page.getByRole("group", { name: "Business" });
   if (await buttons.count()) return expect(buttons.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
