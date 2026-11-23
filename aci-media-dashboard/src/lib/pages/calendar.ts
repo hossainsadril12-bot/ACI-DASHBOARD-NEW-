@@ -1,7 +1,7 @@
 import type { CalendarData } from "@/lib/ingest/readers/calendar";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA, fyMonthLabels, fyMonths, fyName } from "@/lib/manual/rules";
-import type { FyMedium } from "@/lib/pages/fy-spend";
+import { formatMn, type FyMedium } from "@/lib/pages/fy-spend";
 import { r6, sum, tidy } from "@/lib/pages/numbers";
 import { formatMonth, isMonth } from "@/lib/month";
 
@@ -83,6 +83,44 @@ export type CalendarView = {
   };
   chart: { label: string; v: number[]; total: number }[];
 };
+
+/** The /calendar address for these params. Defaults are left out, so the plain page is "/calendar". */
+export function calendarHref(p: CalendarParams): string {
+  const media = FY_MEDIA.filter((m) => p.media.includes(m));
+  const parts = [
+    p.view === "sheet" ? "view=sheet" : "",
+    media.length && media.length < FY_MEDIA.length ? `media=${media.join(",")}` : "",
+    p.inactive ? "inactive=1" : "",
+    p.sheet ? `sheet=${encodeURIComponent(p.sheet)}` : "",
+  ].filter(Boolean);
+  return parts.length ? `/calendar?${parts.join("&")}` : "/calendar";
+}
+
+/** The Gantt media after switching one, in FY_MEDIA order; null when that would switch off the last one. */
+export function toggleMedium(media: FyMedium[], m: FyMedium): FyMedium[] | null {
+  const next = FY_MEDIA.filter((x) => (x === m ? !media.includes(x) : media.includes(x)));
+  return next.length ? next : null;
+}
+
+type Cards = NonNullable<CalendarView["cards"]>;
+
+/** FY to date card: "4 months: Jul'26 to Oct'26", or "1 month: Jul'26". */
+export function monthsNote(c: Cards): string {
+  return c.uploadedCount === 1 ? `1 month: ${c.firstLabel}` : `${c.uploadedCount} months: ${c.firstLabel} to ${c.lastLabel}`;
+}
+
+/** Latest month card: "▲ 12.3% vs Sep'26", "▼ 4.0% vs Sep'26", or "Latest month" with nothing to compare. */
+export function changeNote(last: Cards["last"]): string {
+  if (last.changePct === null || last.prevLabel === null) return "Latest month";
+  const arrow = last.changePct > 0 ? "▲ " : last.changePct < 0 ? "▼ " : "";
+  return `${arrow}${Math.abs(last.changePct).toFixed(1)}% vs ${last.prevLabel}`;
+}
+
+/** A Gantt brand cell's hover text: brand and month, one line per medium on, then the total; or No activity. */
+export function cellTitle(brand: string, label: string, cell: NonNullable<Cell>): string {
+  const on = cell.lanes.filter((l) => l.on).map((l) => `${l.medium}: ${formatMn(cell.media[FY_MEDIA.indexOf(l.medium)])}`);
+  return [`${brand} · ${label}`, ...(on.length ? [...on, `Total: ${formatMn(cell.total)}`] : ["No activity"])].join("\n");
+}
 
 /** A change % to 1 decimal, half away from zero, never -0. */
 const pct1 = (x: number) => { const a = Math.round(Math.abs(x) * 10) / 10; return a === 0 ? 0 : Math.sign(x) * a; };

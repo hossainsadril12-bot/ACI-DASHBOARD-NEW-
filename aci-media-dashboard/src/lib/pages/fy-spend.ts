@@ -39,8 +39,6 @@ export type FySpendView = {
   empty: boolean;
 };
 
-// r6 keeps 6 decimals only to tame float noise; the one real rounding is at display (formatMn).
-
 function line(name: string, parts: { m: number[]; py: number }[], reported: number): FyLine {
   const m = Array.from({ length: 12 }, (_, i) => (i < reported ? r6(sum(parts.map((p) => p.m[i] ?? 0))) : null));
   const fytd = r6(sum(m.map((x) => x ?? 0)));

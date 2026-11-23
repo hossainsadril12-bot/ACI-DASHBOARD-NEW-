@@ -25,8 +25,8 @@ describe("PRD_SECTIONS", () => {
     for (const p of PRD_PAGES.filter((x) => !x.built)) expect(p.files ?? p.note, p.code).toBeTruthy();
   });
 
-  it("marks only FY Media Spend, Data Entry, Businesses & Brands and Settings 7.2 as built", () => {
-    expect(PRD_PAGES.filter((p) => p.built).map((p) => p.code)).toEqual(["3.2", "6.1", "6.2", "6.3", "6.4", "7.2"]);
+  it("marks only the Activity Calendar, FY Media Spend, Data Entry, Businesses & Brands and Settings 7.2 as built", () => {
+    expect(PRD_PAGES.filter((p) => p.built).map((p) => p.code)).toEqual(["3.1", "3.2", "6.1", "6.2", "6.3", "6.4", "7.2"]);
   });
 
   it("hides the Business filter on Channel Wise, Data Entry and Settings", () => {

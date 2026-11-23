@@ -5,7 +5,7 @@ import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA } from "@/lib/manual/rules";
 import { xstr } from "@/lib/ingest/cells";
-import { calendarView, formatSheet, parseCalendarParams, parseNotes, type CalendarInput, type CalendarParams } from "./calendar";
+import { calendarHref, calendarView, cellTitle, changeNote, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
 
 const row = (biz: string, b: string, ...v: number[]): CalendarRow => ({ biz, b, v, t: v.reduce((a, x) => a + x, 0) });
 const month = (m: string, rows: CalendarRow[]) => ({ m, label: m, rows, notes: {} });
@@ -296,6 +296,16 @@ describe("calendarView: Sheet view", () => {
     expect(s.groups.map((g) => g.total)).toEqual([{ v: [10, 2.5, 6, 1], t: 19.5 }, { v: [2.5, 0, 0, 3], t: 5.5 }]);
     expect(s.grand).toEqual({ v: [12.5, 2.5, 6, 4], t: 25 });
   });
+  it("sums exactly the uploaded months for FY to date when a month in between is missing", () => {
+    const julSep: CalendarData = { months: DATA.months.filter((m) => m.m === "2026-07" || m.m === "2026-09") };
+    const s = calendarView(base(julSep, {}, { sheet: "fytd" })).sheet;
+    expect(s.title).toBe("FY 2026-27 to date (Jul'26 to Sep'26)");
+    expect(s.groups.map((g) => g.brands.map((b) => [b.name, b.v, b.t]))).toEqual([
+      [["Savlon Handwash", [4, 0.5, 0, 0], 4.5], ["Lux", [0, 0, 5, 0], 5]],
+      [["Angel", [1, 0, 0, 1], 2], ["TvOnly", [0.5, 0, 0, 0], 0.5]],
+    ]);
+    expect(s.grand).toEqual({ v: [5.5, 0.5, 5, 1], t: 12 });
+  });
   it("falls back to the latest month for a choice that is not uploaded", () => {
     expect(sheetOf("2027-01").choice).toBe("2026-10");
     expect(sheetOf("2027-01").grand).toEqual(sheetOf("2026-10").grand);
@@ -337,6 +347,63 @@ describe("calendarView: Sheet view", () => {
     const fytd = calendarView(base(withNotes, {}, { sheet: "fytd" })).sheet;
     expect(fytd.notes).toBeNull();
     expect(fytd.notesLabel).toBeNull();
+  });
+});
+
+describe("calendarHref", () => {
+  it("leaves the defaults out, so the plain page is /calendar", () => {
+    expect(calendarHref(PARAMS)).toBe("/calendar");
+    expect(calendarHref(parseCalendarParams({ media: "TV,Digital,Print,OOH" }))).toBe("/calendar");
+  });
+  it("keeps every other parameter, media in FY_MEDIA order", () => {
+    expect(calendarHref({ view: "sheet", media: ["OOH", "TV"], inactive: true, sheet: "2026-09" })).toBe("/calendar?view=sheet&media=TV,OOH&inactive=1&sheet=2026-09");
+    expect(calendarHref({ ...PARAMS, sheet: "fytd" })).toBe("/calendar?sheet=fytd");
+  });
+  it("round-trips through parseCalendarParams", () => {
+    const p: CalendarParams = { view: "sheet", media: ["Digital", "Print"], inactive: true, sheet: "fytd" };
+    const sp = Object.fromEntries(new URLSearchParams(calendarHref(p).split("?")[1]));
+    expect(parseCalendarParams(sp)).toEqual(p);
+  });
+});
+
+describe("toggleMedium", () => {
+  it("switches one medium off or back on, in FY_MEDIA order", () => {
+    expect(toggleMedium([...FY_MEDIA], "TV")).toEqual(["Digital", "Print", "OOH"]);
+    expect(toggleMedium(["OOH"], "TV")).toEqual(["TV", "OOH"]);
+  });
+  it("never switches off the last one", () => {
+    expect(toggleMedium(["Print"], "Print")).toBeNull();
+  });
+});
+
+describe("card sub lines", () => {
+  it("names the months so far", () => {
+    expect(monthsNote(calendarView(base(DATA)).cards!)).toBe("4 months: Jul'26 to Oct'26");
+    expect(monthsNote(calendarView(base({ months: [DATA.months[0]] })).cards!)).toBe("1 month: Jul'26");
+  });
+  it("gives the change with an arrow and 1 decimal, or Latest month", () => {
+    const last = (changePct: number | null, prevLabel: string | null = "Sep'26") => ({ label: "Oct'26", total: 1, prevLabel, changePct });
+    expect(changeNote(last(12.3))).toBe("▲ 12.3% vs Sep'26");
+    expect(changeNote(last(-4))).toBe("▼ 4.0% vs Sep'26");
+    expect(changeNote(last(0))).toBe("0.0% vs Sep'26");
+    expect(changeNote(last(null))).toBe("Latest month");
+    expect(changeNote(last(null, null))).toBe("Latest month");
+  });
+});
+
+describe("cellTitle", () => {
+  const v = calendarView(base(DATA));
+  const savlon = v.gantt.groups[0].brands[0];
+  it("names the brand and month, one line per active medium shown, then the total", () => {
+    expect(cellTitle(savlon.name, "Oct'26", savlon.cells[3]!)).toBe("Savlon Handwash · Oct'26\nTV: 4.00 BDT Mn\nDigital: 1.00 BDT Mn\nOOH: 1.00 BDT Mn\nTotal: 6.00 BDT Mn");
+  });
+  it("lists only the media switched on", () => {
+    const tv = calendarView(base(DATA, {}, { media: ["TV"] })).gantt.groups[0].brands[0];
+    expect(cellTitle(tv.name, "Oct'26", tv.cells[3]!)).toBe("Savlon Handwash · Oct'26\nTV: 4.00 BDT Mn\nTotal: 4.00 BDT Mn");
+  });
+  it("says No activity for a cell with nothing on", () => {
+    const lux = v.gantt.groups[0].brands[1];
+    expect(cellTitle(lux.name, "Aug'26", lux.cells[1]!)).toBe("Lux · Aug'26\nNo activity");
   });
 });
 
