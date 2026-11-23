@@ -31,7 +31,7 @@ export const PRD_SECTIONS: readonly PrdSection[] = [
   ] },
   { code: "3", label: "Media Spend", pages: [
     page("3.1", "Monthly Activity Calendar", "/calendar", "the All Activity Calendar file", "calendar", true),
-    page("3.2", "FY Media Spend", "/fy-spend", "the CB Media Spent Report, or Manual Entry", "fy", true),
+    page("3.2", "FY Media Spend", "/fy-spend", "the CB Media Spent Report, or Manual Entry", "fy", true, true),
   ] },
   { code: "4", label: "Channel Wise Spend", pages: [
     page("4.1", "Electronic Media", "/channel/electronic", CHANNEL, "channel", false),
