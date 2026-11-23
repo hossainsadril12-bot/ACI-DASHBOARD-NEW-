@@ -12,6 +12,7 @@ const openAllGroups = async (page: Page) => {
 
 test("every sidebar link opens its page; unbuilt pages name their file", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByTestId("data-updated")).toHaveCount(0); // empty store: nothing published yet
   for (const p of PRD_PAGES) {
     await openAllGroups(page);
     await nav(page).getByRole("link", { name: p.label, exact: true }).click();
