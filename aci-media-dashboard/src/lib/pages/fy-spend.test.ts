@@ -4,12 +4,12 @@ import { openWorkbook } from "@/lib/ingest/workbook";
 import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA } from "@/lib/manual/rules";
-import { fySpendView, formatMn, parseMedia, type FySpendInput } from "./fy-spend";
+import { fySpendView, formatMn, parseMedia, tableNote, type FySpendInput } from "./fy-spend";
 
 const z = (...v: number[]) => [...v, ...Array(12 - v.length).fill(0)];
 const BIZ = [{ slug: "toiletries", name: "Toiletries" }, { slug: "hygiene", name: "Hygiene" }];
 const base = (rows: FyRow[], over: Partial<FySpendInput> = {}): FySpendInput => ({
-  rows, fyStart: 2026, businesses: BIZ,
+  rows, fyStart: 2026,
   businessOf: (n) => BIZ.find((b) => b.name.toLowerCase() === n.toLowerCase()) ?? (n === "Toilet" ? BIZ[0] : null),
   brandOf: (n) => (n === "Savlon HW" ? { name: "Savlon Handwash" } : null),
   business: null, media: "All", ...over,
@@ -48,7 +48,7 @@ describe("fySpendView", () => {
     expect(v.lastReportedLabel).toBe("Oct'26");
   });
 
-  it("groups by list business in list order, unknown businesses after, full brand names, media added together", () => {
+  it("groups by list business in file order, unknown businesses where they first appear, full brand names, media added together", () => {
     const v = fySpendView(base(ROWS));
     expect(v.groups.map((g) => g.name)).toEqual(["Toiletries", "Hygiene", "Foods"]);
     const t = v.groups[0];
@@ -60,6 +60,27 @@ describe("fySpendView", () => {
     expect(t.lines[1].pct).toBeNull();
     expect(t.total.name).toBe("Toiletries total");
     expect(t.total.fytd).toBe(11);
+  });
+
+  it("orders groups by first appearance in the file, not the list order", () => {
+    const rows: FyRow[] = [
+      { biz: "Hygiene", b: "Angel", med: "TV", m: z(1), py: 0 },
+      { biz: "Toiletries", b: "Lux", med: "TV", m: z(1), py: 0 },
+      { biz: "Foods", b: "Pure Salt", med: "TV", m: z(1), py: 0 },
+      { biz: "Hygiene", b: "Ghost", med: "Print", m: z(1), py: 0 },
+      { biz: "Toilet", b: "Lux", med: "TV", m: z(1), py: 0 },
+    ];
+    expect(fySpendView(base(rows)).groups.map((g) => g.name)).toEqual(["Hygiene", "Toiletries", "Foods"]);
+    // The order is fixed by all rows, before the media filter.
+    expect(fySpendView(base(rows, { media: "Print" })).groups.map((g) => g.name)).toEqual(["Hygiene"]);
+    expect(fySpendView(base(rows, { media: "TV" })).groups.map((g) => g.name)).toEqual(["Hygiene", "Toiletries", "Foods"]);
+  });
+
+  it("builds the table note from the reported months", () => {
+    const n = (reported: number, lastReportedLabel: string | null) => tableNote({ reported, lastReportedLabel });
+    expect(n(0, null)).toBe("Darker cells = higher spend");
+    expect(n(4, "Oct'26")).toBe("Darker cells = higher spend · months after Oct'26 not reported yet");
+    expect(n(12, "Jun'27")).toBe("Darker cells = higher spend");
   });
 
   it("leaves out brands with no spend and no last year", () => {
@@ -144,7 +165,7 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
   it("matches the Grand Total row of his Final Report sheet, month by month", () => {
     const wb = openWorkbook(new Uint8Array(clientFile(FILE)));
     const rows = readFy(wb).data;
-    const v = fySpendView({ rows, fyStart: 2026, businesses: [], businessOf: () => null, brandOf: () => null, business: null, media: "All" });
+    const v = fySpendView({ rows, fyStart: 2026, businessOf: () => null, brandOf: () => null, business: null, media: "All" });
     const sheet = wb.sheet(wb.sheets.findIndex((s) => /final report/i.test(s.name) && s.visible))!;
     let gt = 0;
     for (let r = 1; r <= sheet.maxRow; r++) if (/^grand total$/i.test(String(sheet.v(r, 1) ?? "").trim())) { gt = r; break; }
@@ -190,7 +211,7 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
     }
     let checked = 0;
     for (const media of FY_MEDIA) {
-      const v = fySpendView({ rows, fyStart: 2026, businesses: [], businessOf: () => null, brandOf: () => null, business: null, media });
+      const v = fySpendView({ rows, fyStart: 2026, businessOf: () => null, brandOf: () => null, business: null, media });
       for (const line of v.groups.flatMap((g) => g.lines)) {
         const mine = cells.get(`${media}|${normName(line.name)}`);
         expect(mine, `${media} ${line.name}`).toBeDefined();
@@ -198,5 +219,11 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it("lists the business groups in his file's order", () => {
+    const rows = readFy(openWorkbook(new Uint8Array(clientFile(FILE)))).data;
+    const v = fySpendView({ rows, fyStart: 2026, businessOf: () => null, brandOf: () => null, business: null, media: "All" });
+    expect(v.groups.slice(0, 3).map((g) => g.name)).toEqual(["Toiletries", "Hygiene", "Salt"]);
   });
 });

@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { FyRow } from "@/lib/ingest/readers/fy";
 import { FY_MEDIA, fyStartOf } from "@/lib/manual/rules";
-import { formatMn, fySpendView, parseMedia, type MediaChoice } from "@/lib/pages/fy-spend";
+import { formatMn, fySpendView, parseMedia, tableNote, type MediaChoice } from "@/lib/pages/fy-spend";
 import { getCatalog } from "@/store/catalog";
 import { getStore } from "@/store/client";
 import { getActiveData } from "@/store/datasets";
@@ -77,7 +77,6 @@ async function FySpend({ searchParams }: { searchParams: Search }) {
   const view = fySpendView({
     rows: active.data,
     fyStart: fyStartOf(active, new Date()),
-    businesses: catalog.businesses,
     businessOf: catalog.businessOf,
     brandOf: catalog.brandOf,
     business: choice,
@@ -105,7 +104,7 @@ async function FySpend({ searchParams }: { searchParams: Search }) {
           <CardHeader>
             <CardTitle>{`Brand × month spend${media === "All" ? "" : ` · ${media}`}`}</CardTitle>
             <CardDescription>
-              {view.lastReportedLabel ? `Darker cells = higher spend · months after ${view.lastReportedLabel} not reported yet` : "Darker cells = higher spend"}
+              {tableNote(view)}
             </CardDescription>
           </CardHeader>
           <CardContent>

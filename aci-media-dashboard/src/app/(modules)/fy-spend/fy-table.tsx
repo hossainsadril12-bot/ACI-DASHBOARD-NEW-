@@ -16,7 +16,7 @@ const right = "text-right tabular-nums";
 function tint(v: number, maxCell: number): CSSProperties | undefined {
   if (!maxCell || v <= 0) return undefined;
   const alpha = 0.08 + (0.55 * v) / maxCell;
-  return { backgroundColor: `color-mix(in oklab, var(--primary)${(alpha * 100).toFixed(1)}%, transparent)` };
+  return { backgroundColor: `color-mix(in oklab, var(--primary) ${(alpha * 100).toFixed(1)}%, transparent)` };
 }
 
 function Row({ line, kind, maxCell }: { line: FyLine; kind: "brand" | "total" | "grand"; maxCell: number }) {

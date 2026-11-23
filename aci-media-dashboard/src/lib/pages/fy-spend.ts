@@ -19,7 +19,6 @@ export function formatMn(n: number): string {
 export type FySpendInput = {
   rows: FyRow[];
   fyStart: number;
-  businesses: { slug: string; name: string }[];
   businessOf: (name: string) => { slug: string; name: string } | null;
   brandOf: (name: string) => { name: string } | null;
   business: { slug: string; name: string } | null;
@@ -52,7 +51,7 @@ function line(name: string, parts: { m: number[]; py: number }[], reported: numb
 }
 
 export function fySpendView(input: FySpendInput): FySpendView {
-  const { rows, fyStart, businesses, businessOf, brandOf, business, media } = input;
+  const { rows, fyStart, businessOf, brandOf, business, media } = input;
   const labels = fyMonthLabels(fyStart);
   let reported = 0;
   for (let i = 0; i < 12; i++) if (rows.some((r) => r.m[i])) reported = i + 1;
@@ -60,7 +59,7 @@ export function fySpendView(input: FySpendInput): FySpendView {
   // Each row with its business group (list business, or its own name) and shown brand name.
   const placed = rows.map((r) => {
     const biz = businessOf(r.biz);
-    return { r, groupKey: biz ? `list:${biz.slug}` : `own:${normName(r.biz)}`, ownName: tidy(r.biz), slug: biz?.slug ?? null, brand: brandOf(r.b)?.name ?? tidy(r.b) };
+    return { r, groupKey: biz ? `list:${biz.slug}` : `own:${normName(r.biz)}`, slug: biz?.slug ?? null, bizName: biz?.name ?? tidy(r.biz), brand: brandOf(r.b)?.name ?? tidy(r.b) };
   });
   const inBusiness = business ? placed.filter((p) => p.slug === business.slug) : placed;
 
@@ -70,11 +69,12 @@ export function fySpendView(input: FySpendInput): FySpendView {
   if (other.length) cards.push(cardOf("Other", other));
 
   const shown = media === "All" ? inBusiness : inBusiness.filter((p) => p.r.med === media);
-  const order = [
-    ...businesses.map((b) => ({ key: `list:${b.slug}`, name: b.name })),
-    ...[...new Set(shown.filter((p) => p.groupKey.startsWith("own:")).map((p) => p.groupKey))]
-      .map((key) => ({ key, name: shown.find((p) => p.groupKey === key)!.ownName })),
-  ];
+  // Groups sit where each first appears in the whole file (before any filter), as in his Excel.
+  const order: { key: string; name: string }[] = [];
+  for (const p of placed) {
+    if (order.some((o) => o.key === p.groupKey)) continue;
+    order.push({ key: p.groupKey, name: p.bizName });
+  }
   const groups: FySpendView["groups"] = [];
   for (const g of order) {
     const inGroup = shown.filter((p) => p.groupKey === g.key);
@@ -103,4 +103,11 @@ export function fySpendView(input: FySpendInput): FySpendView {
     maxCell,
     empty: groups.length === 0,
   };
+}
+
+/** The line under the table title: the not-reported hint only while some month is still missing. */
+export function tableNote(view: { reported: number; lastReportedLabel: string | null }): string {
+  return view.reported > 0 && view.reported < 12 && view.lastReportedLabel
+    ? `Darker cells = higher spend · months after ${view.lastReportedLabel} not reported yet`
+    : "Darker cells = higher spend";
 }

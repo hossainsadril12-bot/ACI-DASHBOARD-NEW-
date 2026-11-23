@@ -38,8 +38,11 @@ test("3.2 FY Media Spend with no data names its file; the admin can open the FY 
   await expect(page.getByRole("heading", { name: "3.2 FY Media Spend" })).toBeVisible();
   await expect(page.getByText("No data yet")).toBeVisible();
   await expect(page.getByText("This page needs the CB Media Spent Report file.")).toBeVisible();
+  await expect(page.getByTestId("fy-table")).toHaveCount(0);
+  await expect(page.getByTestId("fy-card-TV")).toHaveCount(0);
   await page.getByRole("link", { name: "Upload it" }).click();
   await expect(page).toHaveURL(/\/data-entry#card-fy$/);
+  await expect(page.locator("#card-fy")).toBeInViewport();
 });
 
 test.describe("viewer", () => {

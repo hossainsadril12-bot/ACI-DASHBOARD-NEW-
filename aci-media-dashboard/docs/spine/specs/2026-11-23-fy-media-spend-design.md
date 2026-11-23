@@ -28,8 +28,8 @@ Show the client's FY media spend (the CB Media Spent Report, or its Manual Entry
 - **FY:** `fyStartOf(activeVersion, now)` from `src/lib/manual/rules.ts`. That reads Manual Entry's own `fyStart`, else "FY 2026-27" in the label, else the first month. Labels come from `fyName` and `fyMonthLabels`, so nothing is hard-coded.
 - **Business:**
   - Each row's stored `biz`, looked up on the Businesses & Brands list (`catalog.businessOf`). The plan decision of 22 Nov says FY pages read the stored `biz`.
-  - Groups follow the list order.
-  - A row whose business is not on the list stays under its own `biz` name, after the listed groups.
+  - Groups follow the business order of the uploaded FY file (owner decision, 23 Nov): each group sits where its business first appears in the stored rows, before any business or media filter, so the page reads like his Excel. The Businesses & Brands list does not set the order.
+  - A row whose business is not on the list stays under its own `biz` name (normalised). Two file spellings of one list business are one group, placed at the first appearance.
 - **Brand name:** the full name from the list (`catalog.brandOf(b)?.name`), else the name as stored. A brand's media rows are added together when "All media" is chosen.
 - **Reported months:** month 1 up to the last month in which any row of the whole dataset has spend. Later months are not reported yet.
 
