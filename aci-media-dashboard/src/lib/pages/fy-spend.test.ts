@@ -90,6 +90,29 @@ describe("fySpendView", () => {
     expect(v.reported).toBe(4); // still from all rows
   });
 
+  it("adds an Other card for media outside the four, so the cards add up to the Grand total", () => {
+    const rows: FyRow[] = [...ROWS, { biz: "Toiletries", b: "Lux", med: "Radio", m: z(2, 1), py: 3 }];
+    const v = fySpendView(base(rows));
+    expect(v.cards.map((c) => c.medium)).toEqual(["TV", "Digital", "Print", "OOH", "Other"]);
+    expect(v.cards[4]).toEqual({ medium: "Other", fytd: 3, py: 3 });
+    expect(Math.round(v.cards.reduce((t, c) => t + c.fytd, 0) * 100) / 100).toBe(v.grandTotal.fytd);
+    expect(fySpendView(base(rows, { media: "TV" })).groups.flatMap((g) => g.lines).some((l) => l.name === "Lux")).toBe(false);
+    expect(fySpendView(base(rows, { business: { slug: "hygiene", name: "Hygiene" } })).cards.map((c) => c.medium)).toHaveLength(4);
+    expect(fySpendView(base(ROWS)).cards).toHaveLength(4);
+  });
+
+  it("merges unknown business and brand names that differ only by case or spaces", () => {
+    const rows: FyRow[] = [
+      { biz: "Others", b: "Lux", med: "TV", m: z(1), py: 0 },
+      { biz: "others ", b: "LUX", med: "TV", m: z(2), py: 0 },
+      { biz: "Others", b: "Zed  Co", med: "TV", m: z(1), py: 0 },
+      { biz: "Others", b: "zed co", med: "TV", m: z(1), py: 0 },
+    ];
+    const v = fySpendView(base(rows));
+    expect(v.groups.map((g) => g.name)).toEqual(["Others"]);
+    expect(v.groups[0].lines.map((l) => [l.name, l.fytd])).toEqual([["Lux", 3], ["Zed  Co", 2]]);
+  });
+
   it("reports empty when nothing matches, and handles no rows at all", () => {
     expect(fySpendView(base(ROWS, { business: { slug: "hygiene", name: "Hygiene" }, media: "Print" })).empty).toBe(true);
     const none = fySpendView(base([]));
@@ -115,11 +138,22 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
     let gt = 0;
     for (let r = 1; r <= sheet.maxRow; r++) if (/^grand total$/i.test(String(sheet.v(r, 1) ?? "").trim())) { gt = r; break; }
     expect(gt).toBeGreaterThan(0);
-    for (let i = 0; i < v.reported; i++) {
-      const cell = sheet.v(gt, 3 + i);
-      expect(v.grandTotal.m[i]).toBeCloseTo(typeof cell === "number" ? cell : 0, 2);
-    }
-    const tv = rows.filter((r) => r.med === "TV").reduce((t, r) => t + r.m.reduce((a, c) => a + c, 0), 0);
-    expect(v.cards[0].fytd).toBeCloseTo(tv, 4);
+    // The reader keeps 4 decimals per row, so a month can drift about 0.0002 from his cell (Jul'26: 29.0348 vs 29.03502),
+    // and a bare 2-decimal text then splits 29.03 vs 29.04 on that tie. Months are held to 0.001; the totals are compared as 2-decimal text.
+    const t2 = (n: number) => n.toFixed(2);
+    const num = (c: number) => { const x = sheet.v(gt, c); return typeof x === "number" ? x : 0; };
+    expect(v.reported).toBe(4);
+    expect(v.lastReportedLabel).toBe("Oct'26");
+    for (let i = 0; i < v.reported; i++) expect(Math.abs(v.grandTotal.m[i]! - num(3 + i))).toBeLessThan(0.001);
+    for (let c = 3 + v.reported; c <= 14; c++) expect(num(c)).toBe(0); // months 5 to 12 are empty in his file
+    // Header row 3: column 15 is "Total 2026-27" (FY to date), column 16 is "Total 2025-26" (last FY), as the reader takes py from column 16.
+    expect(t2(v.grandTotal.fytd)).toBe(t2(num(15)));
+    expect(t2(v.grandTotal.py)).toBe(t2(num(16)));
+    // His Business x Media summary table (rows 121-128) says Press 4.13 Mn; his own Press rows and Grand Total row add to 3.43 Mn. The page follows the rows (tracker: client data check).
+    v.cards.forEach((c) => {
+      const mine = rows.filter((r) => r.med === c.medium);
+      expect(t2(c.fytd)).toBe(t2(mine.reduce((t, r) => t + r.m.reduce((a, x) => a + x, 0), 0)));
+      expect(t2(c.py)).toBe(t2(mine.reduce((t, r) => t + r.py, 0)));
+    });
   });
 });

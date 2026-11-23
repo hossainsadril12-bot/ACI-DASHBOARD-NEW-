@@ -31,7 +31,7 @@ export type FySpendView = {
   monthLabels: string[];
   reported: number;
   lastReportedLabel: string | null;
-  cards: { medium: FyMedium; fytd: number; py: number }[];
+  cards: { medium: FyMedium | "Other"; fytd: number; py: number }[];
   groups: { name: string; lines: FyLine[]; total: FyLine }[];
   grandTotal: FyLine;
   maxCell: number;
@@ -39,6 +39,7 @@ export type FySpendView = {
 };
 
 const r4 = (n: number) => Math.round(n * 10000) / 10000;
+const norm = (t: string) => t.trim().replace(/\s+/g, " ").toLowerCase();
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 function line(name: string, parts: { m: number[]; py: number }[], reported: number): FyLine {
@@ -57,27 +58,33 @@ export function fySpendView(input: FySpendInput): FySpendView {
   // Each row with its business group (list business, or its own name) and shown brand name.
   const placed = rows.map((r) => {
     const biz = businessOf(r.biz);
-    return { r, groupKey: biz ? `list:${biz.slug}` : `own:${r.biz}`, groupName: biz ? biz.name : r.biz, slug: biz?.slug ?? null, brand: brandOf(r.b)?.name ?? r.b };
+    return { r, groupKey: biz ? `list:${biz.slug}` : `own:${norm(r.biz)}`, ownName: r.biz.trim().replace(/\s+/g, " "), slug: biz?.slug ?? null, brand: brandOf(r.b)?.name ?? r.b };
   });
   const inBusiness = business ? placed.filter((p) => p.slug === business.slug) : placed;
 
-  const cards = FY_MEDIA.map((medium) => {
-    const mine = inBusiness.filter((p) => p.r.med === medium);
-    return { medium, fytd: r4(sum(mine.map((p) => sum(p.r.m.slice(0, reported))))), py: r4(sum(mine.map((p) => p.r.py))) };
-  });
+  const cardOf = (medium: FyMedium | "Other", mine: typeof placed) => ({ medium, fytd: r4(sum(mine.map((p) => sum(p.r.m.slice(0, reported))))), py: r4(sum(mine.map((p) => p.r.py))) });
+  const cards = FY_MEDIA.map((medium) => cardOf(medium, inBusiness.filter((p) => p.r.med === medium)));
+  const other = inBusiness.filter((p) => !(FY_MEDIA as readonly string[]).includes(p.r.med));
+  if (other.length) cards.push(cardOf("Other", other));
 
   const shown = media === "All" ? inBusiness : inBusiness.filter((p) => p.r.med === media);
   const order = [
     ...businesses.map((b) => ({ key: `list:${b.slug}`, name: b.name })),
-    ...[...new Set(shown.filter((p) => p.groupKey.startsWith("own:")).map((p) => p.groupKey))].map((key) => ({ key, name: key.slice(4) })),
+    ...[...new Set(shown.filter((p) => p.groupKey.startsWith("own:")).map((p) => p.groupKey))]
+      .map((key) => ({ key, name: shown.find((p) => p.groupKey === key)!.ownName })),
   ];
   const groups: FySpendView["groups"] = [];
   for (const g of order) {
     const inGroup = shown.filter((p) => p.groupKey === g.key);
     if (!inGroup.length) continue;
-    const byBrand = new Map<string, FyRow[]>();
-    for (const p of inGroup) byBrand.set(p.brand, [...(byBrand.get(p.brand) ?? []), p.r]);
-    const lines = [...byBrand].map(([name, parts]) => line(name, parts, reported)).filter((l) => l.fytd || l.py).sort((a, b) => b.fytd - a.fytd);
+    const byBrand = new Map<string, { name: string; parts: FyRow[] }>();
+    for (const p of inGroup) {
+      const k = norm(p.brand);
+      const e = byBrand.get(k) ?? { name: p.brand, parts: [] };
+      e.parts.push(p.r);
+      byBrand.set(k, e);
+    }
+    const lines = [...byBrand.values()].map((e) => line(e.name, e.parts, reported)).filter((l) => l.fytd || l.py).sort((a, b) => b.fytd - a.fytd);
     if (!lines.length) continue;
     groups.push({ name: g.name, lines, total: line(`${g.name} total`, inGroup.map((p) => p.r), reported) });
   }
