@@ -7,7 +7,8 @@ export type CalendarMonth = { m: string; label: string; rows: CalendarRow[]; not
 export type CalendarData = { months: CalendarMonth[] };
 
 const CALMON: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-const r4 = (v: number) => Math.round(v * 10000) / 10000;
+// 6 decimals only to tame float noise; the one real rounding is at display.
+const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 export function readCalendar(wb: Workbook): ReadResult<CalendarData> {
   const months: CalendarMonth[] = [];
@@ -35,9 +36,9 @@ export function readCalendar(wb: Workbook): ReadResult<CalendarData> {
       if (a) biz = a;
       if (!b || /^total$/i.test(b)) continue;
       const bn = /^skin\s*gen$/i.test(b) ? "SkinZen" : b;
-      const n = (c: number | undefined) => { const v = c ? ws.v(r, c) : null; return typeof v === "number" ? r4(v) : 0; };
+      const n = (c: number | undefined) => { const v = c ? ws.v(r, c) : null; return typeof v === "number" ? r6(v) : 0; };
       const v = [n(col.tv), n(col.digital), n(col.print), n(col.ooh)];
-      rows.push({ biz: biz || "Others", b: bn, v, t: r4(v.reduce((x, y2) => x + y2, 0)) });
+      rows.push({ biz: biz || "Others", b: bn, v, t: r6(v.reduce((x, y2) => x + y2, 0)) });
     }
     if (!sawGrandTotal) warnings.push(`Sheet "${ws.name}" has no Grand Total row; read to the last row.`);
     const notes: CalendarMonth["notes"] = {};
