@@ -66,7 +66,7 @@ describe("fyVersion", () => {
     ];
     const v = fyVersion(rows, 2026);
     expect(v.data).toEqual([
-      { biz: "Toiletries", b: "Savlon Soap", med: "TV", m: months(1.2346), py: 0 },
+      { biz: "Toiletries", b: "Savlon Soap", med: "TV", m: months(1.23456), py: 0 },
       { biz: "Hygiene", b: "Septex", med: "OOH", m: zeros(), py: 2.5 },
     ]);
     expect(v).toMatchObject({ datasetKey: "fy", kind: "fy", label: "FY spend, FY 2026-27" });

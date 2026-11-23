@@ -38,9 +38,9 @@ export function readFy(wb: Workbook): ReadResult<FyRow[]> {
     if (!med || !b) continue;
     if (med === "Press") med = "Print";
     const mv: number[] = [];
-    for (let c = 3; c <= 14; c++) { const v = ws.v(r, c); mv.push(typeof v === "number" ? round(v, 4) : 0); }
+    for (let c = 3; c <= 14; c++) { const v = ws.v(r, c); mv.push(typeof v === "number" ? round(v, 6) : 0); }
     const py = ws.v(r, 16);
-    out.push({ biz: groups[g] || "Others", b, med, m: mv, py: typeof py === "number" ? round(py, 4) : 0 });
+    out.push({ biz: groups[g] || "Others", b, med, m: mv, py: typeof py === "number" ? round(py, 6) : 0 });
   }
   const rows = out.filter((r) => r.m.some((v) => v) || r.py);
   if (!rows.length) throw new ReadError("No brand rows with values were found.");

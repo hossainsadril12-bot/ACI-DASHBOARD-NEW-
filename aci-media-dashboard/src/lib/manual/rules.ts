@@ -102,10 +102,10 @@ export function channelVersion(input: ChannelInput, fyStart: number): ManualVers
 
 // ---- FY media spend --------------------------------------------------------------------------------------------
 
-/** Names trimmed, values to 4 decimals, rows with every value 0 (12 months and last FY) dropped. Order kept. */
+/** Names trimmed, values to 6 decimals, rows with every value 0 (12 months and last FY) dropped. Order kept. */
 export function cleanFy(rows: FyRow[]): FyRow[] {
   return rows
-    .map((r) => ({ biz: r.biz.trim(), b: r.b.trim(), med: r.med.trim(), m: r.m.map((v) => round(v, 4)), py: round(r.py, 4) }))
+    .map((r) => ({ biz: r.biz.trim(), b: r.b.trim(), med: r.med.trim(), m: r.m.map((v) => round(v, 6)), py: round(r.py, 6) }))
     .filter((r) => r.m.some((v) => v !== 0) || r.py !== 0);
 }
 

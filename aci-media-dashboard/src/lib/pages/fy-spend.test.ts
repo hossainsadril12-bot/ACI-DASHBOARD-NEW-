@@ -138,13 +138,12 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
     let gt = 0;
     for (let r = 1; r <= sheet.maxRow; r++) if (/^grand total$/i.test(String(sheet.v(r, 1) ?? "").trim())) { gt = r; break; }
     expect(gt).toBeGreaterThan(0);
-    // The reader keeps 4 decimals per row, so a month can drift about 0.0002 from his cell (Jul'26: 29.0348 vs 29.03502),
-    // and a bare 2-decimal text then splits 29.03 vs 29.04 on that tie. Months are held to 0.001; the totals are compared as 2-decimal text.
+    // The reader keeps 6 decimals per row, so each reported month matches his Grand Total cell as 2-decimal text.
     const t2 = (n: number) => n.toFixed(2);
     const num = (c: number) => { const x = sheet.v(gt, c); return typeof x === "number" ? x : 0; };
     expect(v.reported).toBe(4);
     expect(v.lastReportedLabel).toBe("Oct'26");
-    for (let i = 0; i < v.reported; i++) expect(Math.abs(v.grandTotal.m[i]! - num(3 + i))).toBeLessThan(0.001);
+    for (let i = 0; i < v.reported; i++) expect(t2(v.grandTotal.m[i]!)).toBe(t2(num(3 + i)));
     for (let c = 3 + v.reported; c <= 14; c++) expect(num(c)).toBe(0); // months 5 to 12 are empty in his file
     // Header row 3: column 15 is "Total 2026-27" (FY to date), column 16 is "Total 2025-26" (last FY), as the reader takes py from column 16.
     expect(t2(v.grandTotal.fytd)).toBe(t2(num(15)));
