@@ -128,7 +128,7 @@ export function parseNotes(notes: { tvCount?: string; channels?: string; digital
   - `mix` = `Math.round(medium / last * 100)` each, or 0 when last is 0.
   - `activeFy` counts brands with `t > 0` in any uploaded month.
 - **parseNotes:**
-  - `tvCount` "Leona: 09 ; Twinkle Baby Diaper: 12" gives `[{brand:"Leona",count:9},{brand:"Twinkle Baby Diaper",count:12}]`. Split on ";", then the last ":" on each part; skip parts without a number.
+  - `tvCount` "Leona: 09 ; Twinkle Baby Diaper: 12" gives `[{brand:"Leona",count:9},{brand:"Twinkle Baby Diaper",count:12}]`. Split on ";" and "," (amended after review: his cells mix both separators in every month), then the last ":" on each part; skip parts without a number.
   - `channels`: the first line, split on ",", trimmed, empties dropped.
   - `digital`: split on ",", trimmed, empties dropped.
   - Missing fields give empty lists.
@@ -141,7 +141,7 @@ export function parseNotes(notes: { tvCount?: string; channels?: string; digital
 
 - [ ] **Step 1: Reader.**
   - Write a failing test first if one fits. Change `r4` in `readCalendar` to 6 decimals (`Math.round(v * 1e6) / 1e6`) for `v` and `t`.
-  - In `calendar.test.ts`, the answer-key comparison becomes: identity fields (`m`, `label`, `biz`, `b`, `notes`) exact, and numbers `toBeCloseTo(k, 4)`, with a comment that his built-in data is 4-decimal.
+  - In `calendar.test.ts`, the answer-key comparison becomes: identity fields (`m`, `label`, `biz`, `b`, `notes`) exact, and numbers within his 4-decimal rounding, with a comment that his built-in data is 4-decimal. Amended after review: `v` within 0.00005 inclusive (an exact-half cell exists), `t` within 0.0002 (his `t` is the sum of his rounded parts), and our `t` must equal the sum of our own `v`.
   - The 39.327 acceptance test stays.
 - [ ] **Step 2: Write failing builder tests** in `src/lib/pages/calendar.test.ts` with synthetic data. Use `fyStart: 2026`, `today: "2026-10"`, and two businesses, where Toiletries appears first in the data and Hygiene second. Cover:
   - `parseCalendarParams`: defaults; `media=OOH,TV,bogus` gives `["TV","OOH"]`; `media=` gives all four; `view=sheet`; `inactive=1`; `sheet=fytd` / an uploaded month / junk (the builder falls back).
