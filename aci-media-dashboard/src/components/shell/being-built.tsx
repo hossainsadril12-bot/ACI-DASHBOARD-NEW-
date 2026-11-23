@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense, type ReactNode } from "react";
+import { Suspense } from "react";
 import { connection } from "next/server";
 import { Hammer } from "lucide-react";
 import { isAdmin } from "@/auth/admin";
 import { EmptyState } from "@/components/data/empty-state";
 import { buttonVariants } from "@/components/ui/button";
+import { BusinessFilter } from "./business-filter";
 import { PageHeader } from "./page-header";
 import { prdPage, type PrdPage } from "./nav-items";
 
@@ -35,11 +36,17 @@ async function WithAdmin({ page }: { page: PrdPage }) {
 }
 
 /** A PRD page whose link works but whose content is not built yet (spec: Pages not built yet). */
-export function BeingBuilt({ href, filterSlot }: { href: string; filterSlot?: ReactNode }) {
+export function BeingBuilt({ href }: { href: string }) {
   const page = need(href);
   return (
     <>
-      <PageHeader title={`${page.code} ${page.label}`}>{filterSlot}</PageHeader>
+      <PageHeader title={`${page.code} ${page.label}`}>
+        {page.businessFilter && (
+          <Suspense fallback={null}>
+            <BusinessFilter />
+          </Suspense>
+        )}
+      </PageHeader>
       <Suspense fallback={<BeingBuiltBody page={page} admin={false} />}>
         <WithAdmin page={page} />
       </Suspense>
