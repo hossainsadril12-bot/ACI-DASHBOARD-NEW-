@@ -76,6 +76,16 @@ describe("fySpendView", () => {
     expect(fySpendView(base(rows, { media: "TV" })).groups.map((g) => g.name)).toEqual(["Hygiene", "Toiletries", "Foods"]);
   });
 
+  it("keeps the group order from all rows when a media filter hides the first row of a group", () => {
+    const rows: FyRow[] = [
+      { biz: "Toiletries", b: "Lux", med: "TV", m: z(1), py: 0 },
+      { biz: "Hygiene", b: "Angel", med: "TV", m: z(1), py: 0 },
+      { biz: "Hygiene", b: "Angel", med: "Print", m: z(1), py: 0 },
+      { biz: "Toiletries", b: "Lux", med: "Print", m: z(1), py: 0 },
+    ];
+    expect(fySpendView(base(rows, { media: "Print" })).groups.map((g) => g.name)).toEqual(["Toiletries", "Hygiene"]);
+  });
+
   it("builds the table note from the reported months", () => {
     const n = (reported: number, lastReportedLabel: string | null) => tableNote({ reported, lastReportedLabel });
     expect(n(0, null)).toBe("Darker cells = higher spend");
