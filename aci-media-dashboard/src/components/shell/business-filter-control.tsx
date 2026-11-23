@@ -36,10 +36,10 @@ export function BusinessFilterControl({ view }: { view: BusinessFilterView }) {
   };
 
   return (
-    <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-70")}>
+    <div aria-busy={pending || undefined} className={cn("min-w-0 max-w-full transition-opacity", pending && "opacity-70")}>
       {view.mode === "buttons" ? (
         // 40px touch targets: SegmentedButtons is 36px tall by default.
-        <div className="[&_button]:h-10">
+        <div className="max-w-full overflow-x-auto [&_button]:h-10">
           <SegmentedButtons label="Business" items={[{ key: "", label: ALL }, ...view.options.map((o) => ({ key: o.slug, label: o.name }))]} value={value} onChange={choose} />
         </div>
       ) : (
@@ -57,7 +57,7 @@ function BusinessDropdown({ options, value, onChange }: { options: BusinessFilte
   const item = "min-h-10 py-2";
 
   return (
-    <DropdownMenu onOpenChange={(open) => { if (!open) setQuery(""); }}>
+    <DropdownMenu highlightItemOnHover={false} onOpenChange={(open) => { if (!open) setQuery(""); }}>
       <DropdownMenuTrigger render={<Button variant="outline" size="lg" aria-label={`Business: ${current}`} className="max-w-full" />}>
         <Building2 aria-hidden />
         <span className="truncate">{current}</span>
@@ -70,8 +70,9 @@ function BusinessDropdown({ options, value, onChange }: { options: BusinessFilte
             placeholder="Search businesses"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            // Typing belongs to the search box: keep keys away from the menu's typeahead and focus moves. Escape still closes.
-            onKeyDown={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
+            // Typing belongs to the search box: keep keys away from the menu's typeahead and focus moves.
+            // Escape (close) and the arrows (move into the list) still reach the menu.
+            onKeyDown={(e) => { if (e.key !== "Escape" && e.key !== "ArrowDown" && e.key !== "ArrowUp") e.stopPropagation(); }}
             className="h-10"
           />
         </div>
