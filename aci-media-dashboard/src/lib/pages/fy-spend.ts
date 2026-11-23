@@ -1,4 +1,5 @@
 import type { FyRow } from "@/lib/ingest/readers/fy";
+import { normName } from "@/lib/names-normal";
 import { FY_MEDIA, fyMonthLabels, fyName } from "@/lib/manual/rules";
 
 // 3.2 FY Media Spend: the page's numbers, from the stored fy rows. Pure; the page only renders this.
@@ -38,14 +39,15 @@ export type FySpendView = {
   empty: boolean;
 };
 
-const r4 = (n: number) => Math.round(n * 10000) / 10000;
-const norm = (t: string) => t.trim().replace(/\s+/g, " ").toLowerCase();
+// 6 decimals only to tame float noise; the one real rounding is at display (formatMn).
+const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
+const tidy = (t: string) => t.trim().replace(/\s+/g, " ");
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 function line(name: string, parts: { m: number[]; py: number }[], reported: number): FyLine {
-  const m = Array.from({ length: 12 }, (_, i) => (i < reported ? r4(sum(parts.map((p) => p.m[i] ?? 0))) : null));
-  const fytd = r4(sum(m.map((x) => x ?? 0)));
-  const py = r4(sum(parts.map((p) => p.py)));
+  const m = Array.from({ length: 12 }, (_, i) => (i < reported ? r6(sum(parts.map((p) => p.m[i] ?? 0))) : null));
+  const fytd = r6(sum(m.map((x) => x ?? 0)));
+  const py = r6(sum(parts.map((p) => p.py)));
   return { name, m, fytd, py, pct: py ? Math.round((fytd / py) * 100) : null };
 }
 
@@ -58,11 +60,11 @@ export function fySpendView(input: FySpendInput): FySpendView {
   // Each row with its business group (list business, or its own name) and shown brand name.
   const placed = rows.map((r) => {
     const biz = businessOf(r.biz);
-    return { r, groupKey: biz ? `list:${biz.slug}` : `own:${norm(r.biz)}`, ownName: r.biz.trim().replace(/\s+/g, " "), slug: biz?.slug ?? null, brand: brandOf(r.b)?.name ?? r.b };
+    return { r, groupKey: biz ? `list:${biz.slug}` : `own:${normName(r.biz)}`, ownName: tidy(r.biz), slug: biz?.slug ?? null, brand: brandOf(r.b)?.name ?? tidy(r.b) };
   });
   const inBusiness = business ? placed.filter((p) => p.slug === business.slug) : placed;
 
-  const cardOf = (medium: FyMedium | "Other", mine: typeof placed) => ({ medium, fytd: r4(sum(mine.map((p) => sum(p.r.m.slice(0, reported))))), py: r4(sum(mine.map((p) => p.r.py))) });
+  const cardOf = (medium: FyMedium | "Other", mine: typeof placed) => ({ medium, fytd: r6(sum(mine.map((p) => sum(p.r.m.slice(0, reported))))), py: r6(sum(mine.map((p) => p.r.py))) });
   const cards = FY_MEDIA.map((medium) => cardOf(medium, inBusiness.filter((p) => p.r.med === medium)));
   const other = inBusiness.filter((p) => !(FY_MEDIA as readonly string[]).includes(p.r.med));
   if (other.length) cards.push(cardOf("Other", other));
@@ -79,7 +81,7 @@ export function fySpendView(input: FySpendInput): FySpendView {
     if (!inGroup.length) continue;
     const byBrand = new Map<string, { name: string; parts: FyRow[] }>();
     for (const p of inGroup) {
-      const k = norm(p.brand);
+      const k = normName(p.brand);
       const e = byBrand.get(k) ?? { name: p.brand, parts: [] };
       e.parts.push(p.r);
       byBrand.set(k, e);

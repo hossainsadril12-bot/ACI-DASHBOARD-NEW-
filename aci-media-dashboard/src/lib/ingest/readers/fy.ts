@@ -2,7 +2,8 @@ import { pad2, round, xstr } from "../cells";
 import { ReadError, type ReadResult } from "../read-result";
 import type { Workbook } from "../workbook";
 
-/** Line-by-line port of his parseFY (template.html 607-616). Spend is in BDT Mn. */
+/** Line-by-line port of his parseFY (template.html 607-616). Spend is in BDT Mn.
+ *  Differs from his parseFY on purpose: it keeps 6 decimals instead of 4, so page totals match the cells of his file. */
 
 export type FyRow = { biz: string; b: string; med: string; m: number[]; py: number };
 

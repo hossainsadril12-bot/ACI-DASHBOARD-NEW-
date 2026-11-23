@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFy, type FyRow } from "@/lib/ingest/readers/fy";
 import { openWorkbook } from "@/lib/ingest/workbook";
 import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
+import { normName } from "@/lib/names-normal";
+import { FY_MEDIA } from "@/lib/manual/rules";
 import { fySpendView, formatMn, parseMedia, type FySpendInput } from "./fy-spend";
 
 const z = (...v: number[]) => [...v, ...Array(12 - v.length).fill(0)];
@@ -110,7 +112,16 @@ describe("fySpendView", () => {
     ];
     const v = fySpendView(base(rows));
     expect(v.groups.map((g) => g.name)).toEqual(["Others"]);
-    expect(v.groups[0].lines.map((l) => [l.name, l.fytd])).toEqual([["Lux", 3], ["Zed  Co", 2]]);
+    expect(v.groups[0].lines.map((l) => [l.name, l.fytd])).toEqual([["Lux", 3], ["Zed Co", 2]]);
+  });
+
+  it("rounds only at display: two 0.17248 cells show 0.34", () => {
+    const rows: FyRow[] = [
+      { biz: "Toiletries", b: "Wonder", med: "TV", m: z(0.17248), py: 0 },
+      { biz: "Toiletries", b: "Wonder", med: "TV", m: z(0.17248), py: 0 },
+    ];
+    const l = fySpendView(base(rows)).groups[0].lines[0];
+    expect(formatMn(l.m[0]!)).toBe("0.34 BDT Mn");
   });
 
   it("reports empty when nothing matches, and handles no rows at all", () => {
@@ -138,8 +149,8 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
     let gt = 0;
     for (let r = 1; r <= sheet.maxRow; r++) if (/^grand total$/i.test(String(sheet.v(r, 1) ?? "").trim())) { gt = r; break; }
     expect(gt).toBeGreaterThan(0);
-    // The reader keeps 6 decimals per row, so each reported month matches his Grand Total cell as 2-decimal text.
-    const t2 = (n: number) => n.toFixed(2);
+    // Compare the text the client sees, on both sides.
+    const t2 = (n: number) => formatMn(n);
     const num = (c: number) => { const x = sheet.v(gt, c); return typeof x === "number" ? x : 0; };
     expect(v.reported).toBe(4);
     expect(v.lastReportedLabel).toBe("Oct'26");
@@ -154,5 +165,38 @@ describe.skipIf(!hasClientFiles)("fySpendView with his real FY file", () => {
       expect(t2(c.fytd)).toBe(t2(mine.reduce((t, r) => t + r.m.reduce((a, x) => a + x, 0), 0)));
       expect(t2(c.py)).toBe(t2(mine.reduce((t, r) => t + r.py, 0)));
     });
+  });
+
+  it("every brand line, per medium and month, matches the sum of his own cells", () => {
+    const wb = openWorkbook(new Uint8Array(clientFile(FILE)));
+    const rows = readFy(wb).data;
+    const sheet = wb.sheet(wb.sheets.findIndex((s) => /final report/i.test(s.name) && s.visible))!;
+    // Walk his sheet directly: brand name carries down, media in column 2, months in columns 3 to 14.
+    const cells = new Map<string, number[]>(); // "medium|brand" -> 12 month sums
+    let b: string | null = null;
+    for (let r = 1; r <= sheet.maxRow; r++) {
+      const a = String(sheet.v(r, 1) ?? "").trim();
+      if (/^grand total$/i.test(a)) break;
+      if (/^brand$/i.test(a)) continue;
+      if (/^total$/i.test(a)) { b = null; continue; }
+      if (a) b = a;
+      let med = String(sheet.v(r, 2) ?? "").trim();
+      if (!med || !b) continue;
+      if (med === "Press") med = "Print";
+      const key = `${med}|${normName(b)}`;
+      const acc = cells.get(key) ?? Array(12).fill(0);
+      for (let c = 3; c <= 14; c++) { const x = sheet.v(r, c); if (typeof x === "number") acc[c - 3] += x; }
+      cells.set(key, acc);
+    }
+    let checked = 0;
+    for (const media of FY_MEDIA) {
+      const v = fySpendView({ rows, fyStart: 2026, businesses: [], businessOf: () => null, brandOf: () => null, business: null, media });
+      for (const line of v.groups.flatMap((g) => g.lines)) {
+        const mine = cells.get(`${media}|${normName(line.name)}`);
+        expect(mine, `${media} ${line.name}`).toBeDefined();
+        for (let i = 0; i < v.reported; i++) { expect(formatMn(line.m[i]!), `${media} ${line.name} month ${i + 1}`).toBe(formatMn(mine![i]!)); checked++; }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

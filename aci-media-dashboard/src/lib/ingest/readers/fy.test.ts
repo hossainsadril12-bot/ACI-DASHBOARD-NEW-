@@ -9,6 +9,7 @@ describe.skipIf(!hasClientFiles)("FY spend: the real file", () => {
     const r = readFy(open(clientFile("CB_media_Spent_Report_2026-27_V4_-_Oct_26_Updated_27.10.26.xlsx")));
     // His built-in key came from source/scripts/extract.py (lines 46-60), which keeps all-zero rows;
     // his live reader drops them (template.html line 614). So compare with the key filtered by his rule.
+    // His built-in data is 4-decimal (his parseFY rounds to 4), so these numbers compare to 4 decimals.
     const full = answerKey<{ fy: FyRow[] }>("data.json").fy;
     const key = full.filter((x) => x.m.some((v) => v) || x.py);
     expect(r.data).toHaveLength(key.length);
