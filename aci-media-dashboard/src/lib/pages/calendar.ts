@@ -28,6 +28,22 @@ export function formatSheet(n: number): string {
   return n === 0 ? "" : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 }
 
+const list = (t: string | undefined) => (t ?? "").split(",").map((s) => tidy(s)).filter(Boolean);
+
+/**
+ * The notes at the bottom of a month sheet. TV counts like "Leona: 09 ; Twinkle Baby Diaper: 12" split on ";" and
+ * also on "," (his July sheet mixes both), then on the last ":" of each part; parts without a brand or a number are skipped.
+ */
+export function parseNotes(notes: { tvCount?: string; channels?: string; digital?: string }): { tvByBrand: { brand: string; count: number }[]; channels: string[]; digital: string[] } {
+  const tvByBrand = (notes.tvCount ?? "").split(/[;,]/).flatMap((part) => {
+    const at = part.lastIndexOf(":");
+    const brand = tidy(part.slice(0, Math.max(at, 0)));
+    const count = part.slice(at + 1).trim();
+    return at >= 0 && brand && /^\d+$/.test(count) ? [{ brand, count: Number(count) }] : [];
+  });
+  return { tvByBrand, channels: list(notes.channels?.split(/\r?\n/)[0]), digital: list(notes.digital) };
+}
+
 export type CalendarInput = {
   data: CalendarData;
   fyStart: number;
@@ -153,10 +169,17 @@ export function calendarView(input: CalendarInput): CalendarView {
   }
   const totalMonths = monthKeys.map((_, i) => (uploaded[i] ? r6(sum(ganttGroups.map((g) => g.months[i]!))) : null));
 
-  // Sheet: the choice only for now; its table and notes come with the Sheet view.
+  // Sheet: one uploaded month or FY to date, every brand listed, the Business filter only (never the media toggles).
   const latest = upIdx.length ? monthKeys[upIdx[upIdx.length - 1]] : null;
   const choice = params.sheet === "fytd" ? "fytd" : params.sheet && byKey.has(params.sheet) && monthKeys.includes(params.sheet) ? params.sheet : latest ?? "fytd";
   const range = upIdx.length ? ` (${upIdx.length > 1 ? `${monthLabels[upIdx[0]]} to ` : ""}${monthLabels[upIdx[upIdx.length - 1]]})` : "";
+  const ci = choice === "fytd" ? -1 : monthKeys.indexOf(choice);
+  const line = (v: number[]) => ({ v, t: r6(sum(v)) });
+  const addUp = (vs: number[][]) => line(FY_MEDIA.map((_, n) => r6(sum(vs.map((v) => v[n])))));
+  const sheetGroups = groups.filter((g) => g.brands.size).map((g) => {
+    const brands = [...g.brands.values()].map((b) => ({ name: b.name, ...(ci >= 0 ? line([...b.mv[ci]]) : addUp(upIdx.map((i) => b.mv[i]))) }));
+    return { name: g.name, brands, total: addUp(brands.map((b) => b.v)) };
+  });
 
   return {
     fyLabel: fyName(fyStart),
@@ -171,10 +194,10 @@ export function calendarView(input: CalendarInput): CalendarView {
       choice,
       choices: [...upIdx.map((i) => ({ key: monthKeys[i], label: monthLabels[i] })), { key: "fytd", label: "FY to date" }],
       title: choice === "fytd" ? `FY ${fyName(fyStart)} to date${range}` : formatMonth(choice),
-      groups: [],
-      grand: { v: [0, 0, 0, 0], t: 0 },
-      notes: null,
-      notesLabel: null,
+      groups: sheetGroups,
+      grand: addUp(sheetGroups.map((g) => g.total.v)),
+      notes: ci >= 0 ? parseNotes(byKey.get(choice)!.notes) : null,
+      notesLabel: ci >= 0 ? monthLabels[ci] : null,
     },
     chart,
   };

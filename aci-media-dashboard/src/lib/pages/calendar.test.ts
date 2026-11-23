@@ -4,7 +4,8 @@ import { openWorkbook } from "@/lib/ingest/workbook";
 import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA } from "@/lib/manual/rules";
-import { calendarView, formatSheet, parseCalendarParams, type CalendarInput, type CalendarParams } from "./calendar";
+import { xstr } from "@/lib/ingest/cells";
+import { calendarView, formatSheet, parseCalendarParams, parseNotes, type CalendarInput, type CalendarParams } from "./calendar";
 
 const row = (biz: string, b: string, ...v: number[]): CalendarRow => ({ biz, b, v, t: v.reduce((a, x) => a + x, 0) });
 const month = (m: string, rows: CalendarRow[]) => ({ m, label: m, rows, notes: {} });
@@ -271,6 +272,99 @@ describe("calendarView: Business filter, chart and empty", () => {
   });
 });
 
+describe("calendarView: Sheet view", () => {
+  const sheetOf = (s: string | null, over: Partial<CalendarInput> = {}, params: Partial<CalendarParams> = {}) => calendarView(base(DATA, over, { sheet: s, ...params })).sheet;
+  it("lists every brand of a month, zero ones and ones missing that month too, with group totals and the grand total", () => {
+    const s = sheetOf("2026-10");
+    expect(s.groups).toEqual([
+      { name: "Toiletries", brands: [{ name: "Savlon Handwash", v: [4, 1, 0, 1], t: 6 }, { name: "Lux", v: [0, 0, 1, 0], t: 1 }], total: { v: [4, 1, 1, 1], t: 7 } },
+      { name: "Hygiene", brands: [{ name: "Angel", v: [1, 0, 0, 0], t: 1 }, { name: "Ghost", v: [0, 0, 0, 0], t: 0 }, { name: "TvOnly", v: [0, 0, 0, 0], t: 0 }], total: { v: [1, 0, 0, 0], t: 1 } },
+    ]);
+    expect(s.grand).toEqual({ v: [5, 1, 1, 1], t: 8 });
+  });
+  it("adds the raw names of one brand in a month", () => {
+    const s = sheetOf("2026-08");
+    expect(s.groups[0].brands[0]).toEqual({ name: "Savlon Handwash", v: [2, 1, 0, 0], t: 3 }); // "Savlon Handwash" + the "Toilet" row's "Savlon HW"
+    expect(s.grand).toEqual({ v: [2, 1, 0, 2], t: 5 });
+  });
+  it("sums the uploaded months for FY to date", () => {
+    const s = sheetOf("fytd");
+    expect(s.groups.map((g) => g.brands.map((b) => [b.name, b.v, b.t]))).toEqual([
+      [["Savlon Handwash", [10, 2.5, 0, 1], 13.5], ["Lux", [0, 0, 6, 0], 6]],
+      [["Angel", [2, 0, 0, 3], 5], ["Ghost", [0, 0, 0, 0], 0], ["TvOnly", [0.5, 0, 0, 0], 0.5]],
+    ]);
+    expect(s.groups.map((g) => g.total)).toEqual([{ v: [10, 2.5, 6, 1], t: 19.5 }, { v: [2.5, 0, 0, 3], t: 5.5 }]);
+    expect(s.grand).toEqual({ v: [12.5, 2.5, 6, 4], t: 25 });
+  });
+  it("falls back to the latest month for a choice that is not uploaded", () => {
+    expect(sheetOf("2027-01").choice).toBe("2026-10");
+    expect(sheetOf("2027-01").grand).toEqual(sheetOf("2026-10").grand);
+    expect(sheetOf(parseCalendarParams({ sheet: "junk" }).sheet).choice).toBe("2026-10");
+  });
+  it("follows the Business filter", () => {
+    const s = sheetOf("2026-10", { business: BIZ[0] });
+    expect(s.groups.map((g) => g.name)).toEqual(["Hygiene"]);
+    expect(s.grand).toEqual({ v: [1, 0, 0, 0], t: 1 });
+    expect(sheetOf("fytd", { business: BIZ[1] }).grand).toEqual({ v: [10, 2.5, 6, 1], t: 19.5 });
+    expect(sheetOf("2026-10", { business: { slug: "foods", name: "Foods" } }).groups).toEqual([]);
+    expect(sheetOf("2026-10", { business: { slug: "foods", name: "Foods" } }).grand).toEqual({ v: [0, 0, 0, 0], t: 0 });
+  });
+  it("ignores the media toggles and the inactive switch", () => {
+    for (const s of ["2026-10", "fytd"]) {
+      expect(sheetOf(s, {}, { media: ["Print"] })).toEqual(sheetOf(s));
+      expect(sheetOf(s, {}, { inactive: true })).toEqual(sheetOf(s));
+    }
+  });
+  it("has empty groups and a zero grand total with no months", () => {
+    const s = calendarView(base({ months: [] })).sheet;
+    expect(s.choice).toBe("fytd");
+    expect(s.choices).toEqual([{ key: "fytd", label: "FY to date" }]);
+    expect(s.groups).toEqual([]);
+    expect(s.grand).toEqual({ v: [0, 0, 0, 0], t: 0 });
+    expect(s.notes).toBeNull();
+    expect(s.notesLabel).toBeNull();
+  });
+  it("gives the chosen month's notes and label, and none for FY to date", () => {
+    const withNotes: CalendarData = { months: DATA.months.map((m) => (m.m === "2026-10"
+      ? { ...m, notes: { tvCount: "Leona: 09 ; Twinkle Baby Diaper: 12", channels: "Asian TV, ATN Bangla\nTotal TV Channel: 2", digital: "Facebook, YouTube" } }
+      : m)) };
+    const oct = calendarView(base(withNotes)).sheet;
+    expect(oct.notesLabel).toBe("Oct'26");
+    expect(oct.notes).toEqual({ tvByBrand: [{ brand: "Leona", count: 9 }, { brand: "Twinkle Baby Diaper", count: 12 }], channels: ["Asian TV", "ATN Bangla"], digital: ["Facebook", "YouTube"] });
+    const aug = calendarView(base(withNotes, {}, { sheet: "2026-08" })).sheet;
+    expect(aug.notesLabel).toBe("Aug'26");
+    expect(aug.notes).toEqual({ tvByBrand: [], channels: [], digital: [] });
+    const fytd = calendarView(base(withNotes, {}, { sheet: "fytd" })).sheet;
+    expect(fytd.notes).toBeNull();
+    expect(fytd.notesLabel).toBeNull();
+  });
+});
+
+describe("parseNotes", () => {
+  it("reads brand counts split on ';', using the last ':' of each part", () => {
+    expect(parseNotes({ tvCount: "Leona: 09 ; Twinkle Baby Diaper: 12" }).tvByBrand).toEqual([{ brand: "Leona", count: 9 }, { brand: "Twinkle Baby Diaper", count: 12 }]);
+    expect(parseNotes({ tvCount: "A: B: 7" }).tvByBrand).toEqual([{ brand: "A: B", count: 7 }]);
+  });
+  it("also splits on ',', as his July sheet mixes both", () => {
+    // His July'26 cell: "Leona: 09 ; Freedom Sanitary Napkin : 19, Twinkle Baby Diaper: 12, ACI Electrolyte: "
+    expect(parseNotes({ tvCount: "Leona: 09 ; Freedom Sanitary Napkin : 19, Twinkle Baby Diaper: 12, ACI Electrolyte: " }).tvByBrand).toEqual([
+      { brand: "Leona", count: 9 }, { brand: "Freedom Sanitary Napkin", count: 19 }, { brand: "Twinkle Baby Diaper", count: 12 },
+    ]);
+  });
+  it("skips parts without a number or without a brand", () => {
+    expect(parseNotes({ tvCount: "Leona ; Savlon: n/a ; : 4 ; Septex: 06 ;" }).tvByBrand).toEqual([{ brand: "Septex", count: 6 }]);
+  });
+  it("takes the first line of channels, and trims and drops empties in both lists", () => {
+    const n = parseNotes({ channels: " Asian TV ,, ATN News ,\nTotal TV Channel: 2", digital: "Facebook , ,YouTube," });
+    expect(n.channels).toEqual(["Asian TV", "ATN News"]);
+    expect(n.digital).toEqual(["Facebook", "YouTube"]);
+  });
+  it("gives empty lists for missing or empty fields", () => {
+    expect(parseNotes({})).toEqual({ tvByBrand: [], channels: [], digital: [] });
+    expect(parseNotes({ tvCount: "", channels: "", digital: " " })).toEqual({ tvByBrand: [], channels: [], digital: [] });
+  });
+});
+
 describe.skipIf(!hasClientFiles)("calendarView with his real Activity Calendar file", () => {
   const data = hasClientFiles ? readCalendar(openWorkbook(new Uint8Array(clientFile("All_Activity_Calender_FY_26-27.xlsx")))).data : { months: [] };
   const identity = (): CalendarInput => ({
@@ -284,5 +378,66 @@ describe.skipIf(!hasClientFiles)("calendarView with his real Activity Calendar f
   });
   it("counts four uploaded months", () => {
     expect(calendarView(identity()).cards!.uploadedCount).toBe(4);
+  });
+
+  // Expected numbers come straight from his cells: every business "Total" row and the "Grand Total" row of each month sheet.
+  // Checked on 23 Nov 2026: in all four sheets (Jul'26 to Oct'26) his own Total and Grand Total rows agree with the sum
+  // of his brand rows at 3 decimals, so no disagreement needed recording; the page follows the rows either way.
+  type Line = { v: number[]; t: number };
+  const hisSheets = () => {
+    const wb = openWorkbook(new Uint8Array(clientFile("All_Activity_Calender_FY_26-27.xlsx")));
+    return wb.visibleSheets().map((ws) => {
+      let hr = 0;
+      for (let r = 1; r <= 8; r++) if (/^business$/i.test(xstr(ws.v(r, 1))) && /^brand$/i.test(xstr(ws.v(r, 2)))) { hr = r; break; }
+      const col: Record<string, number> = {};
+      for (let c = 3; c <= 12; c++) for (const r of [hr, hr + 1]) { const h = xstr(ws.v(r, c)).toLowerCase(); if (!col[h]) col[h] = c; }
+      const cell = (r: number, k: string) => { const x = ws.v(r, col[k]); return typeof x === "number" ? x : 0; };
+      const line = (r: number): Line => ({ v: ["tv", "digital", "print", "ooh"].map((k) => cell(r, k)), t: cell(r, "total") });
+      const totals: { biz: string; line: Line }[] = [];
+      let grand: Line | null = null;
+      let biz = "";
+      for (let r = hr + 2; r <= ws.maxRow; r++) {
+        const a = xstr(ws.v(r, 1)), b = xstr(ws.v(r, 2));
+        if (/^grand total$/i.test(a)) { grand = line(r); break; }
+        if (a) biz = a;
+        if (/^total$/i.test(b)) totals.push({ biz, line: line(r) });
+      }
+      return { m: data.months.find((x) => x.label === ws.name.trim())!.m, totals, grand: grand! };
+    });
+  };
+  const text = (l: Line) => [...l.v, l.t].map(formatSheet);
+
+  it("matches every business Total row and the Grand Total row of each month sheet", () => {
+    const sheets = hisSheets();
+    expect(sheets.map((s) => s.m)).toEqual(["2026-07", "2026-08", "2026-09", "2026-10"]);
+    for (const his of sheets) {
+      const s = calendarView({ ...identity(), params: { ...PARAMS, sheet: his.m } }).sheet;
+      expect(s.choice).toBe(his.m);
+      expect(his.totals).toHaveLength(4);
+      expect(s.groups.map((g) => g.name), his.m).toEqual(his.totals.map((x) => x.biz));
+      his.totals.forEach((x, i) => expect(text(s.groups[i].total), `${his.m} ${x.biz}`).toEqual(text(x.line)));
+      expect(text(s.grand), `${his.m} Grand Total`).toEqual(text(his.grand));
+    }
+  });
+  it("Oct'26 sheet Grand Total is 39.327 (PRD acceptance check)", () => {
+    expect(formatSheet(calendarView({ ...identity(), params: { ...PARAMS, sheet: "2026-10" } }).sheet.grand.t)).toBe("39.327");
+  });
+  it("FY to date grand total is the sum of his four Grand Total rows", () => {
+    const sheets = hisSheets();
+    const his = { v: FY_MEDIA.map((_, n) => sheets.reduce((a, s) => a + s.grand.v[n], 0)), t: sheets.reduce((a, s) => a + s.grand.t, 0) };
+    expect(text(calendarView({ ...identity(), params: { ...PARAMS, sheet: "fytd" } }).sheet.grand)).toEqual(text(his));
+  });
+  it("reads Oct'26 notes from the bottom of his sheet", () => {
+    // His cell: "Leona: 14 ; Savlon All Brand : 25, Septex : 08, ACI Neem Original: 10 ; Twinkle Baby Dipaer: 09" (his spelling kept).
+    const s = calendarView({ ...identity(), params: { ...PARAMS, sheet: "2026-10" } }).sheet;
+    expect(s.notesLabel).toBe("Oct'26");
+    expect(s.notes!.tvByBrand).toEqual([
+      { brand: "Leona", count: 14 }, { brand: "Savlon All Brand", count: 25 }, { brand: "Septex", count: 8 },
+      { brand: "ACI Neem Original", count: 10 }, { brand: "Twinkle Baby Dipaer", count: 9 },
+    ]);
+    // His list names 26 channels, while his own footnote line says "Total TV Channel: 25"; the page shows the list.
+    expect(s.notes!.channels).toHaveLength(26);
+    expect(s.notes!.channels[0]).toBe("Asian TV");
+    expect(s.notes!.channels[25]).toBe("Somoy TV");
   });
 });
