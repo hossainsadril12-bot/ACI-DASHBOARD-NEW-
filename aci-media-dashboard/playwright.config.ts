@@ -7,7 +7,9 @@ import { E2E_ADMIN } from "./e2e/admin-credentials";
 // A dedicated dev server on port 3100 with a fresh temp store and a test-only admin,
 // so e2e never uses a real data folder or the real admin password.
 const adminHash = "bcrypt:" + Buffer.from(bcrypt.hashSync(E2E_ADMIN.password, 10)).toString("base64url");
-const dataDir = path.join(os.tmpdir(), `media-mind-e2e-${process.pid}`);
+// Computed once and shared with global-setup and global-teardown (which removes it) through the environment.
+process.env.E2E_DATA_DIR ??= path.join(os.tmpdir(), `media-mind-e2e-${process.pid}`);
+const dataDir = process.env.E2E_DATA_DIR;
 
 export default defineConfig({
   // One dev server and one shared Neon dev branch: run specs one at a time.
@@ -18,18 +20,25 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3100" },
   projects: [
     { name: "admin-setup", testMatch: /auth\.setup\.ts/ },
+    // Phase 3 shell flow: runs first, on the empty store. Creates no businesses, brands or categories and uploads nothing.
+    {
+      name: "empty-store",
+      use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
+      testMatch: /phase3-shell\.spec\.ts/,
+      dependencies: ["admin-setup"],
+    },
     // Runs before every other spec, so it starts with the empty business, brand and ATL category lists.
     {
       name: "fresh-store",
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
       testMatch: /phase2c-.*\.spec\.ts/,
-      dependencies: ["admin-setup"],
+      dependencies: ["admin-setup", "empty-store"],
     },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
       dependencies: ["admin-setup", "fresh-store"],
-      testIgnore: [/phase1-.*\.spec\.ts/, /phase2c-.*\.spec\.ts/],
+      testIgnore: [/phase1-.*\.spec\.ts/, /phase2c-.*\.spec\.ts/, /phase3-shell\.spec\.ts/],
     },
     { name: "phase1-flow", use: { ...devices["Desktop Chrome"] }, testMatch: /phase1-.*\.spec\.ts/, dependencies: ["admin-setup"] },
   ],

@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
 import { TEMPLATES } from "../src/lib/upload/templates";
 
-// Regression: after choosing a month, a refresh or a menu click jumped back to the current month,
+// Regression: after choosing a month, a refresh or a page load (page.goto, since /spend left the menu) jumped back to the current month,
 // so data entered for another month looked lost.
 const shown = async (page: Page, url: string) => {
   await page.goto(url);
@@ -17,7 +17,7 @@ test("the chosen month is kept across pages and refreshes, and applies without a
   await page.reload();
   await expect(page.getByRole("heading", { name: "June 2031" })).toBeVisible();
 
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Spend", exact: true }).click();
+  await shown(page, "/spend");
   const month = page.getByRole("form", { name: "Filters" }).getByLabel("Month");
   await expect(month).toHaveValue("2031-06");
 
@@ -28,7 +28,7 @@ test("the chosen month is kept across pages and refreshes, and applies without a
   await expect(page.getByRole("form", { name: "Filters" }).getByLabel("Month")).toHaveValue("2031-07");
 
   // Home links to other months; opening Home must not change the remembered month.
-  await shown(page, "/");
+  await shown(page, "/old-home");
   expect(await cookie(page, "aci-month")).toBe("2031-07");
 });
 

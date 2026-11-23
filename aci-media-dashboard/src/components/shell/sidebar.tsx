@@ -1,56 +1,140 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useId, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
-  Building2, CalendarRange, ChartColumn, FileUp, House, MonitorSmartphone, ReceiptText, Settings, Target, Wallet, type LucideIcon,
+  ChartColumn, ChevronDown, FileUp, House, RadioTower, ReceiptText, Settings, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NAV_GROUPS, NAV_ITEMS } from "./nav-items";
+import { PRD_SECTIONS, activeHref, type PrdPage, type PrdSection } from "./nav-items";
 
 const ICONS: Record<string, LucideIcon> = {
-  "/": House,
-  "/plan": CalendarRange,
-  "/spend": Wallet,
-  "/billing": ReceiptText,
-  "/performance": ChartColumn,
-  "/digital": MonitorSmartphone,
-  "/competitors": Target,
-  "/data-entry": FileUp,
-  "/businesses": Building2,
-  "/settings": Settings,
+  "1": House,
+  "2": ChartColumn,
+  "3": Wallet,
+  "4": RadioTower,
+  "5": ReceiptText,
+  "6": FileUp,
+  "7": Settings,
 };
 
-type NavItem = (typeof NAV_ITEMS)[number];
+// Whole 40px row is the target (Fitts's law).
+const ROW = "relative flex min-h-10 shrink-0 items-center rounded-md px-3 py-2 text-sm leading-5 transition-colors hover:bg-sidebar-accent hover:text-white";
+const ACTIVE = "bg-sidebar-accent font-medium text-white before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-sidebar-primary";
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
-  const Icon = ICONS[item.href];
+const sectionOf = (href: string | null) => (href ? PRD_SECTIONS.find((s) => s.pages.some((p) => p.href === href))?.code : undefined);
+
+function SectionIcon({ code, active }: { code: string; active: boolean }) {
+  const Icon = ICONS[code];
+  return Icon ? <Icon className={cn("size-[18px] shrink-0", active ? "text-white" : "text-sidebar-foreground/60")} aria-hidden /> : null;
+}
+
+/** "2  Campaign Performance": the code in a narrow muted column, then the label. `hideCode` keeps it out of a link's name. */
+function CodeLabel({ code, label, codeWidth, hideCode }: { code: string; label: string; codeWidth: string; hideCode: boolean }) {
   return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        // Whole 40px row is the target (Fitts's law).
-        "relative flex h-10 shrink-0 items-center gap-3 rounded-md px-3 text-sm whitespace-nowrap transition-colors hover:bg-sidebar-accent hover:text-white",
-        active && "bg-sidebar-accent font-medium text-white md:before:absolute md:before:inset-y-2 md:before:left-0 md:before:w-[3px] md:before:rounded-full md:before:bg-sidebar-primary",
-      )}
-    >
-      {Icon && <Icon className={cn("size-[18px] shrink-0", active ? "text-white" : "text-sidebar-foreground/60")} aria-hidden />}
-      {item.label}
+    <span className="flex min-w-0 flex-1 gap-1.5">
+      <span aria-hidden={hideCode || undefined} className={cn(codeWidth, "shrink-0 text-xs leading-5 tabular-nums opacity-60")}>{code}</span>
+      <span className="min-w-0">{label}</span>
+    </span>
+  );
+}
+
+/** A one-page section (Home): a plain row with the section icon. The name is the label only. */
+function TopLink({ section, page, active }: { section: PrdSection; page: PrdPage; active: boolean }) {
+  return (
+    <Link href={page.href} aria-current={active ? "page" : undefined} className={cn(ROW, "gap-2.5", active && ACTIVE)}>
+      <SectionIcon code={section.code} active={active} />
+      <CodeLabel code={page.code} label={page.label} codeWidth="w-2.5" hideCode />
     </Link>
   );
 }
 
-/** The only part that reads the path, so pages with a slug can prerender the rest of the sidebar. */
-function CurrentNavLink({ item }: { item: NavItem }) {
-  const pathname = usePathname();
-  const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-  return <NavLink item={item} active={active} />;
+/** A page under its group, indented past the group icon. The code is hidden from the accessible name. */
+function PageLink({ page, active }: { page: PrdPage; active: boolean }) {
+  return (
+    <Link href={page.href} aria-current={active ? "page" : undefined} className={cn(ROW, "pl-10", active && ACTIVE)}>
+      <CodeLabel code={page.code} label={page.label} codeWidth="w-6" hideCode />
+    </Link>
+  );
 }
 
-/** Wix-style dark navigation: brand, the admin's quick actions (desktop), short grouped lists. */
-export function Sidebar({ quickActionsSlot }: { quickActionsSlot?: ReactNode }) {
+/**
+ * The PRD sections. A group starts open when it holds the active page; the person opens and
+ * closes groups freely. When the active page moves into a closed group, that group opens.
+ */
+function NavList({ active }: { active: string | null }) {
+  const baseId = useId();
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(sectionOf(active) ? [sectionOf(active)!] : []));
+  const [seenActive, setSeenActive] = useState(active);
+  if (active !== seenActive) {
+    // Adjust state during render (no effect): open the group the active page moved into.
+    setSeenActive(active);
+    const s = sectionOf(active);
+    if (s && !open.has(s)) setOpen(new Set(open).add(s));
+  }
+
+  const toggle = (code: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {PRD_SECTIONS.map((section) => {
+        if (section.pages.length === 1) {
+          const page = section.pages[0];
+          return (
+            <li key={section.code}>
+              <TopLink section={section} page={page} active={active === page.href} />
+            </li>
+          );
+        }
+        const isOpen = open.has(section.code);
+        const holdsActive = section.pages.some((p) => p.href === active);
+        const listId = `${baseId}-section-${section.code}`;
+        return (
+          <li key={section.code}>
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={listId}
+              onClick={() => toggle(section.code)}
+              className={cn(ROW, "w-full gap-2.5 pr-2 text-left", holdsActive && "text-white")}
+            >
+              <SectionIcon code={section.code} active={holdsActive} />
+              <CodeLabel code={section.code} label={section.label} codeWidth="w-2.5" hideCode={false} />
+              <ChevronDown
+                className={cn("size-3.5 shrink-0 text-sidebar-foreground/50 transition-transform", !isOpen && "-rotate-90")}
+                aria-hidden
+              />
+            </button>
+            <ul id={listId} hidden={!isOpen} className="flex flex-col gap-0.5 pt-0.5">
+              {section.pages.map((page) => (
+                <li key={page.href}>
+                  <PageLink page={page} active={active === page.href} />
+                </li>
+              ))}
+            </ul>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The only part that reads the path and the tab, so the layout around it still prerenders. */
+function CurrentNavList() {
+  const pathname = usePathname();
+  const tab = useSearchParams().get("tab");
+  return <NavList active={activeHref(pathname, tab)} />;
+}
+
+/** Wix-style dark navigation: brand, the admin's quick actions, the PRD sections, a footer. */
+export function Sidebar({ quickActionsSlot, footerSlot }: { quickActionsSlot?: ReactNode; footerSlot?: ReactNode }) {
   return (
     <div className="flex h-full flex-col text-sidebar-foreground">
       <Link href="/" className="flex items-center gap-2.5 px-5 pt-5 pb-4" aria-label="ACI Media home">
@@ -63,18 +147,13 @@ export function Sidebar({ quickActionsSlot }: { quickActionsSlot?: ReactNode }) 
 
       {quickActionsSlot}
 
-      <nav aria-label="Main" className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-1 md:flex-col md:gap-0 md:overflow-y-auto md:pb-0">
-        {NAV_GROUPS.map((group) => (
-          <div key={group || "top"} className="flex gap-1 md:mb-3 md:flex-col md:gap-0.5 md:border-t md:border-sidebar-border md:pt-3 md:first:border-t-0 md:first:pt-0">
-            {group && <p className="hidden px-3 pb-1 text-[11px] font-medium tracking-wider text-sidebar-foreground/50 uppercase md:block">{group}</p>}
-            {NAV_ITEMS.filter((i) => i.group === group).map((item) => (
-              <Suspense key={item.href} fallback={<NavLink item={item} active={false} />}>
-                <CurrentNavLink item={item} />
-              </Suspense>
-            ))}
-          </div>
-        ))}
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-1.5 pb-3">
+        <Suspense fallback={<NavList active={null} />}>
+          <CurrentNavList />
+        </Suspense>
       </nav>
+
+      {footerSlot && <div className="mt-auto">{footerSlot}</div>}
     </div>
   );
 }

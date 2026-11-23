@@ -4,6 +4,8 @@ import { DM_Sans } from "next/font/google";
 import { AgentationDev } from "@/components/dev/agentation-dev";
 import { AdminOnly } from "@/components/shell/admin-only";
 import { AdminStatus } from "@/components/shell/admin-status";
+import { DataUpdatedLine } from "@/components/shell/data-updated-line";
+import { MobileMenu } from "@/components/shell/mobile-menu";
 import { QuickActions } from "@/components/shell/quick-actions";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TopBar } from "@/components/shell/top-bar";
@@ -18,25 +20,27 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  // Shared by the desktop sidebar and the phone Menu drawer (the aside is hidden below md).
+  const sidebarQuickActions = (
+    <Suspense fallback={null}>
+      <AdminOnly><div className="px-4 pb-4"><QuickActions /></div></AdminOnly>
+    </Suspense>
+  );
+  const sidebarFooter = <Suspense fallback={null}><DataUpdatedLine /></Suspense>;
+
   return (
     <html lang="en" className={`${dmSans.variable} h-full antialiased`}>
       <body className="min-h-full bg-background text-foreground">
         <div className="flex min-h-screen flex-col md:flex-row">
-          <aside className="bg-sidebar md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0">
-            <Sidebar
-              quickActionsSlot={
-                <Suspense fallback={null}>
-                  <AdminOnly><div className="hidden px-4 pb-4 md:block"><QuickActions /></div></AdminOnly>
-                </Suspense>
-              }
-            />
+          <aside className="hidden bg-sidebar md:sticky md:top-0 md:block md:h-screen md:w-64 md:shrink-0">
+            <Sidebar quickActionsSlot={sidebarQuickActions} footerSlot={sidebarFooter} />
           </aside>
           <main className="min-w-0 flex-1">
             <TopBar
-              quickActionsSlot={
-                <Suspense fallback={null}>
-                  <AdminOnly><div className="w-36 sm:w-44 md:hidden"><QuickActions /></div></AdminOnly>
-                </Suspense>
+              menuSlot={
+                <MobileMenu>
+                  <Sidebar quickActionsSlot={sidebarQuickActions} footerSlot={sidebarFooter} />
+                </MobileMenu>
               }
               adminSlot={<Suspense fallback={null}><AdminStatus /></Suspense>}
             />
