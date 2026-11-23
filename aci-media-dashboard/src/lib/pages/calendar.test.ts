@@ -134,6 +134,25 @@ describe("calendarView: cards", () => {
   it("ignores the media toggles", () => {
     expect(calendarView(base(DATA, {}, { media: ["Print"] })).cards).toEqual(calendarView(base(DATA)).cards);
   });
+  it("compares with the previous uploaded month when a month in between is missing", () => {
+    const gap = calendarView(base({ months: [DATA.months[0], DATA.months[2]] })).cards!;
+    expect(gap.last.label).toBe("Sep'26");
+    expect(gap.last.prevLabel).toBe("Jul'26");
+    expect(gap.last.changePct).toBe(66.7); // 4.5 -> 7.5
+  });
+  it("rounds the change half away from zero, and never shows -0", () => {
+    const pct = (prev: number, last: number) =>
+      calendarView(base({ months: [month("2026-07", [row("Hygiene", "Angel", prev, 0, 0, 0)]), month("2026-08", [row("Hygiene", "Angel", last, 0, 0, 0)])] })).cards!.last.changePct;
+    expect(pct(1000, 876.5)).toBe(-12.4); // -12.35
+    expect(pct(1000, 1123.5)).toBe(12.4); // +12.35
+    expect(pct(1000, 999.99)).toBe(0); // a tiny fall, not -0
+  });
+  it("counts a brand listed under two businesses once", () => {
+    const two: CalendarData = { months: [month("2026-07", [row("Toiletries", "Lux", 1, 0, 0, 0), row("Hygiene", "Lux", 0, 1, 0, 0), row("Hygiene", "Angel", 1, 0, 0, 0)])] };
+    const c = calendarView(base(two)).cards!;
+    expect(c.activeLast).toBe(2);
+    expect(c.activeFy).toBe(2);
+  });
 });
 
 describe("calendarView: Gantt", () => {
@@ -198,6 +217,22 @@ describe("calendarView: Gantt", () => {
   });
   it("drops a group with no brands left", () => {
     expect(calendarView(base(DATA, {}, { media: ["Print"] })).gantt.groups.map((x) => x.name)).toEqual(["Toiletries"]);
+  });
+  it("shows only the chosen business with inactive brands on, no other business leaking in", () => {
+    const h = calendarView(base(DATA, { business: BIZ[0] }, { inactive: true })).gantt;
+    expect(h.groups.map((x) => x.name)).toEqual(["Hygiene"]);
+    expect(h.groups[0].brands.map((b) => b.name)).toEqual(["Angel", "Ghost", "TvOnly"]);
+    const t = calendarView(base(DATA, { business: BIZ[1] }, { inactive: true })).gantt;
+    expect(t.groups.map((x) => x.name)).toEqual(["Toiletries"]);
+    expect(t.groups[0].brands.map((b) => b.name)).toEqual(["Savlon Handwash", "Lux"]);
+  });
+  it("normalises the media it is given: repeats dropped, FY_MEDIA order, empty means all four", () => {
+    const all = calendarView(base(DATA)).gantt;
+    expect(calendarView(base(DATA, {}, { media: [] })).gantt).toEqual(all);
+    const rep = calendarView(base(DATA, {}, { media: ["OOH", "TV", "TV"] })).gantt;
+    expect(rep.media).toEqual(["TV", "OOH"]);
+    expect(rep.groups[0].brands[0].cells[0]!.lanes.map((l) => l.medium)).toEqual(["TV", "OOH"]);
+    expect(rep.groups[0].brands[0].cells[3]!.total).toBe(5); // TV 4 + OOH 1, TV once
   });
 });
 

@@ -2,6 +2,8 @@ import type { CalendarData } from "@/lib/ingest/readers/calendar";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA, fyMonthLabels, fyMonths, fyName } from "@/lib/manual/rules";
 import type { FyMedium } from "@/lib/pages/fy-spend";
+import { r6, sum, tidy } from "@/lib/pages/numbers";
+import { formatMonth, isMonth } from "@/lib/month";
 
 // 3.1 Monthly Activity Calendar: the page's numbers, from the stored calendar months. Pure; the page only renders this.
 
@@ -17,7 +19,7 @@ export function parseCalendarParams(sp: Record<string, string | string[] | undef
     view: str("view") === "sheet" ? "sheet" : "gantt",
     media: media.length ? media : [...FY_MEDIA],
     inactive: str("inactive") === "1",
-    sheet: sheet === "fytd" || /^\d{4}-\d{2}$/.test(sheet) ? sheet : null,
+    sheet: sheet === "fytd" || isMonth(sheet) ? sheet : null,
   };
 }
 
@@ -66,12 +68,8 @@ export type CalendarView = {
   chart: { label: string; v: number[]; total: number }[];
 };
 
-// 6 decimals only to tame float noise; the one real rounding is at display.
-const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
-const tidy = (t: string) => t.trim().replace(/\s+/g, " ");
-const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const longMonth = (key: string) => `${MONTH_NAMES[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+/** A change % to 1 decimal, half away from zero, never -0. */
+const pct1 = (x: number) => { const a = Math.round(Math.abs(x) * 10) / 10; return a === 0 ? 0 : Math.sign(x) * a; };
 
 type Brand = { name: string; mv: number[][] }; // mv[month][medium], zeros where the brand has no row
 type Group = { key: string; name: string; brands: Map<string, Brand> };
@@ -104,6 +102,8 @@ export function calendarView(input: CalendarInput): CalendarView {
   }
   const allBrands = groups.flatMap((g) => [...g.brands.values()]);
   const monthMedia = (i: number) => FY_MEDIA.map((_, n) => r6(sum(allBrands.map((b) => b.mv[i][n]))));
+  // A brand listed under two businesses is one brand for the owner.
+  const activeCount = (live: (b: Brand) => boolean) => new Set(allBrands.filter(live).map((b) => normName(b.name))).size;
 
   const chart = upIdx.map((i) => { const v = monthMedia(i); return { label: monthLabels[i], v, total: r6(sum(v)) }; });
 
@@ -122,16 +122,18 @@ export function calendarView(input: CalendarInput): CalendarView {
       last: {
         label: monthLabels[last], total: lastTotal,
         prevLabel: prev === null ? null : monthLabels[prev],
-        changePct: prevTotal ? Math.round(((lastTotal - prevTotal) / prevTotal) * 1000) / 10 : null,
+        changePct: prevTotal ? pct1(((lastTotal - prevTotal) / prevTotal) * 100) : null,
       },
-      activeLast: allBrands.filter((b) => sum(b.mv[last]) > 0).length,
-      activeFy: allBrands.filter((b) => upIdx.some((i) => sum(b.mv[i]) > 0)).length,
+      activeLast: activeCount((b) => sum(b.mv[last]) > 0),
+      activeFy: activeCount((b) => upIdx.some((i) => sum(b.mv[i]) > 0)),
       mix: FY_MEDIA.map((medium, n) => ({ medium, pct: lastTotal ? Math.round((lastMedia[n] / lastTotal) * 100) : 0 })),
     };
   }
 
-  // Gantt: only the switched-on media count.
-  const on = params.media.map((m) => FY_MEDIA.indexOf(m));
+  // Gantt: only the switched-on media count. Normalised here too, whoever built the params.
+  const asked = FY_MEDIA.filter((m) => params.media.includes(m));
+  const media = asked.length ? asked : [...FY_MEDIA];
+  const on = media.map((m) => FY_MEDIA.indexOf(m));
   const ganttGroups: CalendarView["gantt"]["groups"] = [];
   for (const g of groups) {
     const brands = [...g.brands.values()].map((b) => {
@@ -164,11 +166,11 @@ export function calendarView(input: CalendarInput): CalendarView {
     currentIndex: monthKeys.indexOf(today),
     empty: rowsInBusiness === 0,
     cards,
-    gantt: { media: [...params.media], groups: ganttGroups, total: { months: totalMonths, fytd: r6(sum(totalMonths.map((x) => x ?? 0))) } },
+    gantt: { media, groups: ganttGroups, total: { months: totalMonths, fytd: r6(sum(totalMonths.map((x) => x ?? 0))) } },
     sheet: {
       choice,
       choices: [...upIdx.map((i) => ({ key: monthKeys[i], label: monthLabels[i] })), { key: "fytd", label: "FY to date" }],
-      title: choice === "fytd" ? `FY ${fyName(fyStart)} to date${range}` : longMonth(choice),
+      title: choice === "fytd" ? `FY ${fyName(fyStart)} to date${range}` : formatMonth(choice),
       groups: [],
       grand: { v: [0, 0, 0, 0], t: 0 },
       notes: null,
