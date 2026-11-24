@@ -65,7 +65,7 @@ describe("Sheet", () => {
     expect(head).toMatch(/<tr[^>]*bg-emerald-700/);
     const labels = [...head.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map((m) => m[1].replace(/<[^>]*>/g, ""));
     expect(labels).toEqual(["Business", "Brand", "TV", "Digital", "Print", "OOH", "Total"]);
-    for (const m of ["bg-teal-600", "bg-rose-600", "bg-amber-500", "bg-emerald-600"]) expect(head).toContain(m);
+    for (const m of ["bg-teal-600", "bg-rose-600", "bg-amber-500", "bg-sky-600"]) expect(head).toContain(m);
   });
 
   it("keeps the white outline on all four header squares, Print's amber edge included", () => {

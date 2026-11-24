@@ -61,7 +61,7 @@ test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test("sees the being-built note with no upload link", async ({ page }) => {
     await page.goto("/atl");
-    await expect(page.getByText("This page is being built.")).toBeVisible();
+    await expect(page.getByText("This page is being built.").first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Open its upload card" })).toHaveCount(0);
   });
   test("sees 3.1 Monthly Activity Calendar has no data yet, with no upload link", async ({ page }) => {

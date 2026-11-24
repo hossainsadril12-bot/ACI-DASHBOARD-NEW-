@@ -8,7 +8,7 @@ import { E2E_ADMIN } from "./e2e/admin-credentials";
 // so e2e never uses a real data folder or the real admin password.
 const adminHash = "bcrypt:" + Buffer.from(bcrypt.hashSync(E2E_ADMIN.password, 10)).toString("base64url");
 // Computed once and shared with global-setup and global-teardown (which removes it) through the environment.
-process.env.E2E_DATA_DIR ??= path.join(os.tmpdir(), `media-mind-e2e-${process.pid}`);
+process.env.E2E_DATA_DIR ??= path.join(os.tmpdir(), `media-mind-e2e-${process.pid}-${Date.now()}`);
 const dataDir = process.env.E2E_DATA_DIR;
 
 export default defineConfig({

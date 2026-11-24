@@ -55,7 +55,7 @@ describe("SpendChart", () => {
     expect(sep[1].cls).toMatch(/\bbg-rose-600\b/);
     expect(sep[2].cls).toMatch(/\bbg-amber-500\b/);
     expect(sep[2].cls).toMatch(/\bring-amber-600\b/);
-    expect(sep[3].cls).toMatch(/\bbg-emerald-600\b/);
+    expect(sep[3].cls).toMatch(/\bbg-sky-600\b/);
     expect(sep[0].title).toBe("TV: 1,234.50 BDT Mn");
     expect(sep[2].title).toBe("Print: 1.00 BDT Mn");
     // A medium with no spend that month draws no segment.
