@@ -33,7 +33,7 @@ Spec: `docs/spine/specs/2026-11-23-activity-calendar-design.md` (it holds the ex
   - Shared components and the existing look.
   - Touch targets of at least 40px.
   - No page sideways scroll at 375px; tables and the chart scroll inside their cards.
-  - Medium colours: TV `bg-teal-600`, Digital `bg-rose-600`, Print `bg-amber-500`, OOH `bg-emerald-600` (from `src/lib/channel-colors.ts`).
+  - Medium colours: TV `bg-teal-600`, Digital `bg-rose-600`, Print `bg-amber-500`, OOH `bg-sky-600` (amended 24 Nov 2026, was emerald; text shade `text-sky-700`) (from `src/lib/channel-colors.ts`).
   - Hatching is a CSS repeating-linear-gradient in a neutral grey.
 - **Tests:** only on the in-memory test store or the Playwright temp store. Never the real data dir, never Neon.
 - **Security:**

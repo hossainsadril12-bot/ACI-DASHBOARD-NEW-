@@ -71,7 +71,7 @@ Show which brand ran on which medium in each month of the FY, and how much it sp
   - After each business comes an amber-tinted "Total" row; last is a green-tinted "Grand Total" row.
   - Numbers have 2 to 3 decimals and are blank when 0.
   - The sheet view ignores the Gantt media toggles, but follows the Business filter.
-- **Notes card**, single month only: "<Mon'YY> media notes", with the sub line "From the bottom of the month's sheet". It holds up to three chip groups, each shown only when it has entries:
+- **Notes card**, single month only: "<Mon'YY> media notes", with the sub line "From the bottom of the month's sheet · all businesses" (amended 24 Nov 2026: the notes are free text and are not filtered by the Business filter). It holds up to three chip groups, each shown only when it has entries:
   - "TV channels used by brand": "Leona · 9 channels", from "Leona: 09 ; Twinkle Baby Diaper: 12".
   - "TV channels on air (21)": the comma-separated list.
   - "Digital platforms": the comma-separated list.
@@ -80,7 +80,7 @@ Show which brand ran on which medium in each month of the FY, and how much it sp
 
 **Empty state.** With no `calendar` data, show `NoDataYet` with file "All Activity Calendar" and card `calendar` (admin "Upload it", viewer "Not uploaded yet."). No cards, views or chart are shown.
 
-**Medium colours.** TV teal, Digital rose, Print amber, OOH emerald, matching `src/lib/channel-colors.ts` (Print uses the PRESS colour).
+**Medium colours.** TV teal, Digital rose, Print amber, OOH sky, matching `src/lib/channel-colors.ts` (Print uses the PRESS colour). Amended 24 Nov 2026: OOH changed from emerald to sky so it stands apart from TV in the lanes and the chart; this also changes OOH on the old Plan board and old Home.
 
 **Viewers and admin** see the same page. Nothing on it is editable.
 
