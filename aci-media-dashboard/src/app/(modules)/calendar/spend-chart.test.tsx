@@ -68,6 +68,12 @@ describe("SpendChart", () => {
     expect(jul[0].height).toBe("66.666667%");
   });
 
+  it("gives each column a screen-reader line with the media above 0 and the total", () => {
+    const [jul, sep] = columns(render());
+    expect(jul).toContain(`<span class="sr-only">Jul&#x27;26: TV 1.00, Digital 0.50, total 1.50 BDT Mn</span>`);
+    expect(sep).toContain(`<span class="sr-only">Sep&#x27;26: TV 1,234.50, Digital 1.00, Print 1.00, OOH 1.00, total 1,237.50 BDT Mn</span>`);
+  });
+
   it("scrolls inside its card on a phone", () => {
     const html = render();
     expect(html).toMatch(/overflow-x-auto/);

@@ -2,9 +2,9 @@ import type * as React from "react";
 import { Check } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MEDIUM_BG, MEDIUM_EDGE } from "@/lib/channel-colors";
+import { laneEdge, MEDIUM_BG, MEDIUM_EDGE } from "@/lib/channel-colors";
 import { FY_MEDIA } from "@/lib/manual/rules";
-import { calendarQuery, cellMedia, cellTitle, toggleMedium, type CalendarParams, type CalendarView, type Cell } from "@/lib/pages/calendar";
+import { calendarQuery, carriedParams, cellMedia, cellTitle, toggleMedium, type CalendarParams, type CalendarView, type Cell } from "@/lib/pages/calendar";
 import { formatMn } from "@/lib/pages/fy-spend";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +43,7 @@ function monthCell(view: CalendarView, i: number, kind: Kind | "head") {
 
 function Lane({ lane }: { lane: NonNullable<Cell>["lanes"][number] }) {
   const round = lane.start && lane.end ? "rounded-full" : lane.start ? "rounded-l-full" : lane.end ? "rounded-r-full" : "";
-  return <span data-medium={lane.medium} data-on={String(lane.on)} className={cn("block h-1.5 w-full", lane.on && [MEDIUM_BG[lane.medium], MEDIUM_EDGE[lane.medium]], round)} />;
+  return <span data-medium={lane.medium} data-on={String(lane.on)} className={cn("block h-1.5 w-full", lane.on && [MEDIUM_BG[lane.medium], laneEdge(lane.medium, lane.start, lane.end)], round)} />;
 }
 
 function BrandRow({ view, brand }: { view: CalendarView; brand: CalendarView["gantt"]["groups"][number]["brands"][number] }) {
@@ -141,9 +141,10 @@ function MediumToggle({ medium, params, shown }: { medium: (typeof FY_MEDIA)[num
   );
 }
 
-export function Gantt({ view, params }: { view: CalendarView; params: CalendarParams }) {
+export function Gantt({ view, params: asked }: { view: CalendarView; params: CalendarParams }) {
   const { gantt } = view;
   const shown = gantt.media;
+  const params = carriedParams(asked, view);
   return (
     <Card data-testid="calendar-gantt">
       <CardHeader>

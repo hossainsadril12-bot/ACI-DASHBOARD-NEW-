@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import type { CalendarData } from "@/lib/ingest/readers/calendar";
 import { MEDIUM_TEXT } from "@/lib/channel-colors";
 import { dhakaDate, fyStartOf } from "@/lib/manual/rules";
-import { calendarHref, calendarView, changeNote, monthsNote, parseCalendarParams, type CalendarParams, type CalendarView } from "@/lib/pages/calendar";
+import { calendarHref, calendarView, carriedParams, changeNote, monthsNote, parseCalendarParams, type CalendarParams, type CalendarView } from "@/lib/pages/calendar";
 import { formatMn } from "@/lib/pages/fy-spend";
 import { cn } from "@/lib/utils";
 import { getCatalog } from "@/store/catalog";
@@ -94,7 +94,7 @@ async function Calendar({ searchParams }: { searchParams: Search }) {
 
   return (
     <>
-      <Header params={params} />
+      <Header params={carriedParams(params, view)} />
       <div className="space-y-6">
         {view.cards && <Cards view={view} cards={view.cards} />}
         {view.empty && choice ? (

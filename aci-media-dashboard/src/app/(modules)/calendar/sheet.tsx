@@ -84,7 +84,10 @@ export function Sheet({ view, params }: { view: CalendarView; params: CalendarPa
                 {FY_MEDIA.map((m) => (
                   <TableHead key={m} className={cn(head, "text-right")}>
                     <span className="inline-flex items-center gap-1.5">
-                      <span className={cn("size-2.5 rounded-[2px] ring-1 ring-white/80", MEDIUM_BG[m], MEDIUM_EDGE[m])} aria-hidden />
+                      {/* The white ring sits on the outer square, Print's amber edge on the inner one: both are box-shadow rings. */}
+                      <span className="grid size-2.5 rounded-[2px] ring-1 ring-white/80" aria-hidden>
+                        <span className={cn("rounded-[2px]", MEDIUM_BG[m], MEDIUM_EDGE[m])} />
+                      </span>
                       {m}
                     </span>
                   </TableHead>

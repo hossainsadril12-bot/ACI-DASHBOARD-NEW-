@@ -20,10 +20,10 @@ const DATA: CalendarData = {
   ],
 };
 const PARAMS: CalendarParams = { view: "gantt", media: [...FY_MEDIA], inactive: false, sheet: null };
-const render = (params: Partial<CalendarParams> = {}) => {
+const render = (params: Partial<CalendarParams> = {}, data: CalendarData = DATA) => {
   const p = { ...PARAMS, ...params };
   const view = calendarView({
-    data: DATA, fyStart: 2026, today: "2026-10", params: p, business: null,
+    data, fyStart: 2026, today: "2026-10", params: p, business: null,
     businessOf: (n) => BIZ.find((b) => b.name === n) ?? null,
     brandOf: () => null,
   });
@@ -175,23 +175,50 @@ describe("Gantt", () => {
     expect(HATCH).not.toContain("gray-200");
   });
 
-  it("edges Print lanes and swatches with a 1px amber-600 ring, and no other medium", () => {
-    const html = render();
-    const angel = rowOf(html, "gantt-brand-row", "Angel");
-    const print = lanes(cellOf(angel, "2026-09")).find((l) => l.medium === "Print")!;
-    expect(print.on).toBe(true);
-    expect(print.cls).toMatch(/\bring-1\b/);
-    expect(print.cls).toMatch(/\bring-inset\b/);
-    expect(print.cls).toMatch(/\bring-amber-600\b/);
-    // An off lane has no fill, so no edge either.
-    expect(lanes(cellOf(angel, "2026-10")).find((l) => l.medium === "Print")!.cls).not.toMatch(/ring/);
+  it("edges Print lanes top and bottom, and at the sides only where a run starts and ends, so a run reads as one bar", () => {
+    // Lux runs Print Jul to Sep: a start, a middle and an end; Angel's one-month Print run in Sep has both sides.
+    const data: CalendarData = { months: [...DATA.months.slice(0, 3).map((m) => ({ ...m, rows: [...m.rows, row("Toiletries", "Lux", 0, 0, 1, 0)] })), DATA.months[3]] };
+    const html = render({}, data);
+    const lux = rowOf(html, "gantt-brand-row", "Lux");
+    const print = (r: string, m: string) => lanes(cellOf(r, m)).find((l) => l.medium === "Print")!;
+    const [start, mid, end] = ["2026-07", "2026-08", "2026-09"].map((m) => print(lux, m));
+    for (const l of [start, mid, end]) {
+      expect(l.on).toBe(true);
+      expect(l.cls).toContain("inset_0_1px_0_var(--color-amber-600)"); // top
+      expect(l.cls).toContain("inset_0_-1px_0_var(--color-amber-600)"); // bottom
+      expect(l.cls).not.toMatch(/ring-/);
+    }
+    const left = "inset_1px_0_0_var(--color-amber-600)";
+    const rightEdge = "inset_-1px_0_0_var(--color-amber-600)";
+    expect(mid.cls).not.toContain(left);
+    expect(mid.cls).not.toContain(rightEdge);
+    expect(start.cls).toContain(left);
+    expect(start.cls).not.toContain(rightEdge);
+    expect(end.cls).toContain(rightEdge);
+    expect(end.cls).not.toContain(left);
+    const one = print(rowOf(html, "gantt-brand-row", "Angel"), "2026-09");
+    expect(one.cls).toContain(left);
+    expect(one.cls).toContain(rightEdge);
+    // An off lane has no fill, so no edge either; other media have none.
+    expect(print(rowOf(html, "gantt-brand-row", "Angel"), "2026-10").cls).not.toMatch(/ring|shadow/);
     const tv = lanes(cellOf(rowOf(html, "gantt-brand-row", "Savlon"), "2026-07")).find((l) => l.medium === "TV")!;
-    expect(tv.cls).not.toMatch(/ring/);
+    expect(tv.cls).not.toMatch(/ring|shadow/);
+  });
+
+  it("keeps the full 1px amber-600 ring on the Print swatches, and no other medium", () => {
+    const html = render();
     const swatch = button(html, 'data-toggle="Print"');
     expect(html.slice(html.indexOf(swatch)).split("</button>")[0]).toMatch(/ring-1 ring-inset ring-amber-600/);
     const legend = html.slice(html.indexOf('data-testid="gantt-legend"'));
     expect(legend.split(">Print<")[0].split("<li").pop()).toMatch(/ring-1 ring-inset ring-amber-600/);
     expect(legend.split(">TV<")[0].split("<li").pop()).not.toMatch(/ring/);
+  });
+
+  it("carries the resolved sheet choice in its forms, so an unknown sheet month is not passed along", () => {
+    const html = render({ sheet: "2025-01" });
+    expect(submit(html, 'data-toggle="TV"')).toBe("/calendar?media=Digital,Print,OOH&sheet=2026-10");
+    expect(submit(html, 'role="switch"')).toBe("/calendar?inactive=1&sheet=2026-10");
+    expect(html).not.toContain("2025-01");
   });
 
   it("names a brand cell's active media for screen readers, or No activity", () => {

@@ -134,6 +134,23 @@ export function cellMedia(cell: NonNullable<Cell>): string {
   return on.length ? on.join(", ") : "No activity";
 }
 
+/** The number of a BDT Mn figure, without the unit; same rounding rule as formatMn. */
+const mn = (n: number) => formatMn(n).replace(/ BDT Mn$/, "");
+
+/** A chart column for screen readers: "Oct'26: TV 12.34, Digital 5.67, total 18.01 BDT Mn", media at 0 left out. */
+export function columnText(c: CalendarView["chart"][number]): string {
+  const parts = FY_MEDIA.flatMap((m, n) => (c.v[n] > 0 ? [`${m} ${mn(c.v[n])}`] : []));
+  return `${c.label}: ${[...parts, `total ${mn(c.total)}`].join(", ")} BDT Mn`;
+}
+
+/**
+ * The params the page's links and forms carry: the sheet as the view resolved it, so an unknown month is not passed
+ * along. No sheet asked for stays none, so the plain page stays "/calendar".
+ */
+export function carriedParams(params: CalendarParams, view: CalendarView): CalendarParams {
+  return { ...params, sheet: params.sheet ? view.sheet.choice : null };
+}
+
 /**
  * The chart's geometry: each column's height as a % of the biggest month total, and each medium's % share of its
  * column, so segment heights are proportional to their values. All 0 where there is nothing to scale by.

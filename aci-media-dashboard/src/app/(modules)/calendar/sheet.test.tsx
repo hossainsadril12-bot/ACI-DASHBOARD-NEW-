@@ -68,6 +68,16 @@ describe("Sheet", () => {
     for (const m of ["bg-teal-600", "bg-rose-600", "bg-amber-500", "bg-emerald-600"]) expect(head).toContain(m);
   });
 
+  it("keeps the white outline on all four header squares, Print's amber edge included", () => {
+    const head = render().slice(0, render().indexOf("</thead>"));
+    const squares = [...head.matchAll(/<span class="([^"]*ring-white\/80[^"]*)"[^>]*>(.*?)<\/span>/g)];
+    expect(squares).toHaveLength(4);
+    // The white ring and the amber edge are both box-shadow rings, so they cannot share one element.
+    for (const [, cls] of squares) expect(cls).not.toMatch(/ring-amber-600|ring-inset/);
+    const print = squares.find(([whole]) => whole.includes("bg-amber-500"))!;
+    expect(print[2]).toMatch(/<span class="[^"]*bg-amber-500[^"]*ring-1 ring-inset ring-amber-600/);
+  });
+
   it("names the business once, on its first brand row, and lists every brand, zero ones too", () => {
     const html = render();
     const brands = rows(html, "sheet-brand-row").map(cells);

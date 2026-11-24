@@ -5,7 +5,7 @@ import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA } from "@/lib/manual/rules";
 import { xstr } from "@/lib/ingest/cells";
-import { calendarHref, calendarQuery, calendarView, cellMedia, chartScale, cellTitle, changeNote, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
+import { calendarHref, calendarQuery, calendarView, carriedParams, cellMedia, chartScale, cellTitle, changeNote, columnText, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
 
 const row = (biz: string, b: string, ...v: number[]): CalendarRow => ({ biz, b, v, t: v.reduce((a, x) => a + x, 0) });
 const month = (m: string, rows: CalendarRow[]) => ({ m, label: m, rows, notes: {} });
@@ -444,6 +444,34 @@ describe("cellMedia", () => {
   });
   it("says No activity when nothing is on", () => {
     expect(cellMedia(v.gantt.groups[0].brands[1].cells[1]!)).toBe("No activity");
+  });
+});
+
+describe("columnText", () => {
+  const chart = calendarView(base(DATA)).chart;
+  it("reads a chart column for screen readers: the month, each medium above 0, then the total", () => {
+    expect(columnText(chart[3])).toBe("Oct'26: TV 5.00, Digital 1.00, Print 1.00, OOH 1.00, total 8.00 BDT Mn");
+    expect(columnText(chart[0])).toBe("Jul'26: TV 1.00, Digital 0.50, Print 2.00, OOH 1.00, total 4.50 BDT Mn");
+  });
+  it("leaves out the media at 0", () => {
+    expect(columnText(chart[2])).toBe("Sep'26: TV 4.50, Print 3.00, total 7.50 BDT Mn");
+    expect(columnText({ label: "Nov'26", v: [0, 0, 0, 0], total: 0 })).toBe("Nov'26: total 0.00 BDT Mn");
+  });
+});
+
+describe("carriedParams", () => {
+  const carried = (sheet: string | null) => carriedParams({ ...PARAMS, sheet }, calendarView(base(DATA, {}, { sheet }))).sheet;
+  it("carries the resolved sheet choice, so an unknown month is not passed along", () => {
+    expect(carried("2025-01")).toBe("2026-10");
+    expect(carried("2026-09")).toBe("2026-09");
+    expect(carried("fytd")).toBe("fytd");
+  });
+  it("leaves the sheet out when none was asked for, so the plain page stays /calendar", () => {
+    expect(carried(null)).toBeNull();
+  });
+  it("keeps every other parameter", () => {
+    const p: CalendarParams = { view: "sheet", media: ["TV"], inactive: true, sheet: "2025-01" };
+    expect(carriedParams(p, calendarView(base(DATA, {}, p)))).toEqual({ ...p, sheet: "2026-10" });
   });
 });
 

@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MEDIUM_BG, MEDIUM_EDGE } from "@/lib/channel-colors";
 import { FY_MEDIA } from "@/lib/manual/rules";
-import { chartScale, type CalendarView } from "@/lib/pages/calendar";
+import { chartScale, columnText, type CalendarView } from "@/lib/pages/calendar";
 import { formatMn } from "@/lib/pages/fy-spend";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +24,7 @@ export function SpendChart({ chart }: { chart: CalendarView["chart"] }) {
         <div className="flex min-w-max items-end gap-2 pt-6">
           {chart.map((c, ci) => (
             <div key={c.label} data-testid="chart-column" className="flex w-16 shrink-0 flex-col items-center gap-2">
-              <div className="relative h-[200px] w-10">
+              <div className="relative h-[200px] w-10" aria-hidden>
                 <div data-testid="chart-bar" className="absolute inset-x-0 bottom-0 flex flex-col-reverse" style={{ height: `${scale[ci].height}%` }}>
                   <span data-testid="chart-total" className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-xs font-semibold whitespace-nowrap text-gray-900 tabular-nums">
                     {num(c.total)}
@@ -42,7 +42,9 @@ export function SpendChart({ chart }: { chart: CalendarView["chart"] }) {
                   )}
                 </div>
               </div>
-              <span className="text-xs whitespace-nowrap text-gray-500">{c.label}</span>
+              <span className="text-xs whitespace-nowrap text-gray-500" aria-hidden>{c.label}</span>
+              {/* The drawn column and its label are hidden from screen readers, which read this line instead. */}
+              <span className="sr-only">{columnText(c)}</span>
             </div>
           ))}
         </div>
