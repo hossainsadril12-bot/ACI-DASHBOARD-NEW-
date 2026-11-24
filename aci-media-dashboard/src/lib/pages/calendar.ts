@@ -134,6 +134,18 @@ export function cellMedia(cell: NonNullable<Cell>): string {
   return on.length ? on.join(", ") : "No activity";
 }
 
+/**
+ * The chart's geometry: each column's height as a % of the biggest month total, and each medium's % share of its
+ * column, so segment heights are proportional to their values. All 0 where there is nothing to scale by.
+ */
+export function chartScale(chart: CalendarView["chart"]): { height: number; parts: number[] }[] {
+  const max = Math.max(0, ...chart.map((c) => c.total));
+  return chart.map((c) => ({
+    height: max ? r6((c.total / max) * 100) : 0,
+    parts: c.v.map((x) => (c.total ? r6((x / c.total) * 100) : 0)),
+  }));
+}
+
 /** A change % to 1 decimal, half away from zero, never -0. */
 const pct1 = (x: number) => { const a = Math.round(Math.abs(x) * 10) / 10; return a === 0 ? 0 : Math.sign(x) * a; };
 

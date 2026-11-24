@@ -5,7 +5,7 @@ import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA } from "@/lib/manual/rules";
 import { xstr } from "@/lib/ingest/cells";
-import { calendarHref, calendarQuery, calendarView, cellMedia, cellTitle, changeNote, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
+import { calendarHref, calendarQuery, calendarView, cellMedia, chartScale, cellTitle, changeNote, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
 
 const row = (biz: string, b: string, ...v: number[]): CalendarRow => ({ biz, b, v, t: v.reduce((a, x) => a + x, 0) });
 const month = (m: string, rows: CalendarRow[]) => ({ m, label: m, rows, notes: {} });
@@ -269,6 +269,21 @@ describe("calendarView: Business filter, chart and empty", () => {
     expect(foods.empty).toBe(true);
     expect(foods.gantt.groups).toEqual([]);
     expect(foods.cards!.fytd).toBe(0);
+  });
+});
+
+describe("chartScale", () => {
+  it("gives each column's height as a % of the biggest month total, and each medium's share of its column", () => {
+    const s = chartScale(calendarView(base(DATA)).chart); // totals 4.5, 5, 7.5, 8
+    expect(s.map((c) => c.height)).toEqual([56.25, 62.5, 93.75, 100]);
+    expect(s[3].parts).toEqual([62.5, 12.5, 12.5, 12.5]);
+    expect(s[0].parts).toEqual([22.222222, 11.111111, 44.444444, 22.222222]);
+  });
+  it("gives 0 heights and shares for a month with no spend, and when every month is 0", () => {
+    const zero = [{ label: "Jul'26", v: [0, 0, 0, 0], total: 0 }];
+    expect(chartScale(zero)).toEqual([{ height: 0, parts: [0, 0, 0, 0] }]);
+    expect(chartScale([...zero, { label: "Aug'26", v: [2, 0, 0, 0], total: 2 }])).toEqual([{ height: 0, parts: [0, 0, 0, 0] }, { height: 100, parts: [100, 0, 0, 0] }]);
+    expect(chartScale([])).toEqual([]);
   });
 });
 

@@ -19,6 +19,8 @@ import { getCatalog } from "@/store/catalog";
 import { getStore } from "@/store/client";
 import { getActiveData } from "@/store/datasets";
 import { Gantt } from "./gantt";
+import { Sheet } from "./sheet";
+import { SpendChart } from "./spend-chart";
 
 export const metadata: Metadata = { title: "Monthly Activity Calendar" };
 
@@ -98,8 +100,10 @@ async function Calendar({ searchParams }: { searchParams: Search }) {
         {view.empty && choice ? (
           <EmptyState title={`No activity for ${choice.name} in FY ${view.fyLabel} yet.`} />
         ) : (
-          // The Sheet view and the chart come in Task 4.
-          params.view === "gantt" && <Gantt view={view} params={params} />
+          <>
+            {params.view === "sheet" ? <Sheet view={view} params={params} /> : <Gantt view={view} params={params} />}
+            <SpendChart chart={view.chart} />
+          </>
         )}
       </div>
     </>
