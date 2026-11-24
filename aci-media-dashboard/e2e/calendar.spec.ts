@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
 import { hasClientFiles, clientFile } from "../src/lib/ingest/test-workbooks";
@@ -21,7 +22,7 @@ const tidy = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
 
 // Screenshots for the controller, only with CAL_SHOTS=1, so normal runs write no files.
 const SHOTS = process.env.CAL_SHOTS === "1"
-  ? "C:/Users/Sadri/AppData/Local/Temp/claude/66de2eb4ec382277/cfcea149-46d6-43ca-b8a9-643115ebebf1/scratchpad/cal-shots"
+  ? (process.env.CAL_SHOTS_DIR ?? path.join(os.tmpdir(), "cal-shots"))
   : null;
 const shot = async (page: Page, name: string) => {
   if (!SHOTS) return;
