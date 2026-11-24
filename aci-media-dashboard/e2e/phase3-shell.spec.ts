@@ -27,8 +27,20 @@ test("every sidebar link opens its page; unbuilt pages name their file", async (
 });
 
 test("the admin gets the upload card link, and it opens that card", async ({ page }) => {
-  await page.goto("/calendar");
+  await page.goto("/atl");
   await page.getByRole("link", { name: "Open its upload card" }).click();
+  await expect(page).toHaveURL(/\/data-entry#card-atl$/);
+  await expect(page.locator("#card-atl")).toBeInViewport();
+});
+
+test("3.1 Monthly Activity Calendar with no data names its file; the admin can open the calendar card", async ({ page }) => {
+  await page.goto("/calendar");
+  await expect(page.getByRole("heading", { name: "3.1 Monthly Activity Calendar" })).toBeVisible();
+  await expect(page.getByText("No data yet")).toBeVisible();
+  await expect(page.getByText("This page needs the All Activity Calendar file.")).toBeVisible();
+  await expect(page.getByTestId("calendar-gantt")).toHaveCount(0);
+  await expect(page.getByTestId("cal-card-fytd")).toHaveCount(0);
+  await page.getByRole("link", { name: "Upload it" }).click();
   await expect(page).toHaveURL(/\/data-entry#card-calendar$/);
   await expect(page.locator("#card-calendar")).toBeInViewport();
 });
@@ -49,8 +61,13 @@ test.describe("viewer", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test("sees the being-built note with no upload link", async ({ page }) => {
     await page.goto("/atl");
-    await expect(page.getByText("This page is being built.")).toBeVisible();
+    await expect(page.getByText("This page is being built.").first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Open its upload card" })).toHaveCount(0);
+  });
+  test("sees 3.1 Monthly Activity Calendar has no data yet, with no upload link", async ({ page }) => {
+    await page.goto("/calendar");
+    await expect(page.getByText("Not uploaded yet. The admin uploads it in Data Entry.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Upload it" })).toHaveCount(0);
   });
   test("sees 3.2 FY Media Spend has no data yet, with no upload link", async ({ page }) => {
     await page.goto("/fy-spend");

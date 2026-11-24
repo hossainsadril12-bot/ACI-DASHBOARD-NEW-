@@ -1,6 +1,7 @@
 import type { FyRow } from "@/lib/ingest/readers/fy";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA, fyMonthLabels, fyName } from "@/lib/manual/rules";
+import { r6, sum, tidy } from "@/lib/pages/numbers";
 
 // 3.2 FY Media Spend: the page's numbers, from the stored fy rows. Pure; the page only renders this.
 
@@ -37,11 +38,6 @@ export type FySpendView = {
   maxCell: number;
   empty: boolean;
 };
-
-// 6 decimals only to tame float noise; the one real rounding is at display (formatMn).
-const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
-const tidy = (t: string) => t.trim().replace(/\s+/g, " ");
-const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 function line(name: string, parts: { m: number[]; py: number }[], reported: number): FyLine {
   const m = Array.from({ length: 12 }, (_, i) => (i < reported ? r6(sum(parts.map((p) => p.m[i] ?? 0))) : null));
