@@ -1,10 +1,10 @@
-import Link from "next/link";
+import type * as React from "react";
 import { Check } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MEDIUM_BG } from "@/lib/channel-colors";
+import { MEDIUM_BG, MEDIUM_EDGE } from "@/lib/channel-colors";
 import { FY_MEDIA } from "@/lib/manual/rules";
-import { calendarHref, cellTitle, toggleMedium, type CalendarParams, type CalendarView, type Cell } from "@/lib/pages/calendar";
+import { calendarQuery, cellMedia, cellTitle, toggleMedium, type CalendarParams, type CalendarView, type Cell } from "@/lib/pages/calendar";
 import { formatMn } from "@/lib/pages/fy-spend";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,7 @@ const ZERO = "–"; // the single-character zero marker of business rows, as on 
 const num = (n: number) => formatMn(n).replace(/ BDT Mn$/, "");
 
 /** Grey diagonal hatching for months not uploaded yet. */
-export const HATCH = "bg-[image:repeating-linear-gradient(135deg,var(--color-gray-200)_0_2px,transparent_2px_7px)]";
+export const HATCH = "bg-[image:repeating-linear-gradient(135deg,var(--color-gray-300)_0_2px,transparent_2px_7px)]";
 
 const sticky = "sticky left-0 z-10 min-w-36 max-w-56 whitespace-normal shadow-[inset_-1px_0_0_var(--color-gray-200)]";
 const right = "text-right tabular-nums";
@@ -43,7 +43,7 @@ function monthCell(view: CalendarView, i: number, kind: Kind | "head") {
 
 function Lane({ lane }: { lane: NonNullable<Cell>["lanes"][number] }) {
   const round = lane.start && lane.end ? "rounded-full" : lane.start ? "rounded-l-full" : lane.end ? "rounded-r-full" : "";
-  return <span data-medium={lane.medium} data-on={String(lane.on)} className={cn("block h-1.5 w-full", lane.on && MEDIUM_BG[lane.medium], round)} />;
+  return <span data-medium={lane.medium} data-on={String(lane.on)} className={cn("block h-1.5 w-full", lane.on && [MEDIUM_BG[lane.medium], MEDIUM_EDGE[lane.medium]], round)} />;
 }
 
 function BrandRow({ view, brand }: { view: CalendarView; brand: CalendarView["gantt"]["groups"][number]["brands"][number] }) {
@@ -61,6 +61,7 @@ function BrandRow({ view, brand }: { view: CalendarView; brand: CalendarView["ga
           >
             {cell && (
               <>
+                <span className="sr-only">{cellMedia(cell)}</span>
                 <div className={cn(right, "h-5 px-2 pt-1 text-xs text-gray-700")}>{cell.total === 0 ? "" : num(cell.total)}</div>
                 <div className="flex flex-col gap-0.5 pt-1 pb-2">{cell.lanes.map((l) => <Lane key={l.medium} lane={l} />)}</div>
               </>
@@ -97,22 +98,46 @@ function SumRow({ view, name, months, fytd, kind }: { view: CalendarView; name: 
 
 const control = "inline-flex h-10 min-w-10 items-center gap-2 rounded-lg border px-3 text-sm whitespace-nowrap transition-colors";
 
+/**
+ * A GET form to /calendar that lands on `target`, the same address as calendarHref(target). Every parameter but
+ * `own` rides in a hidden field; `own` rides on the submit button itself, so the button says what it changes.
+ * Native buttons give Space and Enter, and the form works without script.
+ */
+function ParamForm({ target, own, children }: { target: CalendarParams; own: string; children: (field: { name?: string; value?: string }) => React.ReactNode }) {
+  const pairs = calendarQuery(target);
+  const at = pairs.findIndex(([k]) => k === own);
+  // Fields submit in document order: the button sits where its pair falls, so the address reads as calendarHref's.
+  const cut = at >= 0 ? at : pairs.length;
+  const hidden = (ps: [string, string][]) => ps.filter(([k]) => k !== own).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
+  return (
+    <form action="/calendar" className="contents">
+      {hidden(pairs.slice(0, cut))}
+      {children(at >= 0 ? { name: pairs[at][0], value: pairs[at][1] } : {})}
+      {hidden(pairs.slice(cut))}
+    </form>
+  );
+}
+
 function MediumToggle({ medium, params, shown }: { medium: (typeof FY_MEDIA)[number]; params: CalendarParams; shown: CalendarView["gantt"]["media"] }) {
   const on = shown.includes(medium);
   const next = toggleMedium(shown, medium);
   const body = (
     <>
-      <span className={cn("size-3 rounded-[3px]", MEDIUM_BG[medium], !on && "opacity-30")} aria-hidden />
+      <span className={cn("size-3 rounded-[3px]", MEDIUM_BG[medium], MEDIUM_EDGE[medium], !on && "opacity-30")} aria-hidden />
       {medium}
     </>
   );
   const look = cn(control, on ? "border-gray-300 bg-white font-medium text-gray-900" : "border-gray-200 bg-gray-50 text-gray-500");
-  // The last medium on cannot be switched off: shown as pressed, but not a link.
-  if (!next) return <span role="button" aria-pressed="true" aria-disabled="true" data-toggle={medium} className={cn(look, "cursor-not-allowed")}>{body}</span>;
+  // The last medium on cannot be switched off: shown as pressed, but disabled.
+  if (!next) return <button type="button" disabled aria-pressed="true" data-toggle={medium} className={cn(look, "cursor-not-allowed")}>{body}</button>;
   return (
-    <Link role="button" aria-pressed={on} data-toggle={medium} href={calendarHref({ ...params, media: next })} className={cn(look, "hover:bg-gray-50")}>
-      {body}
-    </Link>
+    <ParamForm target={{ ...params, media: next }} own="media">
+      {(field) => (
+        <button type="submit" {...field} aria-pressed={on} data-toggle={medium} className={cn(look, "cursor-pointer hover:bg-gray-50")}>
+          {body}
+        </button>
+      )}
+    </ParamForm>
   );
 }
 
@@ -132,20 +157,25 @@ export function Gantt({ view, params }: { view: CalendarView; params: CalendarPa
           <div role="group" aria-label="Media shown" className="flex flex-wrap gap-2">
             {FY_MEDIA.map((m) => <MediumToggle key={m} medium={m} params={params} shown={shown} />)}
           </div>
-          <Link
-            role="switch"
-            aria-checked={params.inactive}
-            href={calendarHref({ ...params, media: shown, inactive: !params.inactive })}
-            className={cn(control, "border-transparent text-gray-700 hover:bg-gray-50")}
-          >
-            <span
-              className={cn("grid size-4 place-items-center rounded-[4px] border", params.inactive ? "border-primary bg-primary text-primary-foreground" : "border-gray-300 bg-white")}
-              aria-hidden
-            >
-              {params.inactive && <Check className="size-3" strokeWidth={3} />}
-            </span>
-            Show inactive brands
-          </Link>
+          <ParamForm target={{ ...params, media: shown, inactive: !params.inactive }} own="inactive">
+            {(field) => (
+              <button
+                type="submit"
+                {...field}
+                role="switch"
+                aria-checked={params.inactive}
+                className={cn(control, "cursor-pointer border-transparent text-gray-700 hover:bg-gray-50")}
+              >
+                <span
+                  className={cn("grid size-4 place-items-center rounded-[4px] border", params.inactive ? "border-primary bg-primary text-primary-foreground" : "border-gray-300 bg-white")}
+                  aria-hidden
+                >
+                  {params.inactive && <Check className="size-3" strokeWidth={3} />}
+                </span>
+                Show inactive brands
+              </button>
+            )}
+          </ParamForm>
         </div>
 
         <Table>
@@ -171,7 +201,7 @@ export function Gantt({ view, params }: { view: CalendarView; params: CalendarPa
         <ul data-testid="gantt-legend" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-600">
           {shown.map((m) => (
             <li key={m} className="flex items-center gap-1.5">
-              <span className={cn("h-1.5 w-5 rounded-full", MEDIUM_BG[m])} aria-hidden />
+              <span className={cn("h-1.5 w-5 rounded-full", MEDIUM_BG[m], MEDIUM_EDGE[m])} aria-hidden />
               <span>{m}</span>
             </li>
           ))}

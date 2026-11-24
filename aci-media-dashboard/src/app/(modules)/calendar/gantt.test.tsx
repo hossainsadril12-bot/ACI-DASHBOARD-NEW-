@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { CalendarData, CalendarRow } from "@/lib/ingest/readers/calendar";
 import { FY_MEDIA } from "@/lib/manual/rules";
 import { calendarView, type CalendarParams } from "@/lib/pages/calendar";
-import { Gantt } from "./gantt";
+import { Gantt, HATCH } from "./gantt";
 
 // The Gantt only renders the builder's view; these check the markup contract the page and e2e rely on.
 
@@ -15,7 +15,7 @@ const DATA: CalendarData = {
   months: [
     month("2026-07", [row("Toiletries", "Savlon", 1, 0.5, 0, 0), row("Hygiene", "Angel", 1, 0, 0, 1)]),
     month("2026-08", [row("Toiletries", "Savlon", 2, 0, 0, 0), row("Hygiene", "Angel", 0, 0, 0, 2), row("Hygiene", "Ghost", 0, 0, 0, 0)]),
-    month("2026-09", [row("Toiletries", "Savlon", 3, 0, 0, 0), row("Hygiene", "Angel", 1, 0, 0, 0)]),
+    month("2026-09", [row("Toiletries", "Savlon", 3, 0, 0, 0), row("Hygiene", "Angel", 1, 0, 0.5, 0)]),
     month("2026-10", [row("Toiletries", "Savlon", 1234.5, 0, 0, 0), row("Hygiene", "Angel", 1, 0, 0, 0)]),
   ],
 };
@@ -34,6 +34,23 @@ const rowOf = (html: string, testId: string, name: string) =>
   html.split("<tr").find((r) => r.includes(`data-testid="${testId}"`) && r.includes(`>${name}<`)) ?? "";
 /** One cell of a row, by its month. */
 const cellOf = (rowHtml: string, m: string) => rowHtml.split("<td").find((c) => c.includes(`data-month="${m}"`)) ?? "";
+/** The opening tag of the button carrying this attribute. */
+const button = (html: string, attr: string) => html.match(new RegExp(`<button[^>]*${attr}[^>]*>`))?.[0] ?? "";
+/**
+ * The address a browser goes to when that button submits its GET form: the hidden fields in order, then the
+ * button's own name and value. Commas are left readable to compare with calendarHref (URLSearchParams decodes either).
+ */
+const submit = (html: string, attr: string) => {
+  const form = html.split("<form").map((f) => f.split("</form>")[0]).find((f) => f.includes(attr));
+  if (!form) return "no form";
+  const action = form.match(/^[^>]*action="([^"]*)"/)?.[1] ?? "";
+  const pairs = [...form.matchAll(/<input type="hidden"[^>]*>|<button[^>]*>/g)].flatMap(([tag]) => {
+    if (tag.startsWith("<button") && !tag.includes(attr)) return [];
+    const name = tag.match(/\bname="(\w+)"/)?.[1];
+    return name ? [`${name}=${tag.match(/\bvalue="([^"]*)"/)?.[1] ?? ""}`] : [];
+  });
+  return pairs.length ? `${action}?${pairs.join("&")}` : action;
+};
 const lanes = (cell: string) => [...cell.matchAll(/data-medium="(\w+)" data-on="(true|false)" class="([^"]*)"/g)].map((x) => ({ medium: x[1], on: x[2] === "true", cls: x[3] }));
 
 describe("Gantt", () => {
@@ -60,6 +77,7 @@ describe("Gantt", () => {
     for (const l of tv) expect(l.cls).not.toMatch(/\b(m|mx|ml|mr|px|pl|pr)-/);
     // The brand cell has no side padding, so lanes of neighbouring cells meet.
     expect(cellOf(savlon, "2026-08").split(">")[0]).toMatch(/\bpx-0\b|\bp-0\b/);
+    expect(cellOf(savlon, "2026-08").split(">")[0]).not.toMatch(/\bpx-3\b/);
     // A one-month Digital run is rounded at both ends.
     const dig = lanes(cellOf(savlon, "2026-07")).find((l) => l.medium === "Digital")!;
     expect(dig.on).toBe(true);
@@ -113,33 +131,75 @@ describe("Gantt", () => {
     expect(cellOf(angelTv, "2026-08")).toContain('title="Angel · Aug&#x27;26\nNo activity"');
   });
 
-  it("offers media toggle links that keep the other parameters, and never turns off the last medium", () => {
-    const html = render({ inactive: true });
-    const tv = html.match(/<a[^>]*data-toggle="TV"[^>]*>/)![0];
+  it("offers media toggles as real submit buttons that keep the other parameters, and never turns off the last medium", () => {
+    const html = render({ inactive: true, view: "gantt", sheet: "2026-09" });
+    const tv = button(html, 'data-toggle="TV"');
+    expect(tv).toMatch(/^<button\b/);
+    expect(tv).toContain('type="submit"');
     expect(tv).toContain('aria-pressed="true"');
-    expect(tv).toContain('href="/calendar?media=Digital,Print,OOH&amp;inactive=1"');
     expect(tv).toMatch(/\bh-10\b/);
+    expect(submit(html, 'data-toggle="TV"')).toBe("/calendar?media=Digital,Print,OOH&inactive=1&sheet=2026-09");
     const one = render({ media: ["Print"] });
-    const print = one.match(/<[a-z]+[^>]*data-toggle="Print"[^>]*>/)![0];
-    expect(print).not.toContain("href=");
-    expect(print).toContain('aria-disabled="true"');
+    const print = button(one, 'data-toggle="Print"');
+    expect(print).toMatch(/^<button\b/);
+    expect(print).toContain('disabled=""');
     expect(print).toContain('aria-pressed="true"');
-    const ooh = one.match(/<a[^>]*data-toggle="OOH"[^>]*>/)![0];
+    expect(print).not.toContain("name=");
+    const ooh = button(one, 'data-toggle="OOH"');
     expect(ooh).toContain('aria-pressed="false"');
-    expect(ooh).toContain('href="/calendar?media=Print,OOH"');
+    expect(submit(one, 'data-toggle="OOH"')).toBe("/calendar?media=Print,OOH");
+    // Switching the last one off back to all four lands on the plain page, as the link did.
+    expect(submit(render({ media: ["TV", "Digital", "Print"] }), 'data-toggle="OOH"')).toBe("/calendar");
+    expect(html).not.toMatch(/<a[^>]*data-toggle/);
   });
 
-  it("has a Show inactive brands switch that shows inactive brands", () => {
+  it("has a Show inactive brands switch, a real submit button, that shows inactive brands", () => {
     const off = render();
-    const sw = off.match(/<a[^>]*role="switch"[^>]*>/)![0];
+    const sw = button(off, 'role="switch"');
+    expect(sw).toMatch(/^<button\b/);
+    expect(sw).toContain('type="submit"');
     expect(sw).toContain('aria-checked="false"');
-    expect(sw).toContain('href="/calendar?inactive=1"');
     expect(sw).toMatch(/\bh-10\b/);
+    expect(submit(off, 'role="switch"')).toBe("/calendar?inactive=1");
     expect(off).toContain("Show inactive brands");
     const on = render({ inactive: true });
-    expect(on.match(/<a[^>]*role="switch"[^>]*>/)![0]).toContain('aria-checked="true"');
-    expect(on.match(/<a[^>]*role="switch"[^>]*>/)![0]).toContain('href="/calendar"');
+    expect(button(on, 'role="switch"')).toContain('aria-checked="true"');
+    expect(submit(on, 'role="switch"')).toBe("/calendar");
+    expect(submit(render({ media: ["TV"] }), 'role="switch"')).toBe("/calendar?media=TV&inactive=1");
     expect(on.match(/data-testid="gantt-brand-row"/g)).toHaveLength(3);
+    expect(off).not.toMatch(/<a[^>]*role="switch"/);
+  });
+
+  it("hatches with a gray-300 stripe, visible on the shaded rows", () => {
+    expect(HATCH).toContain("var(--color-gray-300)");
+    expect(HATCH).not.toContain("gray-200");
+  });
+
+  it("edges Print lanes and swatches with a 1px amber-600 ring, and no other medium", () => {
+    const html = render();
+    const angel = rowOf(html, "gantt-brand-row", "Angel");
+    const print = lanes(cellOf(angel, "2026-09")).find((l) => l.medium === "Print")!;
+    expect(print.on).toBe(true);
+    expect(print.cls).toMatch(/\bring-1\b/);
+    expect(print.cls).toMatch(/\bring-inset\b/);
+    expect(print.cls).toMatch(/\bring-amber-600\b/);
+    // An off lane has no fill, so no edge either.
+    expect(lanes(cellOf(angel, "2026-10")).find((l) => l.medium === "Print")!.cls).not.toMatch(/ring/);
+    const tv = lanes(cellOf(rowOf(html, "gantt-brand-row", "Savlon"), "2026-07")).find((l) => l.medium === "TV")!;
+    expect(tv.cls).not.toMatch(/ring/);
+    const swatch = button(html, 'data-toggle="Print"');
+    expect(html.slice(html.indexOf(swatch)).split("</button>")[0]).toMatch(/ring-1 ring-inset ring-amber-600/);
+    const legend = html.slice(html.indexOf('data-testid="gantt-legend"'));
+    expect(legend.split(">Print<")[0].split("<li").pop()).toMatch(/ring-1 ring-inset ring-amber-600/);
+    expect(legend.split(">TV<")[0].split("<li").pop()).not.toMatch(/ring/);
+  });
+
+  it("names a brand cell's active media for screen readers, or No activity", () => {
+    const savlon = rowOf(render(), "gantt-brand-row", "Savlon");
+    expect(cellOf(savlon, "2026-07")).toContain('<span class="sr-only">TV, Digital</span>');
+    const angelTv = rowOf(render({ media: ["TV"] }), "gantt-brand-row", "Angel");
+    expect(cellOf(angelTv, "2026-08")).toContain('<span class="sr-only">No activity</span>');
+    expect(cellOf(savlon, "2026-11")).not.toContain("sr-only");
   });
 
   it("has a legend of the media shown and the hatching", () => {

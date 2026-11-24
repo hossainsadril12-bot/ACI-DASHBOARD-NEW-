@@ -5,7 +5,7 @@ import { clientFile, hasClientFiles } from "@/lib/ingest/test-workbooks";
 import { normName } from "@/lib/names-normal";
 import { FY_MEDIA } from "@/lib/manual/rules";
 import { xstr } from "@/lib/ingest/cells";
-import { calendarHref, calendarView, cellTitle, changeNote, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
+import { calendarHref, calendarQuery, calendarView, cellMedia, cellTitle, changeNote, formatSheet, monthsNote, parseCalendarParams, parseNotes, toggleMedium, type CalendarInput, type CalendarParams } from "./calendar";
 
 const row = (biz: string, b: string, ...v: number[]): CalendarRow => ({ biz, b, v, t: v.reduce((a, x) => a + x, 0) });
 const month = (m: string, rows: CalendarRow[]) => ({ m, label: m, rows, notes: {} });
@@ -366,6 +366,19 @@ describe("calendarHref", () => {
   });
 });
 
+describe("calendarQuery", () => {
+  it("gives the address pairs calendarHref writes, defaults left out", () => {
+    expect(calendarQuery(PARAMS)).toEqual([]);
+    expect(calendarQuery({ view: "sheet", media: ["OOH", "TV"], inactive: true, sheet: "2026-09" })).toEqual([["view", "sheet"], ["media", "TV,OOH"], ["inactive", "1"], ["sheet", "2026-09"]]);
+  });
+  it("matches calendarHref, so a form built from it lands on the same page as the link", () => {
+    for (const p of [PARAMS, { ...PARAMS, media: ["Print" as const], inactive: true }, { view: "sheet" as const, media: ["Digital" as const], inactive: false, sheet: "fytd" }]) {
+      const q = calendarQuery(p);
+      expect(q.length ? `/calendar?${q.map(([k, v]) => `${k}=${v}`).join("&")}` : "/calendar").toBe(calendarHref(p));
+    }
+  });
+});
+
 describe("toggleMedium", () => {
   it("switches one medium off or back on, in FY_MEDIA order", () => {
     expect(toggleMedium([...FY_MEDIA], "TV")).toEqual(["Digital", "Print", "OOH"]);
@@ -404,6 +417,18 @@ describe("cellTitle", () => {
   it("says No activity for a cell with nothing on", () => {
     const lux = v.gantt.groups[0].brands[1];
     expect(cellTitle(lux.name, "Aug'26", lux.cells[1]!)).toBe("Lux · Aug'26\nNo activity");
+  });
+});
+
+describe("cellMedia", () => {
+  const v = calendarView(base(DATA));
+  it("names the media on in a cell, for screen readers", () => {
+    expect(cellMedia(v.gantt.groups[0].brands[0].cells[3]!)).toBe("TV, Digital, OOH");
+    const tv = calendarView(base(DATA, {}, { media: ["TV"] })).gantt.groups[0].brands[0];
+    expect(cellMedia(tv.cells[3]!)).toBe("TV");
+  });
+  it("says No activity when nothing is on", () => {
+    expect(cellMedia(v.gantt.groups[0].brands[1].cells[1]!)).toBe("No activity");
   });
 });
 

@@ -84,15 +84,21 @@ export type CalendarView = {
   chart: { label: string; v: number[]; total: number }[];
 };
 
+/** The address parameters for these params as name/value pairs, defaults left out. Forms submit these as fields. */
+export function calendarQuery(p: CalendarParams): [string, string][] {
+  const media = FY_MEDIA.filter((m) => p.media.includes(m));
+  const pairs: ([string, string] | null)[] = [
+    p.view === "sheet" ? ["view", "sheet"] : null,
+    media.length && media.length < FY_MEDIA.length ? ["media", media.join(",")] : null,
+    p.inactive ? ["inactive", "1"] : null,
+    p.sheet ? ["sheet", p.sheet] : null,
+  ];
+  return pairs.filter((x) => x !== null);
+}
+
 /** The /calendar address for these params. Defaults are left out, so the plain page is "/calendar". */
 export function calendarHref(p: CalendarParams): string {
-  const media = FY_MEDIA.filter((m) => p.media.includes(m));
-  const parts = [
-    p.view === "sheet" ? "view=sheet" : "",
-    media.length && media.length < FY_MEDIA.length ? `media=${media.join(",")}` : "",
-    p.inactive ? "inactive=1" : "",
-    p.sheet ? `sheet=${encodeURIComponent(p.sheet)}` : "",
-  ].filter(Boolean);
+  const parts = calendarQuery(p).map(([k, v]) => `${k}=${k === "media" ? v : encodeURIComponent(v)}`);
   return parts.length ? `/calendar?${parts.join("&")}` : "/calendar";
 }
 
@@ -120,6 +126,12 @@ export function changeNote(last: Cards["last"]): string {
 export function cellTitle(brand: string, label: string, cell: NonNullable<Cell>): string {
   const on = cell.lanes.filter((l) => l.on).map((l) => `${l.medium}: ${formatMn(cell.media[FY_MEDIA.indexOf(l.medium)])}`);
   return [`${brand} · ${label}`, ...(on.length ? [...on, `Total: ${formatMn(cell.total)}`] : ["No activity"])].join("\n");
+}
+
+/** A Gantt brand cell's media on, for screen readers: "TV, Digital", or "No activity". */
+export function cellMedia(cell: NonNullable<Cell>): string {
+  const on = cell.lanes.filter((l) => l.on).map((l) => l.medium);
+  return on.length ? on.join(", ") : "No activity";
 }
 
 /** A change % to 1 decimal, half away from zero, never -0. */
